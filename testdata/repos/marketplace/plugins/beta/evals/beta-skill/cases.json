@@ -1,0 +1,1 @@
+[{ "id": "basic", "prompt": "do the thing", "assertions": [{ "type": "file_exists", "path": "out.txt" }] }]

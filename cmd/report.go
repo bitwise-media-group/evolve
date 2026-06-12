@@ -1,0 +1,84 @@
+// Copyright 2026 BitWise Media Group Ltd
+// SPDX-License-Identifier: MIT
+
+package main
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+
+	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/report"
+	"github.com/bitwise-media-group/evolve/internal/version"
+)
+
+// ReportFlags holds the flags for `evolve report`.
+type ReportFlags struct {
+	Check               bool
+	MinTriggersPassRate float64
+	MinCasesPassRate    float64
+}
+
+var reportFlags = ReportFlags{}
+
+var reportCmd = &cobra.Command{
+	Use:   "report",
+	Short: "Regenerate EVALUATION.md and EVALUATION.json from the stored results",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		repo, err := opts.Repo()
+		if err != nil {
+			return err
+		}
+		providers, _, err := opts.Providers()
+		if err != nil {
+			return err
+		}
+		summary, err := report.Generate(report.Options{
+			Repo:        repo,
+			ToolVersion: version.Version,
+			Providers:   providers,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "report: regenerated EVALUATION.md and EVALUATION.json (%d plugins)\n",
+			len(summary.Plugins))
+
+		if !reportFlags.Check {
+			return nil
+		}
+		th := opts.Thresholds()
+		if cmd.Flags().Changed("min-triggers-pass-rate") {
+			th.TriggersMinPassRate = &reportFlags.MinTriggersPassRate
+		}
+		if cmd.Flags().Changed("min-cases-pass-rate") {
+			th.CasesMinPassRate = &reportFlags.MinCasesPassRate
+		}
+		if th.TriggersMinPassRate == nil && th.CasesMinPassRate == nil {
+			return fmt.Errorf("report --check: no thresholds configured " +
+				"(set report.thresholds in the .evolve config file or pass --min-*-pass-rate flags)")
+		}
+		breaches := report.Check(summary, th)
+		for _, breach := range breaches {
+			fmt.Fprintf(cmd.ErrOrStderr(), "FAIL: %s\n", breach)
+		}
+		if len(breaches) > 0 {
+			return fmt.Errorf("report: %d threshold %s: %w",
+				len(breaches), plural(len(breaches), "breach", "breaches"), cli.ErrFailures)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "report: thresholds met")
+		return nil
+	},
+}
+
+func init() {
+	reportCmd.Flags().BoolVar(&reportFlags.Check, "check", false,
+		"fail when pass rates breach the configured thresholds")
+	reportCmd.Flags().Float64Var(&reportFlags.MinTriggersPassRate, "min-triggers-pass-rate", 0,
+		"minimum trigger pass rate (0..1) for --check")
+	reportCmd.Flags().Float64Var(&reportFlags.MinCasesPassRate, "min-cases-pass-rate", 0,
+		"minimum case pass rate (0..1) for --check")
+	rootCmd.AddCommand(reportCmd)
+}

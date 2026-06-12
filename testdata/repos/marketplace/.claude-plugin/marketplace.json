@@ -1,0 +1,8 @@
+{
+  "name": "fixture",
+  "owner": { "name": "Fixture Owner" },
+  "plugins": [
+    { "name": "alpha", "source": "./plugins/alpha" },
+    { "name": "beta", "source": "./plugins/beta" }
+  ]
+}
