@@ -1,25 +1,65 @@
-# Tag-driven release — pushing a vX.Y.Z tag runs GoReleaser: binary archives
-# + checksums + SBOMs + keyless cosign signatures on the GitHub release, a
-# Homebrew cask pushed to bitwise-media-group/homebrew-tap, and a GitHub
-# build-provenance attestation over everything in checksums.txt.
+# Release pipeline — release-please watches main, keeps a release PR current
+# from the Conventional Commit history, and when that PR merges cuts a draft
+# GitHub release plus the vX.Y.Z tag. GoReleaser then adopts the draft —
+# binary archives + checksums + SBOMs + keyless cosign signatures, a Homebrew
+# cask pushed to bitwise-media-group/homebrew-tap, and a GitHub
+# build-provenance attestation over everything in checksums.txt — and only
+# publishes it once every asset is in place.
+#
+# Everything authenticates with the workflow's own GITHUB_TOKEN. The one
+# caveat: PRs created with that token never trigger other workflows, so
+# ci.yaml does not run on release PRs (they only touch CHANGELOG.md and the
+# version manifest, both exempt from the format gates anyway).
 name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
-permissions:
-  contents: write # create the GitHub release
-  id-token: write # OIDC job token for cosign keyless signing
-  attestations: write # actions/attest: persist the attestation
-  artifact-metadata: write # actions/attest: create the artifact storage record
+permissions: {} # granted per job
+
+# Concurrent release-please runs can open duplicate release PRs; queue them.
+concurrency:
+  group: release
 
 jobs:
-  goreleaser:
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # draft release + tag
+      issues: write # release PR labels go through the issues API
+      pull-requests: write # the release PR itself
+    outputs:
+      release_created: ${{ steps.release-please.outputs.release_created }}
+      tag_name: ${{ steps.release-please.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v5.0.0
+        id: release-please
+
+      # The draft release has no tag yet — GitHub would only create it on
+      # publish — and GoReleaser cannot version without one, so create it at
+      # the released commit.
+      - name: Create release tag
+        if: ${{ steps.release-please.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release-please.outputs.tag_name }}
+          SHA: ${{ steps.release-please.outputs.sha }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"
+
+  goreleaser:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload assets and publish the draft release
+      id-token: write # OIDC job token for cosign keyless signing
+      attestations: write # actions/attest: persist the attestation
+      artifact-metadata: write # actions/attest: create the artifact storage record
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0 # GoReleaser needs full history + tags for the changelog
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0

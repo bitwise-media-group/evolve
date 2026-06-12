@@ -8,3 +8,7 @@
 
 # goreleaser
 /.goreleaser.yaml
+
+# release-please writes both; its release PRs must not trip the format gate
+/CHANGELOG.md
+/.release-please-manifest.json

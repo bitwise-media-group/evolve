@@ -27,3 +27,5 @@ ignores:
   - "docs/cli/**"
   # Generated configuration reference — evolve docs --format config.
   - "docs/config/**"
+  # Machine-written by release-please, not house prose.
+  - "CHANGELOG.md"

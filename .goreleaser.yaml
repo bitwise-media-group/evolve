@@ -109,6 +109,12 @@ release:
   github:
     owner: bitwise-media-group
     name: evolve
+  # The release-please job in release.yaml leaves a draft release named after
+  # the tag it pushes. Adopt that draft instead of creating a second release,
+  # swap its release-please notes for the grouped changelog above, and
+  # undraft it only once every asset has been uploaded.
+  use_existing_draft: true
+  mode: replace
 
 # ^ref: https://goreleaser.com/customization/publish/homebrew_casks/
 homebrew_casks:
