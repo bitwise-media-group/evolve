@@ -11,7 +11,8 @@ on:
 permissions:
   contents: write # create the GitHub release
   id-token: write # OIDC job token for cosign keyless signing
-  attestations: write # actions/attest-build-provenance
+  attestations: write # actions/attest: persist the attestation
+  artifact-metadata: write # actions/attest: create the artifact storage record
 
 jobs:
   goreleaser:
@@ -41,9 +42,10 @@ jobs:
           # default GITHUB_TOKEN cannot push the cask to another repository.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
-      # Attest build provenance for every file listed in checksums.txt
-      # (archives + SBOMs + signature bundles). Verify with:
+      # Attest SLSA build provenance (the default mode when no predicate is
+      # given) for every file listed in checksums.txt (archives + SBOMs +
+      # signature bundles). Verify with:
       #   gh attestation verify --owner bitwise-media-group <file>
-      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      - uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           subject-checksums: ./dist/checksums.txt
