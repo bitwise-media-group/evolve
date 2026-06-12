@@ -81,7 +81,7 @@ snapshot:
 changelog:
   sort: asc
   use: github
-  format: '{{ .SHA }}: {{ .Message }}{{ if and (not .IsNightly) .Logins }} ({{ .Logins | listExclude "^@Copilot$" | englishJoin }}){{ end }}'
+  format: '{{ .SHA }}: {{ .Message }}{{ if and (not .IsNightly) .Logins }} ({{ .Logins | englishJoin }}){{ end }}'
 
   filters:
     exclude:
