@@ -1,0 +1,71 @@
+# GoReleaser config. Cut a release by pushing a vX.Y.Z tag (CI runs
+# `goreleaser release`); build locally without publishing via `make snapshot`.
+# Produces cross-platform binary archives + checksums + SBOMs.
+version: 2
+
+project_name: evolve
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: evolve
+    main: ./cmd
+    binary: evolve
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/bitwise-media-group/evolve/internal/version.Version={{ .Version }}
+      - -X github.com/bitwise-media-group/evolve/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/bitwise-media-group/evolve/internal/version.BuildDate={{ .Date }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: evolve
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+    # syft is pinned in tools/go.mod and invoked via `go tool` — no separate
+    # install. GoReleaser runs the SBOM command with its working directory set
+    # to dist/, hence the ../ on the modfile path.
+    cmd: go
+    args:
+      - tool
+      - -modfile=../tools/go.mod
+      - syft
+      - $artifact
+      - --output
+      - spdx-json=$document
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  github:
+    owner: bitwise-media-group
+    name: evolve

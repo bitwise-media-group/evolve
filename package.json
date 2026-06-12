@@ -1,0 +1,11 @@
+{
+  "name": "evolve",
+  "private": true,
+  "type": "module",
+  "description": "Lint and formatting tools for the evolve CLI.",
+  "license": "MIT",
+  "devDependencies": {
+    "markdownlint-cli2": "^0.22.1",
+    "prettier": "^3.0.0"
+  }
+}

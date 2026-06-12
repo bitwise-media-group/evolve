@@ -1,0 +1,7 @@
+# Generated reports and golden files keep their exact bytes.
+testdata/
+docs/cli/
+docs/config/
+
+# Local agent state (plans, settings) — not part of the published repo.
+.claude/

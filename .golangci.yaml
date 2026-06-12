@@ -1,0 +1,72 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - dupl
+    - errcheck
+    - gocyclo
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    errcheck:
+      # Progress output to stdout/stderr/builders is fire-and-forget house style.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gocyclo:
+      # The eval engines (run.runCaseSet, run.checkPlugin) legitimately sit in
+      # the low 20s: one branch per assertion kind / check rule.
+      min-complexity: 25
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+        - name: use-any
+        - name: unreachable-code
+        - name: struct-tag
+          arguments:
+            - "json,inline"
+  exclusions:
+    generated: lax
+    rules:
+      # Cobra command bodies repeat the same resolve/run/report shape by design.
+      - linters:
+          - dupl
+        path: cmd/
+      # Deferred Close/cleanup calls have nowhere useful to send an error.
+      - linters:
+          - errcheck
+        source: "^\\s*defer\\s+"
+      # Tests favor literal fixtures and inline setup over wrapped lines and
+      # checked error returns.
+      - linters:
+          - errcheck
+          - gocyclo
+          - lll
+          - prealloc
+        path: ".*_test\\.go$"
+    paths:
+      - node_modules
+      - testdata
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - node_modules
+      - testdata

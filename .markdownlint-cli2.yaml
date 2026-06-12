@@ -1,0 +1,29 @@
+# Copyright 2026 Bitwise Media Group
+# SPDX-License-Identifier: MIT
+
+config:
+  default: true
+  # Keep prose readable in terminals and diffs; tables are exempt.
+  MD013:
+    line_length: 120
+    tables: false
+  MD024:
+    siblings_only: true
+  # gofmt mandates hard tabs, so Go examples in code fences keep them; prose stays tab-free.
+  MD010:
+    code_blocks: false
+  MD046:
+    style: fenced
+
+globs:
+  - "**/*.md"
+
+ignores:
+  - "node_modules/**"
+  - ".claude/**"
+  - "testdata/**"
+  - "dist/**"
+  # Generated command reference — cobra's output, not house prose.
+  - "docs/cli/**"
+  # Generated configuration reference — evolve docs --format config.
+  - "docs/config/**"
