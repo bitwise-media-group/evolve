@@ -14,6 +14,7 @@ import (
 // CheckFlags holds the flags for `evolve run check`.
 type CheckFlags struct {
 	NoMarketplace bool
+	License       string
 }
 
 var checkFlags = CheckFlags{}
@@ -30,6 +31,9 @@ var checkCmd = &cobra.Command{
 		cfg := opts.ChecksConfig()
 		if checkFlags.NoMarketplace {
 			cfg.Marketplace = false
+		}
+		if cmd.Flags().Changed("license") {
+			cfg.License = checkFlags.License
 		}
 
 		findings, err := run.Checks(repo, cfg)
@@ -50,6 +54,8 @@ var checkCmd = &cobra.Command{
 
 func init() {
 	checkCmd.Flags().BoolVar(&checkFlags.NoMarketplace, "no-marketplace", false, "skip marketplace manifest validation")
+	checkCmd.Flags().StringVar(&checkFlags.License, "license", "",
+		"license every SKILL.md must declare; overrides checks.license (default: the field is forbidden)")
 	runCmd.AddCommand(checkCmd)
 }
 

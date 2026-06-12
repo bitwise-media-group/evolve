@@ -25,7 +25,7 @@ var (
 // CheckConfig holds the tunable knobs, overridable via the .evolve config so other
 // organizations can run the tool without forking the rules.
 type CheckConfig struct {
-	License              string // required SKILL.md license value
+	License              string // required SKILL.md license; "" forbids the field
 	TriggerPattern       string // regex the description must match
 	MaxSkillLines        int    // SKILL.md body cap
 	MaxNameRunes         int    // skill name cap
@@ -35,10 +35,12 @@ type CheckConfig struct {
 	Marketplace          bool   // validate marketplace manifests (marketplace layout only)
 }
 
-// DefaultCheckConfig mirrors the rules hard-coded in run_checks.py.
+// DefaultCheckConfig mirrors the rules hard-coded in run_checks.py, except
+// that the license requirement is opt-in: by default skills must not declare
+// a license at all.
 func DefaultCheckConfig() CheckConfig {
 	return CheckConfig{
-		License:              "MIT",
+		License:              "",
 		TriggerPattern:       `Use (when|after|before)`,
 		MaxSkillLines:        500,
 		MaxNameRunes:         64,
@@ -257,7 +259,13 @@ func (c *checker) checkSkill(skillMD string) {
 		c.errf("%s: description missing a 'Use when/after/before' trigger phrase", path)
 	}
 
-	if got := fields["license"]; got != c.cfg.License {
+	got, present := fields["license"]
+	switch {
+	case c.cfg.License == "":
+		if present {
+			c.errf("%s: license '%s' is forbidden (no checks.license configured)", path, got)
+		}
+	case got != c.cfg.License:
 		c.errf("%s: license must be %s (got '%s')", path, c.cfg.License, got)
 	}
 

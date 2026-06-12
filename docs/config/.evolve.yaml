@@ -13,8 +13,10 @@ default_models: ["anthropic"]
 # cache_dir: "~/.cache/evolve"
 
 checks:
-  # License every SKILL.md must declare.
-  license: "MIT"
+  # License every SKILL.md must declare; when unset, skills must not declare
+  # one.
+  # Default: unset — the license field is forbidden.
+  # license: "MIT"
 
   # Regex every skill description must match.
   description_pattern: "Use (when|after|before)"

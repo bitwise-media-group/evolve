@@ -13,6 +13,11 @@ import (
 
 func runChecks(t *testing.T, fixture string) []Finding {
 	t.Helper()
+	return runChecksCfg(t, fixture, DefaultCheckConfig())
+}
+
+func runChecksCfg(t *testing.T, fixture string, cfg CheckConfig) []Finding {
+	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "repos", fixture))
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +26,7 @@ func runChecks(t *testing.T, fixture string) []Finding {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings, err := Checks(repo, DefaultCheckConfig())
+	findings, err := Checks(repo, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +60,7 @@ func TestBrokenRepo(t *testing.T) {
 		"plugins/oops: hooks/ directory is forbidden",
 		"name 'wrong-name' != directory 'bad-skill'",
 		"description missing a 'Use when/after/before' trigger phrase",
-		"license must be MIT (got '')",
+		"license 'MIT' is forbidden",
 		"plugins/vers: version mismatch (claude=0.1.0 codex=0.2)",
 		"plugins/vers: version '0.2' is not strict semver",
 		"plugins/vers: no skills under skills/",
@@ -67,6 +72,29 @@ func TestBrokenRepo(t *testing.T) {
 	}
 	if len(findings) != len(want) {
 		t.Errorf("got %d findings, want %d:\n  %s", len(findings), len(want), strings.Join(got, "\n  "))
+	}
+}
+
+// TestConfiguredLicense covers the opt-in path: with checks.license set,
+// every skill must declare exactly that license — and a declared license
+// stops being a finding.
+func TestConfiguredLicense(t *testing.T) {
+	cfg := DefaultCheckConfig()
+	cfg.License = "MIT"
+
+	findings := runChecksCfg(t, "single", cfg) // solo-skill declares no license
+	if len(findings) != 1 || !strings.Contains(findings[0].Message, "license must be MIT (got '')") {
+		got := make([]string, len(findings))
+		for i, f := range findings {
+			got[i] = f.Message
+		}
+		t.Errorf("want exactly one missing-license finding, got:\n  %s", strings.Join(got, "\n  "))
+	}
+
+	for _, f := range runChecksCfg(t, "broken", cfg) { // bad-skill declares MIT
+		if strings.Contains(f.Message, "license") {
+			t.Errorf("unexpected license finding: %s", f.Message)
+		}
 	}
 }
 

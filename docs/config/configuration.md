@@ -12,7 +12,7 @@ defaults, the config file, `EVOLVE_*` environment variables, then explicit flags
 | `layout` | string | `"auto"` | Repository layout: auto, marketplace, multi, or single. |
 | `default_models` | list of strings | `["anthropic"]` | Model spec used when --models is omitted: provider names, model ids, provider-qualified ids (cursor/sonnet-4.5), or all. |
 | `cache_dir` | string | unset — the OS user cache dir | Directory holding the token-count cache. |
-| `checks.license` | string | `"MIT"` | License every SKILL.md must declare. |
+| `checks.license` | string | unset — the license field is forbidden | License every SKILL.md must declare; when unset, skills must not declare one. |
 | `checks.description_pattern` | string | `"Use (when\|after\|before)"` | Regex every skill description must match. |
 | `checks.max_skill_lines` | int | `500` | Maximum SKILL.md line count. |
 | `checks.require_codex_manifest` | bool | `true` | Require .codex-plugin/plugin.json beside Claude's manifest. |

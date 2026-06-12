@@ -10,6 +10,7 @@ evolve run check [flags]
 
 ```
   -h, --help             help for check
+      --license string   license every SKILL.md must declare; overrides checks.license (default: the field is forbidden)
       --no-marketplace   skip marketplace manifest validation
 ```
 

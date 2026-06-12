@@ -43,8 +43,9 @@ func Schema() []Option {
 			Doc:      "Directory holding the token-count cache.",
 		},
 		{
-			Key: "checks.license", Type: "string", Value: checks.License,
-			Doc: "License every SKILL.md must declare.",
+			Key: "checks.license", Type: "string", Example: "MIT",
+			Fallback: "the license field is forbidden",
+			Doc:      "License every SKILL.md must declare; when unset, skills must not declare one.",
 		},
 		{
 			Key: "checks.description_pattern", Type: "string", Value: checks.TriggerPattern,
