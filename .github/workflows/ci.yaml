@@ -1,0 +1,58 @@
+# Continuous integration — builds, vets, tests with the race detector, lints
+# prose, and scans for known vulnerabilities on every push and pull request.
+# The Go version comes from go.mod, never the workflow.
+#
+# Every action is pinned to a full commit SHA (tag in the comment) so a moved
+# tag can never change what runs; Dependabot keeps the pins fresh.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v5.0.0
+        with:
+          node-version: lts/*
+
+      - name: Install pinned lint tools
+        run: npm ci
+
+      - name: Markdown lint
+        run: ./node_modules/.bin/markdownlint-cli2 "**/*.md"
+
+      - name: Format check
+        run: ./node_modules/.bin/prettier --check .
