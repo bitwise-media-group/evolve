@@ -33,8 +33,12 @@ jobs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       tag_name: ${{ steps.release-please.outputs.tag_name }}
     steps:
+      # First pass cuts the release only; the release PR is built in a
+      # second pass below, once the tag exists.
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v5.0.0
         id: release-please
+        with:
+          skip-github-pull-request: true
 
       # The draft release has no tag yet — GitHub would only create it on
       # publish — and GoReleaser cannot version without one, so create it at
@@ -46,6 +50,15 @@ jobs:
           TAG: ${{ steps.release-please.outputs.tag_name }}
           SHA: ${{ steps.release-please.outputs.sha }}
         run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"
+
+      # Build the release PR only now that the tag exists. A draft release
+      # whose tag ref is missing is invisible to release-please's
+      # latest-release lookup, so computing the PR in the same pass that
+      # cuts a release treats every released commit as unreleased and opens
+      # a duplicate vNext PR.
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v5.0.0
+        with:
+          skip-github-release: true
 
   goreleaser:
     needs: release-please
