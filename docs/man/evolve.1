@@ -1,0 +1,38 @@
+.nh
+.TH "EVOLVE" "1" "Jun 2026" "" ""
+
+.SH NAME
+evolve - Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases, reports
+
+
+.SH SYNOPSIS
+\fBevolve [flags]\fP
+
+
+.SH DESCRIPTION
+Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases, reports
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for evolve
+
+.PP
+\fB--json\fP[=false]
+	emit machine-readable JSONL progress on stdout
+
+.PP
+\fB--layout\fP="auto"
+	repository layout: auto, marketplace, multi, or single
+
+.PP
+\fB--root\fP=""
+	repository root to operate on (default: walk up from the current directory)
+
+.PP
+\fB-v\fP, \fB--verbose\fP[=false]
+	enable debug logging
+
+
+.SH SEE ALSO
+\fBevolve-completion(1)\fP, \fBevolve-doctor(1)\fP, \fBevolve-models(1)\fP, \fBevolve-report(1)\fP, \fBevolve-run(1)\fP, \fBevolve-version(1)\fP
