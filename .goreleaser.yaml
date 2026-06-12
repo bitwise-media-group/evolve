@@ -79,7 +79,30 @@ snapshot:
 
 # ^ref: https://goreleaser.com/customization/publish/changelog/
 changelog:
-  use: github-native
+  sort: asc
+  use: github
+  format: '{{ .SHA }}: {{ .Message }}{{ if and (not .IsNightly) .Logins }} ({{ .Logins | listExclude "^@Copilot$" | englishJoin }}){{ end }}'
+
+  filters:
+    exclude:
+      - "^test"
+      - "^chore"
+      - "^build"
+  groups:
+    - title: "New Features"
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 100
+    - title: "Security Updates"
+      regexp: '^.*?sec(\(.+\))??!?:.+$'
+      order: 150
+    - title: "Bug Fixes"
+      regexp: '^.*?(fix|refactor)(\(.+\))??!?:.+$'
+      order: 200
+    - title: "Documentation Updates"
+      regexp: ^.*?docs?(\(.+\))??!?:.+$
+      order: 400
+    - title: Other Work
+      order: 9999
 
 # ^ref: https://goreleaser.com/customization/publish/scm/
 release:
