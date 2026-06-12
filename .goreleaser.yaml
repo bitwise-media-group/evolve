@@ -1,20 +1,25 @@
-# GoReleaser config. Cut a release by pushing a vX.Y.Z tag (CI runs
-# `goreleaser release`); build locally without publishing via `make snapshot`.
-# Produces cross-platform binary archives + checksums + SBOMs.
 version: 2
 
+# ^ref: https://goreleaser.com/errors/multiple-tokens/
+force_token: github
+
+# ^ref: https://goreleaser.com/customization/project/
 project_name: evolve
 
+# ^ref: https://goreleaser.com/customization/hooks/
 before:
   hooks:
-    - go mod tidy
+    - go mod download
 
+# ^ref: https://goreleaser.com/customization/env/
+env:
+  - CGO_ENABLED=0
+
+# ^ref: https://goreleaser.com/customization/build/
 builds:
   - id: evolve
     main: ./cmd
     binary: evolve
-    env:
-      - CGO_ENABLED=0
     flags:
       - -trimpath
     ldflags:
@@ -25,25 +30,40 @@ builds:
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
 
+# ^ref: https://goreleaser.com/customization/archive/
 archives:
   - id: evolve
     formats: [tar.gz]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
 
+# ^ref: https://goreleaser.com/customization/checksum/
 checksum:
   name_template: checksums.txt
 
+# ^ref: https://goreleaser.com/customization/sign/sign/
+binary_signs:
+  - cmd: cosign
+    signature: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}.sigstore.json"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - ${artifact}
+      - --yes
+    output: true
+
+# ^ref: https://goreleaser.com/customization/sbom/
 sboms:
   - artifacts: archive
-    # syft is pinned in tools/go.mod and invoked via `go tool` — no separate
-    # install. GoReleaser runs the SBOM command with its working directory set
-    # to dist/, hence the ../ on the modfile path.
     cmd: go
     args:
       - tool
@@ -53,19 +73,38 @@ sboms:
       - --output
       - spdx-json=$document
 
+# ^ref: https://goreleaser.com/customization/publish/snapshots/
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
 
+# ^ref: https://goreleaser.com/customization/publish/changelog/
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^ci:"
+  use: github-native
 
+# ^ref: https://goreleaser.com/customization/publish/scm/
 release:
   github:
     owner: bitwise-media-group
     name: evolve
+
+# ^ref: https://goreleaser.com/customization/publish/homebrew_casks/
+homebrew_casks:
+  - name: evolve
+    binaries: [evolve]
+    generate_completions_from_executable:
+      executable: evolve
+      shell_parameter_format: cobra
+    homepage: https://github.com/bitwise-media-group/evolve
+    description: Evaluate coding-agent plugins — static checks, trigger-accuracy evals, behavioral cases, and reports
+    skip_upload: auto
+    repository:
+      owner: bitwise-media-group
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    hooks:
+      pre:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/evolve"]
+          end

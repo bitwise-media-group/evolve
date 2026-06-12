@@ -1,5 +1,7 @@
 # Tag-driven release — pushing a vX.Y.Z tag runs GoReleaser: binary archives
-# + checksums + SBOMs on the GitHub release.
+# + checksums + SBOMs + keyless cosign signatures on the GitHub release, a
+# Homebrew cask pushed to bitwise-media-group/homebrew-tap, and a GitHub
+# build-provenance attestation over everything in checksums.txt.
 name: release
 
 on:
@@ -8,6 +10,8 @@ on:
 
 permissions:
   contents: write # create the GitHub release
+  id-token: write # OIDC job token for cosign keyless signing
+  attestations: write # actions/attest-build-provenance
 
 jobs:
   goreleaser:
@@ -22,6 +26,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # cosign for the binary_signs keyless signing config.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
       # SBOMs use the syft pinned in tools/go.mod (invoked via `go tool`
       # by the sboms config) — no separate syft install step.
       - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
@@ -30,3 +37,13 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with write access to bitwise-media-group/homebrew-tap — the
+          # default GITHUB_TOKEN cannot push the cask to another repository.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      # Attest build provenance for every file listed in checksums.txt
+      # (archives + SBOMs + signature bundles). Verify with:
+      #   gh attestation verify --owner bitwise-media-group <file>
+      - uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: ./dist/checksums.txt

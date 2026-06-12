@@ -110,8 +110,10 @@ docs: build ## regenerate the cli reference (docs/cli, docs/man) and config docs
 	./$(APP) docs --out docs/man --format man
 	./$(APP) docs --out docs/config --format config
 
-snapshot: ## build local snapshot (binaries, no publish)
-	go tool -modfile=tools/go.mod goreleaser release --snapshot --clean
+# --skip=sign: cosign keyless signing needs the GitHub Actions OIDC token, so
+# it only works in the release workflow — locally it would fail or prompt.
+snapshot: ## build local snapshot (binaries, no publish, no signing)
+	go tool -modfile=tools/go.mod goreleaser release --snapshot --clean --skip=sign
 
 release: ## build and publish a release (needs a vX.Y.Z tag + creds)
 	go tool -modfile=tools/go.mod goreleaser release --clean
