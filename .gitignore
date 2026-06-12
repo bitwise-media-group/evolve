@@ -1,0 +1,9 @@
+# local builds
+/evolve
+/dist/
+
+# node stuff
+/node_modules/
+
+# claude
+/.claude/plans/
