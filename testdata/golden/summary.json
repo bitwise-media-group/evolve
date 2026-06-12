@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "tool_version": "test",
+  "latest_run": "2026-06-11T12:00:00Z",
+  "plugins": {
+    "solo": {
+      "triggers": {
+        "anthropic/claude-fable-5": {
+          "provider": "anthropic",
+          "display": "Claude Fable 5",
+          "passed": 1,
+          "total": 2,
+          "pass_rate": 0.5,
+          "avg_run_seconds": 7.1,
+          "estimate": {
+            "input_tokens": 2770,
+            "input_cost_usd": 0.0277
+          }
+        },
+        "cursor/sonnet-4.5": {
+          "provider": "cursor",
+          "display": "Cursor — Sonnet 4.5",
+          "passed": 2,
+          "total": 2,
+          "pass_rate": 1,
+          "avg_run_seconds": 12.7
+        },
+        "google/gemini-3.5-flash": {
+          "provider": "google",
+          "display": "Gemini 3.5 Flash",
+          "total": 2,
+          "estimate": {
+            "input_tokens": 2580,
+            "input_cost_usd": 0.00387
+          }
+        }
+      },
+      "cases": {
+        "anthropic/claude-fable-5": {
+          "provider": "anthropic",
+          "display": "Claude Fable 5",
+          "passed": 0,
+          "total": 1,
+          "pass_rate": 0,
+          "avg_run_seconds": 84.2,
+          "estimate": {
+            "input_tokens": 1827,
+            "input_cost_usd": 0.01827
+          },
+          "measured": {
+            "input_tokens": 233680,
+            "output_tokens": 3142,
+            "cost_usd": 0.782363
+          }
+        }
+      }
+    }
+  }
+}

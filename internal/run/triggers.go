@@ -1,0 +1,324 @@
+// Copyright 2026 BitWise Media Group Ltd
+// SPDX-License-Identifier: MIT
+
+package run
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/provider"
+	"github.com/bitwise-media-group/evolve/internal/results"
+	"github.com/bitwise-media-group/evolve/internal/workspace"
+)
+
+// TriggerOptions configures a trigger sweep.
+type TriggerOptions struct {
+	Options
+	Runs int
+}
+
+// Triggers executes the sweep. failed reports whether any executed query
+// failed; err reports interruption or setup problems.
+func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error) {
+	sets, err := opts.Repo.EvalSets()
+	if err != nil {
+		return false, err
+	}
+	for _, set := range sets {
+		if set.TriggersPath == "" || (opts.SkillFilter != "" && set.Skill != opts.SkillFilter) {
+			continue
+		}
+		setFailed, err := runTriggerSet(ctx, opts, set)
+		failed = failed || setFailed
+		if err != nil {
+			return failed, err
+		}
+	}
+	return failed, nil
+}
+
+func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet) (failed bool, err error) {
+	triggers, err := evalspec.LoadTriggers(set.TriggersPath)
+	if err != nil {
+		return false, err
+	}
+	skillMD, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md"))
+	if err != nil {
+		return false, fmt.Errorf("reading skill under test: %w", err)
+	}
+	file := results.Load(set.ResultsPath, set.Plugin.Name, set.Skill)
+
+	ws, cleanup, err := workspace.New("triggers.", set.Plugin.SkillsDir,
+		unionSkillDirs(opts.Selected), nil, opts.KeepWorkspaces)
+	if err != nil {
+		return false, err
+	}
+	defer cleanup()
+	if opts.KeepWorkspaces {
+		fmt.Fprintf(opts.Stderr, "  workspace kept: %s\n", ws)
+	}
+
+	for _, sel := range opts.Selected {
+		applicable := applicableTriggers(triggers, sel.Provider.Name())
+		if len(applicable) == 0 {
+			continue
+		}
+		cli, cliFound := provider.ResolveCLI(sel.Provider)
+		execute := !opts.CountOnly && cliFound
+
+		probe := func(t evalspec.Trigger) bool {
+			return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, t.Query)) != nil
+		}
+		_, countCapable := sel.Provider.(provider.TokenCounter)
+		if opts.New {
+			if reason := triggerSkipReason(
+				file.Triggers[sel.Key()], applicable, sel.Model, execute, countCapable, probe,
+			); reason != "" {
+				fmt.Fprintf(opts.Stdout, "\n=== %s / %s (skip: %s) ===\n", set.Skill, sel.Key(), reason)
+				continue
+			}
+		}
+		if !execute && !opts.CountOnly {
+			fmt.Fprintf(opts.Stderr, "  warn: `%s` CLI not found; %s gets token counts only\n",
+				sel.Provider.CLI()[0], sel.Key())
+		}
+
+		mode := "count-only"
+		if execute {
+			mode = "run"
+		}
+		fmt.Fprintf(opts.Stdout, "\n=== %s / %s (%d queries x %d runs, %s) ===\n",
+			set.Skill, sel.Key(), len(applicable), opts.Runs, mode)
+
+		// Token counting stays on this goroutine (cache-cheap); only agent
+		// runs go parallel.
+		entryResults := make([]results.TriggerResult, len(applicable))
+		for i, t := range applicable {
+			tokens := opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, t.Query))
+			entryResults[i] = results.TriggerResult{
+				Query:         t.Query,
+				ShouldTrigger: t.ShouldTrigger,
+				Estimate:      results.NewEstimate(tokens, sel.Model.InputUSD),
+			}
+		}
+		if execute {
+			batchFailed, err := runQueries(ctx, opts, sel, cli, ws, set.Skill, applicable, entryResults)
+			failed = failed || batchFailed
+			if err != nil {
+				return failed, err
+			}
+		}
+
+		entry := buildTriggerEntry(opts, sel, execute, entryResults)
+		file.SetTrigger(sel.Key(), entry)
+		if err := file.Save(set.ResultsPath); err != nil {
+			return failed, err
+		}
+		if entry.Executed {
+			fmt.Fprintf(opts.Stdout, "  %d/%d queries passed%s\n",
+				*entry.Summary.Passed, entry.Summary.Total, avgSuffix(entry.Summary.AvgRunSeconds))
+		}
+		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(set.ResultsPath))
+	}
+	return failed, nil
+}
+
+// runQueries executes every query's runs concurrently (jobs at a time) and
+// fills hits/runs/passed/avg into entryResults as queries complete. Sharing
+// the workspace is safe: trigger sessions are read-only.
+func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection, cli, ws, skill string,
+	triggers []evalspec.Trigger, entryResults []results.TriggerResult) (bool, error) {
+
+	type outcome struct {
+		index   int
+		hit     bool
+		seconds float64
+	}
+	outcomes := make(chan outcome)
+
+	collectorDone := make(chan bool)
+	go func() {
+		hits := make([]int, len(triggers))
+		elapsed := make([]float64, len(triggers))
+		remaining := make([]int, len(triggers))
+		for i := range remaining {
+			remaining[i] = opts.Runs
+		}
+		failed := false
+		for o := range outcomes {
+			if o.hit {
+				hits[o.index]++
+			}
+			elapsed[o.index] += o.seconds
+			remaining[o.index]--
+			if remaining[o.index] > 0 {
+				continue
+			}
+			i := o.index
+			rate := float64(hits[i]) / float64(opts.Runs)
+			avg := results.Round1(elapsed[i] / float64(opts.Runs))
+			expected := triggers[i].ShouldTrigger
+			passed := rate < 0.5
+			if expected {
+				passed = rate >= 0.5
+			}
+			failed = failed || !passed
+			h, r := hits[i], opts.Runs
+			entryResults[i].Hits = &h
+			entryResults[i].Runs = &r
+			entryResults[i].Passed = &passed
+			entryResults[i].AvgRunSeconds = &avg
+
+			marker, expect := "PASS", "no"
+			if !passed {
+				marker = "FAIL"
+			}
+			if expected {
+				expect = "yes"
+			}
+			fmt.Fprintf(opts.Stdout, "  [%s] rate=%.2f avg=%.1fs expect=%s %s\n",
+				marker, rate, avg, expect, truncate(triggers[i].Query, 70))
+		}
+		collectorDone <- failed
+	}()
+
+	g, runCtx := errgroup.WithContext(ctx)
+	g.SetLimit(opts.Jobs)
+	for i, t := range triggers {
+		for range opts.Runs {
+			g.Go(func() error {
+				spec := sel.Provider.TriggerSpec(ws, t.Query, sel.Model.ID)
+				spec.Argv[0] = cli
+				onLine := func(line []byte) bool {
+					hit, note := sel.Provider.ScanLine(line, skill)
+					if note != "" {
+						fmt.Fprintf(opts.Stderr, "  warn: %s\n", note)
+					}
+					return hit
+				}
+				res, err := opts.Runner.Run(runCtx, spec, opts.Timeout, onLine)
+				if err != nil {
+					return err
+				}
+				if res.TimedOut {
+					detail := ""
+					if res.StderrTail != "" {
+						detail = "; stderr tail: " + tail(res.StderrTail, 300)
+					}
+					fmt.Fprintf(opts.Stderr, "  warn: runner timed out; counted as no-trigger%s\n", detail)
+				}
+				outcomes <- outcome{index: i, hit: res.Hit, seconds: res.Elapsed.Seconds()}
+				return nil
+			})
+		}
+	}
+	err := g.Wait()
+	close(outcomes)
+	failed := <-collectorDone
+	return failed, err
+}
+
+func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed bool,
+	entryResults []results.TriggerResult) *results.TriggerEntry {
+	entry := &results.TriggerEntry{
+		Header:  opts.header(sel, executed),
+		Results: entryResults,
+		Summary: results.TriggerSummary{Total: len(entryResults)},
+	}
+	if executed {
+		entry.RunsPerQuery = opts.Runs
+		passed := 0
+		var runSum float64
+		var runCount int
+		for _, r := range entryResults {
+			if r.Passed != nil && *r.Passed {
+				passed++
+			}
+			if r.AvgRunSeconds != nil {
+				runSum += *r.AvgRunSeconds
+				runCount++
+			}
+		}
+		entry.Summary.Passed = &passed
+		if runCount > 0 {
+			avg := results.Round1(runSum / float64(runCount))
+			entry.Summary.AvgRunSeconds = &avg
+		}
+	}
+	estimates := make([]*results.Estimate, len(entryResults))
+	for i, r := range entryResults {
+		estimates[i] = r.Estimate
+	}
+	entry.Summary.Estimate = results.SumEstimates(estimates)
+	return entry
+}
+
+// triggerSkipReason is why --new may skip this skill/model, or "" when a
+// (re)run is needed. Fields a run could never fill are exempt: cost for
+// models without published pricing, execution fields when the runner is
+// unavailable or this invocation is count-only, and token counts the counting
+// API cannot produce (probe reports that).
+func triggerSkipReason(entry *results.TriggerEntry, triggers []evalspec.Trigger, model provider.Model,
+	execute, countCapable bool, probe func(evalspec.Trigger) bool) string {
+
+	stored := map[string]results.TriggerResult{}
+	if entry != nil {
+		for _, r := range entry.Results {
+			stored[r.Query] = r
+		}
+	}
+	var uncounted *evalspec.Trigger
+	for _, t := range triggers {
+		r, ok := stored[t.Query]
+		if !ok || r.ShouldTrigger != t.ShouldTrigger {
+			return ""
+		}
+		if execute && (r.Hits == nil || r.Runs == nil || r.Passed == nil || r.AvgRunSeconds == nil) {
+			return ""
+		}
+		// Estimates a provider can never produce (no counting API) are exempt.
+		missingCount := countCapable && (r.Estimate == nil ||
+			(model.InputUSD != nil && r.Estimate.InputCostUSD == nil))
+		if uncounted == nil && missingCount {
+			uncounted = &t
+		}
+	}
+	if uncounted == nil {
+		return "results complete"
+	}
+	if probe(*uncounted) {
+		return ""
+	}
+	return "token counts unavailable"
+}
+
+func applicableTriggers(triggers []evalspec.Trigger, providerName string) []evalspec.Trigger {
+	var out []evalspec.Trigger
+	for _, t := range triggers {
+		if !t.SkipsProvider(providerName) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
+
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
+}

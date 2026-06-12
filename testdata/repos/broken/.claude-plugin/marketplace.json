@@ -1,0 +1,8 @@
+{
+  "name": "broken",
+  "plugins": [
+    { "name": "oops", "source": "plugins/oops" },
+    { "name": "vers", "source": "./plugins/vers" },
+    { "name": "ghost", "source": "./plugins/ghost" }
+  ]
+}
