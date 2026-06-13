@@ -10,7 +10,7 @@
 # caveat: PRs created with that token never trigger other workflows, so
 # ci.yaml does not run on release PRs (they only touch CHANGELOG.md and the
 # version manifest, both exempt from the format gates anyway).
-name: release
+name: Release
 
 on:
   push:
