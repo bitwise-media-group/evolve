@@ -1,0 +1,28 @@
+{
+  "started_at": "2026-01-15T10:30:00Z",
+  "skill_name": "pdf",
+  "current_best": "v2",
+  "iterations": [
+    {
+      "version": "v0",
+      "parent": null,
+      "expectation_pass_rate": 0.65,
+      "grading_result": "baseline",
+      "is_current_best": false
+    },
+    {
+      "version": "v1",
+      "parent": "v0",
+      "expectation_pass_rate": 0.75,
+      "grading_result": "won",
+      "is_current_best": false
+    },
+    {
+      "version": "v2",
+      "parent": "v1",
+      "expectation_pass_rate": 0.85,
+      "grading_result": "won",
+      "is_current_best": true
+    }
+  ]
+}

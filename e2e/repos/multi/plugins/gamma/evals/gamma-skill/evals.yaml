@@ -1,0 +1,14 @@
+# Authored in YAML to exercise multi-format loading end to end.
+skill_name: gamma-skill
+evals:
+  - id: 1
+    name: gamma-basic
+    prompt: do the gamma thing
+    expected_output: a file named out.txt appears
+    files:
+      - files/seed.txt
+    expectations:
+      - The output mentions gamma
+    assertions:
+      - type: file_exists
+        path: out.txt

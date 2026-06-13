@@ -5,6 +5,6 @@
 // the global flags, the layered .evolve configuration (YAML, JSON, JSONC, or
 // TOML — see ConfigExtensions), and the helpers
 // that resolve them into a repository, provider set, and token counter. The
-// cobra command tree itself lives in cmd/ (package main) and builds on this
+// cobra command tree itself lives in cmd/evolve/ (package main) and builds on this
 // package.
 package cli

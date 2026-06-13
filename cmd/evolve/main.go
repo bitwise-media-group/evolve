@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Command evolve evaluates coding-agent plugins: static checks, trigger
-// accuracy, behavioral cases, and Markdown/JSON reports.
+// accuracy, behavioral evals, and Markdown/JSON reports.
 package main
 
 import (
@@ -42,7 +42,7 @@ var (
 
 	rootCmd = &cobra.Command{
 		Use:           "evolve",
-		Short:         "Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases, reports",
+		Short:         "Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals, reports",
 		SilenceUsage:  true, // errors are failures, not usage mistakes
 		SilenceErrors: true, // main logs the error once
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -61,6 +61,8 @@ func init() {
 	pf.StringVar(&opts.Layout, "layout", "auto",
 		"repository layout: auto, marketplace, multi, or single")
 	pf.BoolVar(&opts.JSON, "json", false, "emit machine-readable JSONL progress on stdout")
+	pf.StringVar(&opts.ResultsFormat, "results-format", "",
+		"format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)")
 	pf.BoolVarP(&rootFlags.Verbose, "verbose", "v", false, "enable debug logging")
 }
 

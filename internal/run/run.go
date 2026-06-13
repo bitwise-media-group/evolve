@@ -23,8 +23,8 @@ type Runner interface {
 		onLine func([]byte) bool) (runner.Result, error)
 }
 
-// Options holds the sweep configuration the trigger and case engines share;
-// TriggerOptions and CaseOptions embed it and add their engine's knobs.
+// Options holds the sweep configuration the trigger and eval engines share;
+// TriggerOptions and EvalOptions embed it and add their engine's knobs.
 type Options struct {
 	Repo           *layout.Repo
 	Selected       []provider.Selection
@@ -36,6 +36,7 @@ type Options struct {
 	CountOnly      bool
 	New            bool
 	KeepWorkspaces bool
+	ResultsFormat  string // emitted results format: json, jsonc, or yaml ("" = json)
 	ToolVersion    string
 	Now            func() time.Time
 	Stdout         io.Writer
@@ -58,6 +59,15 @@ func (o *Options) header(sel provider.Selection, executed bool) results.Header {
 
 func payload(skillMD []byte, prompt string) string {
 	return string(skillMD) + "\n\n" + prompt
+}
+
+// warnSkillName flags an authored skill_name that contradicts the directory
+// the eval set lives under; the directory name stays authoritative.
+func warnSkillName(opts *Options, set layout.EvalSet, path, authored string) {
+	if authored != "" && authored != set.Skill {
+		fmt.Fprintf(opts.Stderr, "  warn: %s: skill_name %q does not match skill directory %q\n",
+			opts.Repo.Rel(path), authored, set.Skill)
+	}
 }
 
 func unionSkillDirs(selected []provider.Selection) []string {

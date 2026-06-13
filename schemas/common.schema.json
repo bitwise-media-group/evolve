@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/common.schema.json",
+  "title": "evolve shared definitions",
+  "description": "Shared building blocks referenced by the other evolve schemas. Consumers must treat an absent key and an explicit null identically.",
+  "$defs": {
+    "evalId": {
+      "description": "An eval identifier: evolve normalizes integers (skill-creator style) to their decimal string on load.",
+      "type": ["string", "integer"]
+    },
+    "modelKeyMap": {
+      "description": "A map keyed by provider-qualified model id (provider/model-id).",
+      "type": "object",
+      "propertyNames": { "pattern": "^[^/]+/." }
+    },
+    "pricing": {
+      "description": "USD-per-million-token rates snapshotted at run time; an explicit null means the model has no published pricing.",
+      "type": ["object", "null"],
+      "properties": {
+        "input_per_mtok": { "type": ["number", "null"], "minimum": 0 },
+        "output_per_mtok": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "estimate": {
+      "description": "Counting-API figure for SKILL.md plus the prompt — the marginal context a triggering eval loads — priced at the model's input rate.",
+      "type": "object",
+      "required": ["input_tokens"],
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "input_cost_usd": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "measured": {
+      "description": "Harness-reported usage of a live session; input includes cache writes and reads.",
+      "type": "object",
+      "properties": {
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "header": {
+      "description": "Run metadata common to every results entry.",
+      "type": "object",
+      "required": ["provider", "model", "display", "tool_version", "ran_at", "executed", "timeout_seconds"],
+      "properties": {
+        "provider": { "type": "string" },
+        "model": { "type": "string" },
+        "display": { "type": "string" },
+        "tool_version": { "type": "string" },
+        "ran_at": { "type": "string", "format": "date-time" },
+        "executed": { "type": "boolean" },
+        "runs_per_query": { "type": "integer", "minimum": 1 },
+        "timeout_seconds": { "type": "integer", "minimum": 0 },
+        "pricing": { "$ref": "#/$defs/pricing" }
+      },
+      "additionalProperties": true
+    },
+    "stats": {
+      "description": "Statistical aggregate over repeated runs.",
+      "type": "object",
+      "required": ["mean", "stddev"],
+      "properties": {
+        "mean": { "type": "number" },
+        "stddev": { "type": "number" },
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

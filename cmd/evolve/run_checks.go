@@ -11,16 +11,16 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
-// CheckFlags holds the flags for `evolve run check`.
-type CheckFlags struct {
+// ChecksFlags holds the flags for `evolve run checks`.
+type ChecksFlags struct {
 	NoMarketplace bool
 	License       string
 }
 
-var checkFlags = CheckFlags{}
+var checksFlags = ChecksFlags{}
 
-var checkCmd = &cobra.Command{
-	Use:   "check",
+var checksCmd = &cobra.Command{
+	Use:   "checks",
 	Short: "Run Tier 0 static checks: skill frontmatter, manifests, marketplace consistency",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -29,11 +29,11 @@ var checkCmd = &cobra.Command{
 			return err
 		}
 		cfg := opts.ChecksConfig()
-		if checkFlags.NoMarketplace {
+		if checksFlags.NoMarketplace {
 			cfg.Marketplace = false
 		}
 		if cmd.Flags().Changed("license") {
-			cfg.License = checkFlags.License
+			cfg.License = checksFlags.License
 		}
 
 		findings, err := run.Checks(repo, cfg)
@@ -44,19 +44,19 @@ var checkCmd = &cobra.Command{
 			fmt.Fprintf(cmd.ErrOrStderr(), "FAIL: %s\n", f.Message)
 		}
 		if n := len(findings); n > 0 {
-			return failOrWarn(cmd, "check: %d %s", n, plural(n, "failure", "failures"))
+			return failOrWarn(cmd, "checks: %d %s", n, plural(n, "failure", "failures"))
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "check: all checks passed (%s layout, %d %s)\n",
+		fmt.Fprintf(cmd.OutOrStdout(), "checks: all checks passed (%s layout, %d %s)\n",
 			repo.Kind, len(repo.Plugins), plural(len(repo.Plugins), "plugin", "plugins"))
 		return nil
 	},
 }
 
 func init() {
-	checkCmd.Flags().BoolVar(&checkFlags.NoMarketplace, "no-marketplace", false, "skip marketplace manifest validation")
-	checkCmd.Flags().StringVar(&checkFlags.License, "license", "",
+	checksCmd.Flags().BoolVar(&checksFlags.NoMarketplace, "no-marketplace", false, "skip marketplace manifest validation")
+	checksCmd.Flags().StringVar(&checksFlags.License, "license", "",
 		"license every SKILL.md must declare; overrides checks.license (default: the field is forbidden)")
-	runCmd.AddCommand(checkCmd)
+	runCmd.AddCommand(checksCmd)
 }
 
 func plural(n int, one, many string) string {

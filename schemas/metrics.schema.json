@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/metrics.schema.json",
+  "title": "metrics.json (skill-creator superset)",
+  "description": "Executor metrics, compatible with skill-creator's metrics.json. Also embedded as execution_metrics in grading documents and evolve results; evolve populates it once transcript instrumentation lands.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "tool_calls": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "total_tool_calls": { "type": "integer", "minimum": 0 },
+    "total_steps": { "type": "integer", "minimum": 0 },
+    "files_created": { "type": "array", "items": { "type": "string" } },
+    "errors_encountered": { "type": "integer", "minimum": 0 },
+    "output_chars": { "type": "integer", "minimum": 0 },
+    "transcript_chars": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

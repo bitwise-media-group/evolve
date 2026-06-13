@@ -22,8 +22,8 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 	help for report
 
 .PP
-\fB--min-cases-pass-rate\fP=0
-	minimum case pass rate (0..1) for --check
+\fB--min-evals-pass-rate\fP=0
+	minimum eval pass rate (0..1) for --check
 
 .PP
 \fB--min-triggers-pass-rate\fP=0
@@ -37,6 +37,10 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 .PP
 \fB--layout\fP="auto"
 	repository layout: auto, marketplace, multi, or single
+
+.PP
+\fB--results-format\fP=""
+	format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)
 
 .PP
 \fB--root\fP=""

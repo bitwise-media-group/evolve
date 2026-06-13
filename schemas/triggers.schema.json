@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/triggers.schema.json",
+  "title": "evolve triggers file",
+  "description": "Authored trigger-accuracy queries for one skill (evals/<skill>/triggers.<ext>; json, jsonc, or yaml). The envelope mirrors skill-creator's evals.json shape.",
+  "type": "object",
+  "required": ["triggers"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "skill_name": {
+      "description": "Optional echo of the skill's name; the directory name stays authoritative and a mismatch warns.",
+      "type": "string"
+    },
+    "triggers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trigger" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "trigger": {
+      "type": "object",
+      "required": ["query", "should_trigger"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1 },
+        "should_trigger": { "type": "boolean" },
+        "skip_providers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    }
+  }
+}

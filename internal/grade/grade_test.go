@@ -152,3 +152,21 @@ func TestUnknownAssertionType(t *testing.T) {
 		t.Errorf("unknown type = (%s, %q)", boolish(passed), evidence)
 	}
 }
+
+func TestLLMJudgeExpectedOutputContext(t *testing.T) {
+	o := opts(t, "output")
+	j := o.Runner.(*judgeRunner)
+	j.response = `{"result": "{\"passed\": true, \"evidence\": \"ok\"}"}`
+
+	// Without expected output the prompt carries no author-context block.
+	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	if strings.Contains(j.gotSpec.Argv[2], "expected output") {
+		t.Errorf("prompt unexpectedly mentions expected output:\n%s", j.gotSpec.Argv[2])
+	}
+
+	o.ExpectedOutput = "a tidy summary table"
+	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	if !strings.Contains(j.gotSpec.Argv[2], "a tidy summary table") {
+		t.Errorf("prompt missing expected-output context:\n%s", j.gotSpec.Argv[2])
+	}
+}

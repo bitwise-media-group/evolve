@@ -12,32 +12,32 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
-// CasesFlags holds the flags for `evolve run cases`.
-type CasesFlags struct {
+// EvalsFlags holds the flags for `evolve run evals`.
+type EvalsFlags struct {
 	SweepFlags
-	Case       string
+	Eval       string
 	JudgeModel string
 }
 
-var casesFlags = CasesFlags{}
+var evalsFlags = EvalsFlags{}
 
-var casesCmd = &cobra.Command{
-	Use:   "cases",
+var evalsCmd = &cobra.Command{
+	Use:   "evals",
 	Short: "Run Tier 2 behavioral evals: agent sessions graded by assertions",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		common, err := casesFlags.sweepOptions(cmd)
+		common, err := evalsFlags.sweepOptions(cmd)
 		if err != nil {
 			return err
 		}
 
-		if !casesFlags.CountOnly {
-			fmt.Fprintf(cmd.OutOrStdout(), "parallelism: %d concurrent cases\n", casesFlags.Jobs)
+		if !evalsFlags.CountOnly {
+			fmt.Fprintf(cmd.OutOrStdout(), "parallelism: %d concurrent evals\n", evalsFlags.Jobs)
 		}
-		failed, runErr := run.Cases(cmd.Context(), run.CaseOptions{
+		failed, runErr := run.Evals(cmd.Context(), run.EvalOptions{
 			Options:    common,
-			CaseFilter: casesFlags.Case,
-			JudgeModel: casesFlags.JudgeModel,
+			EvalFilter: evalsFlags.Eval,
+			JudgeModel: evalsFlags.JudgeModel,
 		})
 		if err := saveCounter(common.Counter); err != nil {
 			return err
@@ -49,16 +49,16 @@ var casesCmd = &cobra.Command{
 			return err
 		}
 		if failed {
-			return failOrWarn(cmd, "cases: some cases failed")
+			return failOrWarn(cmd, "evals: some evals failed")
 		}
 		return nil
 	},
 }
 
 func init() {
-	casesFlags.register(casesCmd, 600)
-	casesCmd.Flags().StringVar(&casesFlags.Case, "case", "", "only run the case with this id")
-	casesCmd.Flags().StringVar(&casesFlags.JudgeModel, "judge-model", grade.DefaultJudgeModel,
+	evalsFlags.register(evalsCmd, 600)
+	evalsCmd.Flags().StringVar(&evalsFlags.Eval, "eval", "", "only run the eval with this id")
+	evalsCmd.Flags().StringVar(&evalsFlags.JudgeModel, "judge-model", grade.DefaultJudgeModel,
 		"claude model that grades llm assertions")
-	runCmd.AddCommand(casesCmd)
+	runCmd.AddCommand(evalsCmd)
 }

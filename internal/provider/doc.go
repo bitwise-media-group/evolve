@@ -6,7 +6,7 @@
 // runner-CLI command construction, output parsing, and token-counting
 // clients.
 //
-// Capability gaps are structural: providers implement the optional CaseRunner
+// Capability gaps are structural: providers implement the optional EvalRunner
 // and TokenCounter interfaces only when the underlying platform supports
 // them, and engines type-assert and degrade. Cursor implements neither
 // token counting nor usage reporting, so its estimate/measured fields stay

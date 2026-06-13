@@ -45,15 +45,21 @@ func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error)
 }
 
 func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet) (failed bool, err error) {
-	triggers, err := evalspec.LoadTriggers(set.TriggersPath)
+	spec, err := evalspec.LoadTriggers(set.TriggersPath)
 	if err != nil {
 		return false, err
 	}
+	warnSkillName(&opts.Options, set, set.TriggersPath, spec.SkillName)
+	triggers := spec.Triggers
 	skillMD, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md"))
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
-	file := results.Load(set.ResultsPath, set.Plugin.Name, set.Skill)
+	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	if reset {
+		fmt.Fprintf(opts.Stderr, "  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
+			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
+	}
 
 	ws, cleanup, err := workspace.New("triggers.", set.Plugin.SkillsDir,
 		unionSkillDirs(opts.Selected), nil, opts.KeepWorkspaces)
@@ -118,14 +124,15 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 
 		entry := buildTriggerEntry(opts, sel, execute, entryResults)
 		file.SetTrigger(sel.Key(), entry)
-		if err := file.Save(set.ResultsPath); err != nil {
+		saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
+		if err != nil {
 			return failed, err
 		}
 		if entry.Executed {
 			fmt.Fprintf(opts.Stdout, "  %d/%d queries passed%s\n",
 				*entry.Summary.Passed, entry.Summary.Total, avgSuffix(entry.Summary.AvgRunSeconds))
 		}
-		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(set.ResultsPath))
+		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(saved))
 	}
 	return failed, nil
 }
@@ -234,12 +241,16 @@ func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed boo
 	}
 	if executed {
 		entry.RunsPerQuery = opts.Runs
-		passed := 0
+		passed, failed := 0, 0
 		var runSum float64
 		var runCount int
 		for _, r := range entryResults {
-			if r.Passed != nil && *r.Passed {
-				passed++
+			if r.Passed != nil {
+				if *r.Passed {
+					passed++
+				} else {
+					failed++
+				}
 			}
 			if r.AvgRunSeconds != nil {
 				runSum += *r.AvgRunSeconds
@@ -247,6 +258,11 @@ func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed boo
 			}
 		}
 		entry.Summary.Passed = &passed
+		entry.Summary.Failed = &failed
+		if passed+failed > 0 {
+			rate := results.Round6(float64(passed) / float64(passed+failed))
+			entry.Summary.PassRate = &rate
+		}
 		if runCount > 0 {
 			avg := results.Round1(runSum / float64(runCount))
 			entry.Summary.AvgRunSeconds = &avg

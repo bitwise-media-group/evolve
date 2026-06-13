@@ -10,11 +10,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tailscale/hujson"
+
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 )
 
 // ErrFailures signals that checks or evals ran to completion and at least one
@@ -25,16 +28,17 @@ var ErrFailures = errors.New("failures reported")
 
 // ConfigExtensions lists the accepted config-file extensions, in search
 // order: the file is .evolve.<ext> at the repository root.
-var ConfigExtensions = []string{"yaml", "yml", "json", "jsonc", "toml"}
+var ConfigExtensions = []string{"yaml", "yml", "json", "jsonc"}
 
 // Options carries the resolved global state every subcommand consumes.
 type Options struct {
 	Log   *slog.Logger
 	Viper *viper.Viper
 
-	Root   string // --root: repository to operate on ("" = walk up from cwd)
-	Layout string // --layout: auto|marketplace|multi|single
-	JSON   bool   // --json: machine-readable JSONL progress on stdout
+	Root          string // --root: repository to operate on ("" = walk up from cwd)
+	Layout        string // --layout: auto|marketplace|multi|single
+	JSON          bool   // --json: machine-readable JSONL progress on stdout
+	ResultsFormat string // --results-format: json|jsonc|yaml for results + EVALUATION rollup
 }
 
 // LoadConfig reads the optional .evolve.<ext> config file from the resolved
@@ -58,6 +62,18 @@ func (o *Options) LoadConfig(cmd *cobra.Command) error {
 		if l := v.GetString("layout"); l != "" {
 			o.Layout = l
 		}
+	}
+	if !cmd.Flags().Changed("results-format") {
+		if f := v.GetString("results_format"); f != "" {
+			o.ResultsFormat = f
+		}
+	}
+	o.ResultsFormat = encfmt.Canonical(o.ResultsFormat)
+	if o.ResultsFormat == "" {
+		o.ResultsFormat = "json"
+	}
+	if !slices.Contains(encfmt.Formats, o.ResultsFormat) {
+		return fmt.Errorf("unknown results format %q (want json, jsonc, or yaml)", o.ResultsFormat)
 	}
 	return nil
 }

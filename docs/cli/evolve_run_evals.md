@@ -1,17 +1,17 @@
-## evolve run cases
+## evolve run evals
 
 Run Tier 2 behavioral evals: agent sessions graded by assertions
 
 ```
-evolve run cases [flags]
+evolve run evals [flags]
 ```
 
 ### Options
 
 ```
-      --case string          only run the case with this id
       --count-only           skip agent runs; only compute token usage per model
-  -h, --help                 help for cases
+      --eval string          only run the eval with this id
+  -h, --help                 help for evals
       --jobs int             concurrent agent runs (default: ceil(cpus/2)) (default 4)
       --judge-model string   claude model that grades llm assertions (default "claude-sonnet-4-6")
       --keep-workspaces      keep throwaway workspaces for debugging
@@ -24,14 +24,15 @@ evolve run cases [flags]
 ### Options inherited from parent commands
 
 ```
-      --json            emit machine-readable JSONL progress on stdout
-      --layout string   repository layout: auto, marketplace, multi, or single (default "auto")
-      --root string     repository root to operate on (default: walk up from the current directory)
-      --strict          exit 1 when checks or evals fail (default: warn and exit 0)
-  -v, --verbose         enable debug logging
+      --json                    emit machine-readable JSONL progress on stdout
+      --layout string           repository layout: auto, marketplace, multi, or single (default "auto")
+      --results-format string   format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)
+      --root string             repository root to operate on (default: walk up from the current directory)
+      --strict                  exit 1 when checks or evals fail (default: warn and exit 0)
+  -v, --verbose                 enable debug logging
 ```
 
 ### SEE ALSO
 
-* [evolve run](evolve_run.md)	 - Run the eval tiers: static checks, trigger accuracy, behavioral cases
+* [evolve run](evolve_run.md)	 - Run the eval tiers: static checks, trigger accuracy, behavioral evals
 

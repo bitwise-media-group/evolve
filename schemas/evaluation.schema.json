@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evaluation.schema.json",
+  "title": "evolve EVALUATION rollup (schema 2)",
+  "description": "The machine-readable rollup emitted beside EVALUATION.md (EVALUATION.<ext>; format selected by results_format), aggregating every plugin's stored results per model.",
+  "type": "object",
+  "required": ["schema", "tool_version", "plugins"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": 2 },
+    "tool_version": { "type": "string" },
+    "latest_run": { "type": "string", "format": "date-time" },
+    "plugins": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/pluginSummary" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "pluginSummary": {
+      "type": "object",
+      "properties": {
+        "triggers": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/modelKeyMap" }],
+          "additionalProperties": { "$ref": "#/$defs/rollup" }
+        },
+        "evals": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/modelKeyMap" }],
+          "additionalProperties": { "$ref": "#/$defs/rollup" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "rollup": {
+      "type": "object",
+      "required": ["provider", "display", "total"],
+      "properties": {
+        "provider": { "type": "string" },
+        "display": { "type": "string" },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "avg_run_seconds": { "type": "number", "minimum": 0 },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
+        "measured": { "$ref": "common.schema.json#/$defs/measured" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

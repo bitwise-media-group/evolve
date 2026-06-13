@@ -2,7 +2,7 @@
 .TH "EVOLVE" "1" "Jun 2026" "" ""
 
 .SH NAME
-evolve - Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases, reports
+evolve - Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals, reports
 
 
 .SH SYNOPSIS
@@ -10,7 +10,7 @@ evolve - Evaluate coding-agent plugins: static checks, trigger accuracy, behavio
 
 
 .SH DESCRIPTION
-Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases, reports
+Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals, reports
 
 
 .SH OPTIONS
@@ -24,6 +24,10 @@ Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral cases
 .PP
 \fB--layout\fP="auto"
 	repository layout: auto, marketplace, multi, or single
+
+.PP
+\fB--results-format\fP=""
+	format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)
 
 .PP
 \fB--root\fP=""

@@ -29,7 +29,7 @@ var runFlags = RunFlags{}
 
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run the eval tiers: static checks, trigger accuracy, behavioral cases",
+	Short: "Run the eval tiers: static checks, trigger accuracy, behavioral evals",
 }
 
 // failOrWarn resolves a run that completed with failures: under --strict it
@@ -44,7 +44,7 @@ func failOrWarn(cmd *cobra.Command, format string, args ...any) error {
 	return nil
 }
 
-// SweepFlags holds the flags `run triggers` and `run cases` share.
+// SweepFlags holds the flags `run triggers` and `run evals` share.
 type SweepFlags struct {
 	Skill          string
 	Models         string
@@ -68,7 +68,7 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 }
 
 // sweepOptions resolves the global flags and the sweep flags into the engine
-// configuration triggers and cases share.
+// configuration triggers and evals share.
 func (f *SweepFlags) sweepOptions(cmd *cobra.Command) (run.Options, error) {
 	repo, err := opts.Repo()
 	if err != nil {
@@ -93,6 +93,7 @@ func (f *SweepFlags) sweepOptions(cmd *cobra.Command) (run.Options, error) {
 		CountOnly:      f.CountOnly,
 		New:            f.NewOnly,
 		KeepWorkspaces: f.KeepWorkspaces,
+		ResultsFormat:  opts.ResultsFormat,
 		ToolVersion:    version.Version,
 		Now:            time.Now,
 		Stdout:         cmd.OutOrStdout(),

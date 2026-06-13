@@ -60,7 +60,6 @@ func writeConfigDocs(dir string) error {
 		{"configuration.md", configdoc.Markdown()},
 		{".evolve.yaml", configdoc.ExampleYAML()},
 		{".evolve.jsonc", configdoc.ExampleJSONC()},
-		{".evolve.toml", configdoc.ExampleTOML()},
 	}
 	for _, f := range files {
 		path := filepath.Join(dir, f.name)

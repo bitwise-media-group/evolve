@@ -19,16 +19,16 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 )
 
-// fakeCaseProvider implements Provider + CaseRunner (+ TokenCounter when
+// fakeEvalProvider implements Provider + EvalRunner (+ TokenCounter when
 // counting). reportsUsage=false models a cursor-like provider.
-type fakeCaseProvider struct {
+type fakeEvalProvider struct {
 	reportsUsage bool
 	priced       bool
 }
 
-func (f *fakeCaseProvider) Name() string    { return "fake" }
-func (f *fakeCaseProvider) Display() string { return "Fake" }
-func (f *fakeCaseProvider) Models() []provider.Model {
+func (f *fakeEvalProvider) Name() string    { return "fake" }
+func (f *fakeEvalProvider) Display() string { return "Fake" }
+func (f *fakeEvalProvider) Models() []provider.Model {
 	m := provider.Model{ID: "model-1", Display: "Fake Model 1"}
 	if f.priced {
 		in, out := 2.0, 10.0
@@ -36,38 +36,38 @@ func (f *fakeCaseProvider) Models() []provider.Model {
 	}
 	return []provider.Model{m}
 }
-func (f *fakeCaseProvider) CLI() []string       { return []string{"sh"} }
-func (f *fakeCaseProvider) EnvKeys() []string   { return []string{"FAKE_KEY"} }
-func (f *fakeCaseProvider) SkillDirs() []string { return []string{filepath.Join(".fake", "skills")} }
-func (f *fakeCaseProvider) TriggerSpec(ws, query, model string) provider.CommandSpec {
+func (f *fakeEvalProvider) CLI() []string       { return []string{"sh"} }
+func (f *fakeEvalProvider) EnvKeys() []string   { return []string{"FAKE_KEY"} }
+func (f *fakeEvalProvider) SkillDirs() []string { return []string{filepath.Join(".fake", "skills")} }
+func (f *fakeEvalProvider) TriggerSpec(ws, query, model string) provider.CommandSpec {
 	return provider.CommandSpec{Argv: []string{"fake-cli", query}, Dir: ws}
 }
-func (f *fakeCaseProvider) ScanLine([]byte, string) (bool, string) { return false, "" }
-func (f *fakeCaseProvider) CaseSpec(ws string, c provider.CaseInput, model string) provider.CommandSpec {
+func (f *fakeEvalProvider) ScanLine([]byte, string) (bool, string) { return false, "" }
+func (f *fakeEvalProvider) EvalSpec(ws string, c provider.EvalInput, model string) provider.CommandSpec {
 	return provider.CommandSpec{Argv: []string{"agent-cli", "AGENT", c.Prompt}, Dir: ws}
 }
-func (f *fakeCaseProvider) ParseCaseOutput(stdout []byte) (string, *provider.Usage) {
+func (f *fakeEvalProvider) ParseEvalOutput(stdout []byte) (string, *provider.Usage) {
 	if !f.reportsUsage {
 		return string(stdout), nil
 	}
 	in, out := 100, 10
 	return string(stdout), &provider.Usage{InputTokens: &in, OutputTokens: &out}
 }
-func (f *fakeCaseProvider) ReportsUsage() bool { return f.reportsUsage }
+func (f *fakeEvalProvider) ReportsUsage() bool { return f.reportsUsage }
 
-type countingCaseProvider struct{ fakeCaseProvider }
+type countingEvalProvider struct{ fakeEvalProvider }
 
-func (c *countingCaseProvider) CountTokens(_ context.Context, _, text string) (int, error) {
+func (c *countingEvalProvider) CountTokens(_ context.Context, _, text string) (int, error) {
 	return len(text), nil
 }
 
-// fakeCaseRunner simulates the agent (writes a file, emits output), fakes the
+// fakeEvalRunner simulates the agent (writes a file, emits output), fakes the
 // judge, and runs shell commands for real.
-type fakeCaseRunner struct {
+type fakeEvalRunner struct {
 	exec runner.Exec
 }
 
-func (f *fakeCaseRunner) Run(ctx context.Context, spec provider.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (f *fakeEvalRunner) Run(ctx context.Context, spec provider.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
 	switch {
 	case len(spec.Argv) > 1 && spec.Argv[1] == "AGENT":
 		if err := os.WriteFile(filepath.Join(spec.Dir, "created.txt"), []byte("agent artifact"), 0o644); err != nil {
@@ -81,7 +81,7 @@ func (f *fakeCaseRunner) Run(ctx context.Context, spec provider.CommandSpec, tim
 	}
 }
 
-func caseRepoFixture(t *testing.T) *layout.Repo {
+func evalRepoFixture(t *testing.T) *layout.Repo {
 	t.Helper()
 	root := t.TempDir()
 	write := func(rel, content string) {
@@ -94,10 +94,11 @@ func caseRepoFixture(t *testing.T) *layout.Repo {
 	}
 	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
 	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\ndescription: x. Use when testing.\nlicense: MIT\n---\nbody\n")
-	write("evals/solo-skill/cases.json", `[{
+	write("evals/solo-skill/files/seed.txt", "fixture seed")
+	write("evals/solo-skill/evals.json", `{"skill_name": "solo-skill", "evals": [{
 		"id": "basic",
 		"prompt": "create the file",
-		"files": {"seed.txt": "fixture seed"},
+		"files": ["files/seed.txt"],
 		"assertions": [
 			{"type": "file_exists", "path": "created.txt"},
 			{"type": "file_exists", "path": "seed.txt"},
@@ -107,7 +108,7 @@ func caseRepoFixture(t *testing.T) *layout.Repo {
 			{"type": "command", "run": "true", "requires": "no-such-binary-zzz"},
 			{"type": "llm", "text": "the agent did the task"}
 		]
-	}]`)
+	}]}`)
 	repo, err := layout.Detect(root, layout.Auto)
 	if err != nil {
 		t.Fatal(err)
@@ -115,14 +116,14 @@ func caseRepoFixture(t *testing.T) *layout.Repo {
 	return repo
 }
 
-func caseOptions(t *testing.T, repo *layout.Repo, p provider.Provider) CaseOptions {
+func evalOptions(t *testing.T, repo *layout.Repo, p provider.Provider) EvalOptions {
 	t.Helper()
-	return CaseOptions{
+	return EvalOptions{
 		Options: Options{
 			Repo:        repo,
 			Selected:    []provider.Selection{{Provider: p, Model: p.Models()[0]}},
 			Counter:     tokencount.New(filepath.Join(t.TempDir(), "c.json"), os.Stderr),
-			Runner:      &fakeCaseRunner{},
+			Runner:      &fakeEvalRunner{},
 			Timeout:     30 * time.Second,
 			Jobs:        2,
 			ToolVersion: "test",
@@ -133,13 +134,13 @@ func caseOptions(t *testing.T, repo *layout.Repo, p provider.Provider) CaseOptio
 	}
 }
 
-func TestCasesGradesCase(t *testing.T) {
-	repo := caseRepoFixture(t)
-	opts := caseOptions(t, repo, &countingCaseProvider{fakeCaseProvider{reportsUsage: true, priced: true}})
+func TestEvalsGradesEval(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
 	var stdout bytes.Buffer
 	opts.Stdout = &stdout
 
-	failed, err := Cases(context.Background(), opts)
+	failed, err := Evals(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,29 +148,41 @@ func TestCasesGradesCase(t *testing.T) {
 		t.Errorf("failed = true:\n%s", stdout.String())
 	}
 
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
-	entry := file.Cases["fake/model-1"]
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	entry := file.Evals["fake/model-1"]
 	if entry == nil || !entry.Executed {
 		t.Fatalf("entry = %+v", entry)
 	}
 	r := entry.Results[0]
-	if r.Passed == nil || !*r.Passed || *r.RunSeconds != 2.0 {
+	if r.Passed == nil || !*r.Passed || *r.Timing.ExecutorDurationSeconds != 2.0 {
 		t.Errorf("result = %+v", r)
 	}
-	if len(r.Assertions) != 7 {
-		t.Fatalf("assertions = %d, want 7", len(r.Assertions))
+	if len(r.Expectations) != 7 {
+		t.Fatalf("expectations = %d, want 7", len(r.Expectations))
 	}
 	// The requires-missing command is skipped, everything else passes.
-	for i, a := range r.Assertions {
+	for i, a := range r.Expectations {
+		if a.Text == "" || a.Source != "assertion" {
+			t.Errorf("expectations[%d] = %+v, want derived text and source", i, a)
+		}
 		if i == 5 {
 			if a.Passed != nil || !strings.Contains(a.Evidence, "skipped") {
-				t.Errorf("assertions[5] = %+v, want skipped", a)
+				t.Errorf("expectations[5] = %+v, want skipped", a)
 			}
 			continue
 		}
 		if a.Passed == nil || !*a.Passed {
-			t.Errorf("assertions[%d] = %+v, want pass", i, a)
+			t.Errorf("expectations[%d] = %+v, want pass", i, a)
 		}
+	}
+	// The per-eval summary uses grading.json semantics: skips excluded.
+	if s := r.Summary; s == nil || s.Passed != 6 || s.Failed != 0 || s.Skipped != 1 ||
+		s.Total != 7 || s.PassRate == nil || *s.PassRate != 1.0 {
+		t.Errorf("grade summary = %+v", r.Summary)
+	}
+	// Timing carries the measured token total alongside the duration.
+	if r.Timing.TotalTokens == nil || *r.Timing.TotalTokens != 110 {
+		t.Errorf("timing = %+v, want total_tokens 110", r.Timing)
 	}
 	// Usage reported, cost computed from pricing: 100*2/1e6 + 10*10/1e6.
 	if r.Measured == nil || *r.Measured.InputTokens != 100 || *r.Measured.CostUSD != 0.0003 {
@@ -183,19 +196,19 @@ func TestCasesGradesCase(t *testing.T) {
 	}
 }
 
-func TestCasesCursorLikeProvider(t *testing.T) {
-	repo := caseRepoFixture(t)
-	opts := caseOptions(t, repo, &fakeCaseProvider{reportsUsage: false}) // no counting, no usage, no pricing
+func TestEvalsCursorLikeProvider(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &fakeEvalProvider{reportsUsage: false}) // no counting, no usage, no pricing
 
-	failed, err := Cases(context.Background(), opts)
+	failed, err := Evals(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if failed {
 		t.Error("failed = true")
 	}
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
-	entry := file.Cases["fake/model-1"]
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	entry := file.Evals["fake/model-1"]
 	r := entry.Results[0]
 	if r.Measured != nil || r.Estimate != nil || entry.Pricing != nil {
 		t.Errorf("cursor-like entry leaked usage data: %+v", r)
@@ -208,7 +221,7 @@ func TestCasesCursorLikeProvider(t *testing.T) {
 	var stdout bytes.Buffer
 	opts.Stdout = &stdout
 	opts.New = true
-	if _, err := Cases(context.Background(), opts); err != nil {
+	if _, err := Evals(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout.String(), "skip: results complete") {
@@ -216,17 +229,17 @@ func TestCasesCursorLikeProvider(t *testing.T) {
 	}
 }
 
-func TestCasesDetectsFailure(t *testing.T) {
-	repo := caseRepoFixture(t)
-	path := filepath.Join(repo.Root, "evals", "solo-skill", "cases.json")
-	os.WriteFile(path, []byte(`[{
+func TestEvalsDetectsFailure(t *testing.T) {
+	repo := evalRepoFixture(t)
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "evals.json")
+	os.WriteFile(path, []byte(`{"evals": [{
 		"id": "fails",
 		"prompt": "create the file",
 		"assertions": [{"type": "file_exists", "path": "never-created.txt"}]
-	}]`), 0o644)
+	}]}`), 0o644)
 
-	opts := caseOptions(t, repo, &countingCaseProvider{})
-	failed, err := Cases(context.Background(), opts)
+	opts := evalOptions(t, repo, &countingEvalProvider{})
+	failed, err := Evals(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,11 +248,11 @@ func TestCasesDetectsFailure(t *testing.T) {
 	}
 }
 
-func TestCaseFilter(t *testing.T) {
-	repo := caseRepoFixture(t)
-	opts := caseOptions(t, repo, &countingCaseProvider{})
-	opts.CaseFilter = "no-such-case"
-	if _, err := Cases(context.Background(), opts); err != nil {
+func TestEvalFilter(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{})
+	opts.EvalFilter = "no-such-eval"
+	if _, err := Evals(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(repo.Root, "evals", "solo-skill", "results.json")); err == nil {

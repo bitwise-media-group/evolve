@@ -25,16 +25,16 @@ func TestFailOrWarn(t *testing.T) {
 	cmd.SetErr(&stderr)
 
 	runFlags.Strict = false
-	if err := failOrWarn(cmd, "cases: %d failed", 2); err != nil {
+	if err := failOrWarn(cmd, "evals: %d failed", 2); err != nil {
 		t.Errorf("default: err = %v, want nil", err)
 	}
-	if got := stderr.String(); !strings.Contains(got, "WARN: cases: 2 failed") {
+	if got := stderr.String(); !strings.Contains(got, "WARN: evals: 2 failed") {
 		t.Errorf("default: stderr = %q, want a WARN line", got)
 	}
 
 	stderr.Reset()
 	runFlags.Strict = true
-	if err := failOrWarn(cmd, "cases: %d failed", 2); !errors.Is(err, cli.ErrFailures) {
+	if err := failOrWarn(cmd, "evals: %d failed", 2); !errors.Is(err, cli.ErrFailures) {
 		t.Errorf("strict: err = %v, want cli.ErrFailures", err)
 	}
 	if stderr.Len() != 0 {

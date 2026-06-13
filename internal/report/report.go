@@ -29,9 +29,10 @@ type Options struct {
 	Repo        *layout.Repo
 	ToolVersion string
 	Providers   []provider.Provider // effective registry: display names + capabilities
+	Format      string              // rollup format: json, jsonc, or yaml ("" = json)
 }
 
-// Summary is the machine-readable rollup written to EVALUATION.json.
+// Summary is the machine-readable rollup written to EVALUATION.<format>.
 type Summary struct {
 	Schema      int                       `json:"schema"`
 	ToolVersion string                    `json:"tool_version"`
@@ -42,7 +43,7 @@ type Summary struct {
 // PluginSummary aggregates one plugin's results per model key.
 type PluginSummary struct {
 	Triggers map[string]*ModelRollup `json:"triggers,omitempty"`
-	Cases    map[string]*ModelRollup `json:"cases,omitempty"`
+	Evals    map[string]*ModelRollup `json:"evals,omitempty"`
 }
 
 // ModelRollup aggregates one model's results across a plugin's skills.
@@ -50,6 +51,7 @@ type ModelRollup struct {
 	Provider      string            `json:"provider"`
 	Display       string            `json:"display"`
 	Passed        *int              `json:"passed,omitempty"`
+	Failed        *int              `json:"failed,omitempty"`
 	Total         int               `json:"total"`
 	PassRate      *float64          `json:"pass_rate,omitempty"`
 	AvgRunSeconds *float64          `json:"avg_run_seconds,omitempty"`
@@ -75,20 +77,20 @@ func Generate(opts Options) (*Summary, error) {
 	}
 	caps := capabilities(opts.Providers)
 
-	summary := &Summary{Schema: 1, ToolVersion: opts.ToolVersion, Plugins: map[string]*PluginSummary{}}
+	summary := &Summary{Schema: 2, ToolVersion: opts.ToolVersion, Plugins: map[string]*PluginSummary{}}
 	for _, pf := range loaded {
 		ps := &PluginSummary{
 			Triggers: rollupTriggers(pf.files),
-			Cases:    rollupCases(pf.files),
+			Evals:    rollupEvals(pf.files),
 		}
-		if len(ps.Triggers) == 0 && len(ps.Cases) == 0 {
+		if len(ps.Triggers) == 0 && len(ps.Evals) == 0 {
 			continue
 		}
 		summary.Plugins[pf.plugin.Name] = ps
 		for _, m := range ps.Triggers {
 			summary.LatestRun = maxStr(summary.LatestRun, m.latestRun)
 		}
-		for _, m := range ps.Cases {
+		for _, m := range ps.Evals {
 			summary.LatestRun = maxStr(summary.LatestRun, m.latestRun)
 		}
 	}
@@ -97,7 +99,7 @@ func Generate(opts Options) (*Summary, error) {
 	if err := writeFile(filepath.Join(opts.Repo.Root, "EVALUATION.md"), root); err != nil {
 		return nil, err
 	}
-	if err := writeJSON(filepath.Join(opts.Repo.Root, "EVALUATION.json"), summary); err != nil {
+	if err := writeSummary(opts.Repo.Root, opts.Format, summary); err != nil {
 		return nil, err
 	}
 	if opts.Repo.Kind != layout.Single {
@@ -117,7 +119,7 @@ func Generate(opts Options) (*Summary, error) {
 // Thresholds gate CI on minimum pass rates (config: report.thresholds).
 type Thresholds struct {
 	TriggersMinPassRate *float64
-	CasesMinPassRate    *float64
+	EvalsMinPassRate    *float64
 	Models              []string // model keys; empty = all models with results
 }
 
@@ -126,9 +128,9 @@ type Thresholds struct {
 // must not pass CI.
 func Check(summary *Summary, th Thresholds) []string {
 	type agg struct{ passed, executed int }
-	totals := map[string]map[string]*agg{"triggers": {}, "cases": {}}
+	totals := map[string]map[string]*agg{"triggers": {}, "evals": {}}
 	for _, ps := range summary.Plugins {
-		for kind, rollups := range map[string]map[string]*ModelRollup{"triggers": ps.Triggers, "cases": ps.Cases} {
+		for kind, rollups := range map[string]map[string]*ModelRollup{"triggers": ps.Triggers, "evals": ps.Evals} {
 			for key, m := range rollups {
 				if m.Passed == nil {
 					continue
@@ -170,7 +172,7 @@ func Check(summary *Summary, th Thresholds) []string {
 		}
 	}
 	check("triggers", th.TriggersMinPassRate)
-	check("cases", th.CasesMinPassRate)
+	check("evals", th.EvalsMinPassRate)
 	return breaches
 }
 
@@ -182,7 +184,7 @@ func load(repo *layout.Repo) ([]pluginFiles, error) {
 	byPlugin := map[string]*pluginFiles{}
 	var order []string
 	for _, set := range sets {
-		if _, err := os.Stat(set.ResultsPath); err != nil {
+		if results.Find(set.ResultsDir) == "" {
 			continue
 		}
 		pf := byPlugin[set.Plugin.Name]
@@ -191,7 +193,8 @@ func load(repo *layout.Repo) ([]pluginFiles, error) {
 			byPlugin[set.Plugin.Name] = pf
 			order = append(order, set.Plugin.Name)
 		}
-		pf.files = append(pf.files, results.Load(set.ResultsPath, set.Plugin.Name, set.Skill))
+		file, _ := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		pf.files = append(pf.files, file)
 	}
 	out := make([]pluginFiles, 0, len(order))
 	for _, name := range order {
@@ -210,7 +213,7 @@ func capabilities(providers []provider.Provider) capabilityMap {
 	caps := capabilityMap{counts: map[string]bool{}, usage: map[string]bool{}, display: map[string]string{}}
 	for _, p := range providers {
 		_, caps.counts[p.Name()] = p.(provider.TokenCounter)
-		if cr, ok := p.(provider.CaseRunner); ok {
+		if cr, ok := p.(provider.EvalRunner); ok {
 			caps.usage[p.Name()] = cr.ReportsUsage()
 		}
 		caps.display[p.Name()] = p.Display()
@@ -241,10 +244,10 @@ func rollupTriggers(files []*results.File) map[string]*ModelRollup {
 	return rollups
 }
 
-func rollupCases(files []*results.File) map[string]*ModelRollup {
+func rollupEvals(files []*results.File) map[string]*ModelRollup {
 	rollups := map[string]*ModelRollup{}
 	for _, f := range files {
-		for key, entry := range f.Cases {
+		for key, entry := range f.Evals {
 			m := ensureRollup(rollups, key, entry.Header)
 			m.Total += entry.Summary.Total
 			if entry.Executed && entry.Summary.Passed != nil {
@@ -287,6 +290,8 @@ func addExecuted(m *ModelRollup, passed, total int, avg *float64) {
 func finalize(rollups map[string]*ModelRollup) {
 	for _, m := range rollups {
 		if m.Passed != nil && m.executed > 0 {
+			failed := m.executed - *m.Passed
+			m.Failed = &failed
 			rate := results.Round6(float64(*m.Passed) / float64(m.executed))
 			m.PassRate = &rate
 			if m.AvgRunSeconds != nil {

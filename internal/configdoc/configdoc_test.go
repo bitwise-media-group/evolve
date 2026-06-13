@@ -42,7 +42,6 @@ func TestExamplesRoundTrip(t *testing.T) {
 	}{
 		{"yaml", ExampleYAML()},
 		{"jsonc", ExampleJSONC()},
-		{"toml", ExampleTOML()},
 	}
 	for _, ex := range examples {
 		t.Run(ex.format, func(t *testing.T) {
@@ -92,7 +91,7 @@ func TestMarkdownCoversSchema(t *testing.T) {
 			t.Errorf("markdown is missing option %s", o.Key)
 		}
 	}
-	for _, want := range []string{"providers.<name>.models", ".evolve.yaml", ".evolve.jsonc", ".evolve.toml"} {
+	for _, want := range []string{"providers.<name>.models", ".evolve.yaml", ".evolve.jsonc"} {
 		if !strings.Contains(md, want) {
 			t.Errorf("markdown is missing %q", want)
 		}

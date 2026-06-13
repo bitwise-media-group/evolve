@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json",
+  "title": "evolve evals file",
+  "description": "Authored behavioral evals for one skill (evals/<skill>/evals.<ext>; json, jsonc, or yaml). A superset of skill-creator's evals.json: a verbatim skill-creator file validates unchanged.",
+  "type": "object",
+  "required": ["evals"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "skill_name": {
+      "description": "Optional echo of the skill's name; the directory name stays authoritative and a mismatch warns.",
+      "type": "string"
+    },
+    "evals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/eval" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "eval": {
+      "type": "object",
+      "required": ["id", "prompt"],
+      "anyOf": [
+        { "required": ["expectations"], "properties": { "expectations": { "minItems": 1 } } },
+        { "required": ["assertions"], "properties": { "assertions": { "minItems": 1 } } }
+      ],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/evalId" },
+        "name": {
+          "description": "Optional human-readable label, surfaced in reports.",
+          "type": "string"
+        },
+        "prompt": { "type": "string", "minLength": 1 },
+        "expected_output": {
+          "description": "The author's description of success. Context for the llm judge — never an automatic assertion, so migrated suites keep their pass rates.",
+          "type": "string"
+        },
+        "files": {
+          "description": "Input fixture paths relative to this file's directory (a leading evals/ segment is tolerated so skill-creator's skill-root-relative paths drop in). A path under files/ stages into the workspace at its path relative to files/; anything else stages by basename.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "expectations": {
+          "description": "Verifiable statements, each graded by the llm judge (before any assertions, in authored order).",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "assertions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assertion" }
+        },
+        "max_turns": { "type": "integer", "minimum": 1 },
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "allowed_tools": { "type": "string" },
+        "skip_providers": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "assertion": {
+      "oneOf": [
+        {
+          "description": "Shorthand for an llm assertion: {\"type\": \"llm\", \"text\": <the string>}.",
+          "type": "string",
+          "minLength": 1
+        },
+        { "$ref": "#/$defs/assertionObject" }
+      ]
+    },
+    "assertionObject": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "llm"] },
+        "path": { "type": "string" },
+        "pattern": { "type": "string" },
+        "run": { "type": "string" },
+        "cwd": { "type": "string" },
+        "requires": { "type": "string" },
+        "expect_exit": { "type": "integer" },
+        "text": { "type": "string" }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["file_exists", "file_absent"] } } },
+          "then": { "required": ["path"] }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["regex", "not_regex"] } } },
+          "then": { "required": ["pattern"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "command" } } },
+          "then": { "required": ["run"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "llm" } } },
+          "then": { "required": ["text"] }
+        }
+      ]
+    }
+  }
+}

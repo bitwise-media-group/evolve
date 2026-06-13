@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/benchmark.schema.json",
+  "title": "benchmark.json (skill-creator superset)",
+  "description": "With-skill vs without-skill benchmark output, compatible with skill-creator's benchmark.json (its viewer reads these exact field names). Evolve extras are additive and optional; an evolve benchmark mode emits against this contract.",
+  "type": "object",
+  "required": ["metadata", "runs", "run_summary"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
+    "run_summary": { "$ref": "#/$defs/runSummary" },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "skill_name",
+        "skill_path",
+        "executor_model",
+        "analyzer_model",
+        "timestamp",
+        "evals_run",
+        "runs_per_configuration"
+      ],
+      "properties": {
+        "skill_name": { "type": "string" },
+        "skill_path": { "type": "string" },
+        "executor_model": { "type": "string" },
+        "analyzer_model": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "evals_run": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/evalId" } },
+        "runs_per_configuration": { "type": "integer", "minimum": 1 },
+        "provider": { "type": "string" },
+        "model_key": { "type": "string", "pattern": "^[^/]+/." },
+        "tool_version": { "type": "string" },
+        "pricing": { "$ref": "common.schema.json#/$defs/pricing" }
+      },
+      "additionalProperties": true
+    },
+    "run": {
+      "type": "object",
+      "required": ["eval_id", "configuration", "run_number", "result"],
+      "properties": {
+        "eval_id": { "$ref": "common.schema.json#/$defs/evalId" },
+        "eval_name": { "type": "string" },
+        "configuration": {
+          "description": "Closed set: the skill-creator viewer branches on these exact strings.",
+          "enum": ["with_skill", "without_skill"]
+        },
+        "run_number": { "type": "integer", "minimum": 1 },
+        "result": { "$ref": "#/$defs/runResult" },
+        "expectations": {
+          "type": "array",
+          "items": { "$ref": "grading.schema.json#/$defs/expectation" }
+        },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "model_key": { "type": "string", "pattern": "^[^/]+/." }
+      },
+      "additionalProperties": true
+    },
+    "runResult": {
+      "type": "object",
+      "required": ["pass_rate", "passed", "total"],
+      "properties": {
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "time_seconds": { "type": "number", "minimum": 0 },
+        "tokens": { "type": "integer", "minimum": 0 },
+        "tool_calls": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" }
+      },
+      "additionalProperties": true
+    },
+    "runSummary": {
+      "type": "object",
+      "required": ["with_skill", "without_skill"],
+      "properties": {
+        "with_skill": { "$ref": "#/$defs/configurationStats" },
+        "without_skill": { "$ref": "#/$defs/configurationStats" },
+        "delta": {
+          "description": "Differences between configurations. skill-creator emits signed strings (\"+0.50\") for pass_rate/time_seconds/tokens; evolve extras may be numeric.",
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number"] }
+        }
+      },
+      "additionalProperties": true
+    },
+    "configurationStats": {
+      "type": "object",
+      "properties": {
+        "pass_rate": { "$ref": "common.schema.json#/$defs/stats" },
+        "time_seconds": { "$ref": "common.schema.json#/$defs/stats" },
+        "tokens": { "$ref": "common.schema.json#/$defs/stats" },
+        "cost_usd": { "$ref": "common.schema.json#/$defs/stats" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

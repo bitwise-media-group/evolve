@@ -17,7 +17,7 @@ import (
 type ReportFlags struct {
 	Check               bool
 	MinTriggersPassRate float64
-	MinCasesPassRate    float64
+	MinEvalsPassRate    float64
 }
 
 var reportFlags = ReportFlags{}
@@ -39,12 +39,13 @@ var reportCmd = &cobra.Command{
 			Repo:        repo,
 			ToolVersion: version.Version,
 			Providers:   providers,
+			Format:      opts.ResultsFormat,
 		})
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "report: regenerated EVALUATION.md and EVALUATION.json (%d plugins)\n",
-			len(summary.Plugins))
+		fmt.Fprintf(cmd.OutOrStdout(), "report: regenerated EVALUATION.md and %s (%d plugins)\n",
+			report.SummaryName(opts.ResultsFormat), len(summary.Plugins))
 
 		if !reportFlags.Check {
 			return nil
@@ -53,10 +54,10 @@ var reportCmd = &cobra.Command{
 		if cmd.Flags().Changed("min-triggers-pass-rate") {
 			th.TriggersMinPassRate = &reportFlags.MinTriggersPassRate
 		}
-		if cmd.Flags().Changed("min-cases-pass-rate") {
-			th.CasesMinPassRate = &reportFlags.MinCasesPassRate
+		if cmd.Flags().Changed("min-evals-pass-rate") {
+			th.EvalsMinPassRate = &reportFlags.MinEvalsPassRate
 		}
-		if th.TriggersMinPassRate == nil && th.CasesMinPassRate == nil {
+		if th.TriggersMinPassRate == nil && th.EvalsMinPassRate == nil {
 			return fmt.Errorf("report --check: no thresholds configured " +
 				"(set report.thresholds in the .evolve config file or pass --min-*-pass-rate flags)")
 		}
@@ -78,7 +79,7 @@ func init() {
 		"fail when pass rates breach the configured thresholds")
 	reportCmd.Flags().Float64Var(&reportFlags.MinTriggersPassRate, "min-triggers-pass-rate", 0,
 		"minimum trigger pass rate (0..1) for --check")
-	reportCmd.Flags().Float64Var(&reportFlags.MinCasesPassRate, "min-cases-pass-rate", 0,
-		"minimum case pass rate (0..1) for --check")
+	reportCmd.Flags().Float64Var(&reportFlags.MinEvalsPassRate, "min-evals-pass-rate", 0,
+		"minimum eval pass rate (0..1) for --check")
 	rootCmd.AddCommand(reportCmd)
 }
