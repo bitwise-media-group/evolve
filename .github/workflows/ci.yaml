@@ -14,7 +14,7 @@
 #
 # Every action is pinned to a full commit SHA (tag in the comment) so a moved
 # tag can never change what runs; Dependabot keeps the pins fresh.
-name: ci
+name: Continuous Integration
 
 on:
   push:
