@@ -1,6 +1,5 @@
 # Developer tasks. `make help` lists targets; `make pr` is the full local gate.
 
-APP     := evolve
 APP_PKG := ./cmd/evolve
 MODULE  := $(shell go list -m)
 
@@ -35,43 +34,48 @@ NPMBIN := ./node_modules/.bin
 SMOKE_MODEL ?= claude-haiku-4-5
 
 .DEFAULT_GOAL := help
-.PHONY: help pr fmt tidy vet lint lint-fix license test fuzz build run docs snapshot release smoke commit
+.PHONY: help pr fmt fmt-check tidy vet lint lint-fix lint-md license license-check test test-coverage vuln fuzz build run docs snapshot release smoke commit
 
 help: ## list available targets
-	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
+	@ grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
-pr: license tidy fmt vet lint-fix test fuzz build docs snapshot commit ## Full local gate, then run any pending ./commit.sh
+pr: license tidy fmt vet lint-fix lint-md test fuzz build docs snapshot commit ## Full local gate, then run any pending ./commit.sh
 
 commit: ## run ./commit.sh (agent-prepared commit batch) if present
-	@if [ -x ./commit.sh ]; then ./commit.sh; fi
+	@ if [ -x ./commit.sh ]; then ./commit.sh; fi
 
 # Install the pinned Node tools exactly as locked in package-lock.json.
 # Re-runs only when package.json / the lockfile change.
 node_modules: package.json package-lock.json
 	npm ci
-	@touch node_modules
+	@ touch node_modules
 
 fmt: node_modules ## format the go code, prose, and config (gofmt + prettier)
 	go fmt ./...
 	go -C e2e fmt ./...
 	$(NPMBIN)/prettier --write .
 
+fmt-check: node_modules ## check prose & config formatting (prettier --check)
+	$(NPMBIN)/prettier --check .
+
 tidy: ## tidy the go module references
 	@ rm -f go.sum; go mod tidy
 	@ rm -f tools/go.sum; go -C tools mod tidy
 	@ rm -f e2e/go.sum; go -C e2e mod tidy
 
-vet: node_modules ## vet the go code and lint markdown (go vet + markdownlint-cli2)
+vet: ## vet the go code (go vet)
 	go vet ./...
 	go -C e2e vet ./...
-	$(NPMBIN)/markdownlint-cli2 "**/*.md"
 
 lint: ## lint the go code
 	go tool -modfile=tools/go.mod golangci-lint run
 
 lint-fix: ## lint the go code and auto-fix issues
 	go tool -modfile=tools/go.mod golangci-lint run --fix
+
+lint-md: node_modules ## lint markdown prose (markdownlint-cli2)
+	$(NPMBIN)/markdownlint-cli2 "**/*.md"
 
 license-check: ## check license headers
 	go tool -modfile=tools/go.mod addlicense -check cmd internal schemas
@@ -82,23 +86,32 @@ license: ## inject license headers
 test: ## run the unit tests (+ fuzz seed corpora)
 	go test ./...
 
+# -covermode=atomic is the race-safe counter mode `-race` requires. gocover-cobertura
+# is pinned in tools/go.mod and run via `go tool` — no `go install` of an @latest tool.
+test-coverage: ## run unit tests under -race and write cobertura-coverage.xml
+	go test -race -covermode=atomic -coverprofile=coverage.out ./...
+	go tool -modfile=tools/go.mod gocover-cobertura <coverage.out >cobertura-coverage.xml
+
+vuln: ## scan code and dependencies for known vulnerabilities (govulncheck)
+	go tool -modfile=tools/go.mod govulncheck ./...
+
 fuzz: ## fuzz one target (FUZZ=FuzzParse FUZZTIME=20s FUZZ_PKG=./internal/evalspec)
 	go test -run '^$$' -fuzz '^$(FUZZ)$$' -fuzztime $(FUZZTIME) $(FUZZ_PKG)
 
 smoke: ## real `evolve run all` on the marketplace fixture (SMOKE_MODEL=claude-haiku-4-5, 1 run, 1 job; needs the claude CLI + credentials)
-	@command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
+	@ command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
 	SMOKE_MODEL=$(SMOKE_MODEL) go -C e2e test -v -count=1 -run '^TestSmoke$$' .
 
-build: ## build the binary (./$(APP)) with version ldflags
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(APP) $(APP_PKG)
+build: ## build the binary (./evolve) with version ldflags
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o evolve $(APP_PKG)
 
 run: build ## build and run locally (override args via ARGS=...)
-	./$(APP) $(ARGS)
+	./evolve $(ARGS)
 
 docs: build ## regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)
-	./$(APP) docs --out docs/cli --format markdown
-	./$(APP) docs --out docs/man --format man
-	./$(APP) docs --out docs/config --format config
+	./evolve docs --out docs/cli --format markdown
+	./evolve docs --out docs/man --format man
+	./evolve docs --out docs/config --format config
 
 # --skip=sign: cosign keyless signing needs the GitHub Actions OIDC token, so
 # it only works in the release workflow — locally it would fail or prompt.

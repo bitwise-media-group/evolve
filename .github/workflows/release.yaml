@@ -18,7 +18,7 @@ on:
 
 permissions: {} # granted per job
 
-# Concurrent release-please runs can open duplicate release PRs; queue them.
+# concurrent release-please runs can open duplicate release PRs; queue them.
 concurrency:
   group: release
 
@@ -26,9 +26,12 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # draft release + tag
-      issues: write # release PR labels go through the issues API
-      pull-requests: write # the release PR itself
+      # create draft release and git tag
+      contents: write
+      # create pr labels via issues api
+      issues: write
+      # create the release pull request
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release-please.outputs.release_created }}
       tag_name: ${{ steps.release-please.outputs.tag_name }}
@@ -65,10 +68,14 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write # upload assets and publish the draft release
-      id-token: write # OIDC job token for cosign keyless signing
-      attestations: write # actions/attest: persist the attestation
-      artifact-metadata: write # actions/attest: create the artifact storage record
+      # upload assets and publish the draft release
+      contents: write
+      # use id token for cosign keyless signing
+      id-token: write
+      # write github provenance attestation
+      attestations: write
+      # create artifact storage record for github attestation
+      artifact-metadata: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:

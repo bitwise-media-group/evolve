@@ -2,6 +2,10 @@
 /evolve
 /dist/
 
+# coverage (make test-coverage)
+/coverage.out
+/cobertura-coverage.xml
+
 # node stuff
 /node_modules/
 

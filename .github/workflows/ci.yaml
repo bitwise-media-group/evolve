@@ -1,6 +1,16 @@
-# Continuous integration — builds, vets, tests with the race detector, lints
+# Continuous integration — builds, vets, tests with the race detector,
+# measures coverage and publishes it to the code-quality dashboard, lints
 # prose, and scans for known vulnerabilities on every push and pull request.
 # The Go version comes from go.mod, never the workflow.
+#
+# Every gate runs through a Makefile target, so `make` locally and CI execute
+# the same command. Coverage conversion (gocover-cobertura) and the vuln scan
+# (govulncheck) use tools pinned in tools/go.mod and run via `go tool`, so
+# Dependabot keeps them fresh instead of CI grabbing an @latest binary.
+#
+# The code-quality:write token is isolated to the `coverage` job, which only
+# consumes the report artifact — it is never present in `test`, which runs
+# PR-supplied code.
 #
 # Every action is pinned to a full commit SHA (tag in the comment) so a moved
 # tag can never change what runs; Dependabot keeps the pins fresh.
@@ -11,12 +21,15 @@ on:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
+# granted per job
+permissions: {}
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      # check out the repository
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
@@ -24,35 +37,78 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          # `make vet` also vets the e2e module, and test-coverage/vuln build
+          # tools from tools/; key the cache on those lockfiles too.
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+            e2e/go.sum
 
+      # Each gate is a Makefile target, so local `make` and CI run the exact
+      # same command. test-coverage and vuln invoke gocover-cobertura and
+      # govulncheck via `go tool` from tools/go.mod — Dependabot-pinned, never
+      # a `go install` of an @latest binary.
       - name: Build
-        run: go build ./...
+        run: make build
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
 
-      - name: Test
-        run: go test -race ./...
+      - name: Test with coverage
+        run: make test-coverage
 
       - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+        run: make vuln
+
+      # Hand the Cobertura report to the coverage job, which holds the
+      # code-quality:write token. Forked PRs can't publish, so skip the
+      # handoff there.
+      - name: Upload coverage artifact
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: cobertura-coverage.xml
+          if-no-files-found: error
+
+  # Publishes the Cobertura report to GitHub's code-quality dashboard. Split
+  # out from `test` so the code-quality:write token is never present in the
+  # job that runs PR-supplied code (test code, module build).
+  coverage:
+    needs: test
+    if:
+      ${{ !cancelled() && needs.test.result == 'success' && (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # download artifacts
+      code-quality: write # publish code quality results
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-report
+      - uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        with:
+          file: cobertura-coverage.xml
+          language: Go
+          label: code-coverage/go
 
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # check out the repository
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: lts/*
+          cache: npm
 
-      - name: Install pinned lint tools
-        run: npm ci
-
+      # Both targets' node_modules prerequisite runs `npm ci` first, then runs
+      # the pinned markdownlint-cli2 / prettier straight from node_modules.
       - name: Markdown lint
-        run: ./node_modules/.bin/markdownlint-cli2 "**/*.md"
+        run: make lint-md
 
       - name: Format check
-        run: ./node_modules/.bin/prettier --check .
+        run: make fmt-check
