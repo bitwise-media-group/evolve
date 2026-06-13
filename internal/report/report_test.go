@@ -35,8 +35,8 @@ func fixtureRepo(t *testing.T) *layout.Repo {
 	}
 	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
 	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\n---\nx\n")
-	write("evals/solo-skill/triggers.json", `[{"query":"q","should_trigger":true}]`)
-	write("evals/solo-skill/cases.json", `[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]`)
+	write("evals/solo-skill/triggers.json", `{"triggers":[{"query":"q","should_trigger":true}]}`)
+	write("evals/solo-skill/evals.json", `{"evals":[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]}`)
 
 	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
 	f.SetTrigger("anthropic/claude-fable-5", &results.TriggerEntry{
@@ -87,26 +87,29 @@ func fixtureRepo(t *testing.T) *layout.Repo {
 		Summary: results.TriggerSummary{Total: 2,
 			Estimate: &results.Estimate{InputTokens: 2580, InputCostUSD: ptr(0.00387)}},
 	})
-	f.SetCase("anthropic/claude-fable-5", &results.CaseEntry{
+	f.SetEval("anthropic/claude-fable-5", &results.EvalEntry{
 		Header: results.Header{
 			Provider: "anthropic", Model: "claude-fable-5", Display: "Claude Fable 5",
 			ToolVersion: "test", RanAt: "2026-06-11T12:00:00Z", Executed: true,
 			TimeoutSeconds: 600,
 			Pricing:        &results.Pricing{InputPerMTok: ptr(10.0), OutputPerMTok: ptr(50.0)},
 		},
-		Results: []results.CaseResult{{
-			ID: "basic", Passed: ptr(false), RunSeconds: ptr(84.2),
+		Results: []results.EvalResult{{
+			ID: "basic", Passed: ptr(false),
+			Timing:   &results.Timing{ExecutorDurationSeconds: ptr(84.2)},
 			Estimate: &results.Estimate{InputTokens: 1827, InputCostUSD: ptr(0.01827)},
 			Measured: &results.Measured{InputTokens: ptr(233680), OutputTokens: ptr(3142), CostUSD: ptr(0.782363)},
-			Assertions: []results.GradedAssertion{
-				{Passed: ptr(false), Evidence: "x missing"},
+			Expectations: []results.GradedAssertion{
+				{Text: "file x exists", Passed: ptr(false), Evidence: "x missing", Source: "assertion"},
 			},
+			Summary: &results.GradeSummary{Passed: 0, Failed: 1, Total: 1, PassRate: ptr(0.0)},
 		}},
-		Summary: results.CaseSummary{Passed: ptr(0), Total: 1, AvgRunSeconds: ptr(84.2),
-			Estimate: &results.Estimate{InputTokens: 1827, InputCostUSD: ptr(0.01827)},
-			Measured: &results.Measured{InputTokens: ptr(233680), OutputTokens: ptr(3142), CostUSD: ptr(0.782363)}},
+		Summary: results.EvalSummary{Passed: ptr(0), Failed: ptr(1), Total: 1, PassRate: ptr(0.0),
+			AvgRunSeconds: ptr(84.2),
+			Estimate:      &results.Estimate{InputTokens: 1827, InputCostUSD: ptr(0.01827)},
+			Measured:      &results.Measured{InputTokens: ptr(233680), OutputTokens: ptr(3142), CostUSD: ptr(0.782363)}},
 	})
-	if err := f.Save(filepath.Join(root, "evals", "solo-skill", "results.json")); err != nil {
+	if _, err := f.SaveDir(filepath.Join(root, "evals", "solo-skill"), "json"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,7 +212,7 @@ func TestCheckThresholds(t *testing.T) {
 	}
 
 	// A threshold model with no results is a breach.
-	breaches = Check(summary, Thresholds{CasesMinPassRate: ptr(0.5), Models: []string{"openai/gpt-5.5"}})
+	breaches = Check(summary, Thresholds{EvalsMinPassRate: ptr(0.5), Models: []string{"openai/gpt-5.5"}})
 	if len(breaches) != 1 || !strings.Contains(breaches[0], "no stored results") {
 		t.Errorf("breaches = %v, want missing-results breach", breaches)
 	}

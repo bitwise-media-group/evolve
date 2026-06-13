@@ -20,24 +20,24 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/workspace"
 )
 
-// CaseOptions configures a case sweep.
-type CaseOptions struct {
+// EvalOptions configures an eval sweep.
+type EvalOptions struct {
 	Options
-	CaseFilter string
+	EvalFilter string
 	JudgeModel string
 }
 
-// Cases executes the sweep. failed reports whether any executed case failed.
-func Cases(ctx context.Context, opts CaseOptions) (failed bool, err error) {
+// Evals executes the sweep. failed reports whether any executed eval failed.
+func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
 	sets, err := opts.Repo.EvalSets()
 	if err != nil {
 		return false, err
 	}
 	for _, set := range sets {
-		if set.CasesPath == "" || (opts.SkillFilter != "" && set.Skill != opts.SkillFilter) {
+		if set.EvalsPath == "" || (opts.SkillFilter != "" && set.Skill != opts.SkillFilter) {
 			continue
 		}
-		setFailed, err := runCaseSet(ctx, opts, set)
+		setFailed, err := runEvalSet(ctx, opts, set)
 		failed = failed || setFailed
 		if err != nil {
 			return failed, err
@@ -46,47 +46,53 @@ func Cases(ctx context.Context, opts CaseOptions) (failed bool, err error) {
 	return failed, nil
 }
 
-func runCaseSet(ctx context.Context, opts CaseOptions, set layout.EvalSet) (failed bool, err error) {
-	allCases, err := evalspec.LoadCases(set.CasesPath)
+func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (failed bool, err error) {
+	spec, err := evalspec.LoadEvals(set.EvalsPath)
 	if err != nil {
 		return false, err
 	}
-	if opts.CaseFilter != "" {
-		var filtered []evalspec.Case
-		for _, c := range allCases {
-			if c.ID == opts.CaseFilter {
+	warnSkillName(&opts.Options, set, set.EvalsPath, spec.SkillName)
+	allEvals := spec.Evals
+	if opts.EvalFilter != "" {
+		var filtered []evalspec.Eval
+		for _, c := range allEvals {
+			if c.ID == opts.EvalFilter {
 				filtered = append(filtered, c)
 			}
 		}
-		allCases = filtered
+		allEvals = filtered
 	}
-	if len(allCases) == 0 {
+	if len(allEvals) == 0 {
 		return false, nil
 	}
 	skillMD, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md"))
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
-	file := results.Load(set.ResultsPath, set.Plugin.Name, set.Skill)
+	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	if reset {
+		fmt.Fprintf(opts.Stderr, "  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
+			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
+	}
 
 	for _, sel := range opts.Selected {
-		caseRunner, isCaseRunner := sel.Provider.(provider.CaseRunner)
+		evalRunner, isEvalRunner := sel.Provider.(provider.EvalRunner)
 		cli, cliFound := provider.ResolveCLI(sel.Provider)
-		execute := isCaseRunner && cliFound && !opts.CountOnly
+		execute := isEvalRunner && cliFound && !opts.CountOnly
 
-		cases := applicableCases(allCases, sel.Provider.Name())
-		if len(cases) == 0 {
+		evals := applicableEvals(allEvals, sel.Provider.Name())
+		if len(evals) == 0 {
 			continue
 		}
 
-		probe := func(c evalspec.Case) bool {
+		probe := func(c evalspec.Eval) bool {
 			return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt)) != nil
 		}
 		_, countCapable := sel.Provider.(provider.TokenCounter)
 		if opts.New {
-			reportsUsage := isCaseRunner && caseRunner.ReportsUsage()
-			if reason := caseSkipReason(
-				file.Cases[sel.Key()], cases, sel.Model, execute, reportsUsage, countCapable, probe,
+			reportsUsage := isEvalRunner && evalRunner.ReportsUsage()
+			if reason := evalSkipReason(
+				file.Evals[sel.Key()], evals, sel.Model, execute, reportsUsage, countCapable, probe,
 			); reason != "" {
 				fmt.Fprintf(opts.Stdout, "\n=== %s / %s (skip: %s) ===\n", set.Skill, sel.Key(), reason)
 				continue
@@ -102,48 +108,49 @@ func runCaseSet(ctx context.Context, opts CaseOptions, set layout.EvalSet) (fail
 		}
 		fmt.Fprintf(opts.Stdout, "\n=== %s / %s (%s) ===\n", set.Skill, sel.Key(), mode)
 
-		// Token counting stays on this goroutine; only case runs go parallel,
+		// Token counting stays on this goroutine; only eval runs go parallel,
 		// each in its own workspace.
-		entryResults := make([]results.CaseResult, len(cases))
-		for i, c := range cases {
+		entryResults := make([]results.EvalResult, len(evals))
+		for i, c := range evals {
 			tokens := opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt))
-			entryResults[i] = results.CaseResult{
+			entryResults[i] = results.EvalResult{
 				ID:       c.ID,
 				Estimate: results.NewEstimate(tokens, sel.Model.InputUSD),
 			}
 		}
 		if execute {
-			batchFailed, err := runCases(ctx, opts, set, sel, caseRunner, cli, cases, entryResults)
+			batchFailed, err := runEvals(ctx, opts, set, sel, evalRunner, cli, evals, entryResults)
 			failed = failed || batchFailed
 			if err != nil {
 				return failed, err
 			}
 		}
 
-		entry := buildCaseEntry(opts, sel, execute, entryResults)
-		file.SetCase(sel.Key(), entry)
-		if err := file.Save(set.ResultsPath); err != nil {
+		entry := buildEvalEntry(opts, sel, execute, entryResults)
+		file.SetEval(sel.Key(), entry)
+		saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
+		if err != nil {
 			return failed, err
 		}
 		if entry.Executed {
-			fmt.Fprintf(opts.Stdout, "  %d/%d cases passed%s\n",
+			fmt.Fprintf(opts.Stdout, "  %d/%d evals passed%s\n",
 				*entry.Summary.Passed, entry.Summary.Total, avgSuffix(entry.Summary.AvgRunSeconds))
 		}
-		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(set.ResultsPath))
+		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(saved))
 	}
 	return failed, nil
 }
 
-func runCases(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel provider.Selection,
-	caseRunner provider.CaseRunner, cli string, cases []evalspec.Case, entryResults []results.CaseResult) (bool, error) {
+func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
+	evalRunner provider.EvalRunner, cli string, evals []evalspec.Eval, entryResults []results.EvalResult) (bool, error) {
 
 	var failedAny bool
 	g, runCtx := errgroup.WithContext(ctx)
 	g.SetLimit(opts.Jobs)
-	verdicts := make([]bool, len(cases))
-	for i, c := range cases {
+	verdicts := make([]bool, len(evals))
+	for i, c := range evals {
 		g.Go(func() error {
-			passed, result, err := runCase(runCtx, opts, set, sel, caseRunner, cli, c)
+			passed, result, err := runEval(runCtx, opts, set, sel, evalRunner, cli, c)
 			if err != nil {
 				return err
 			}
@@ -162,13 +169,17 @@ func runCases(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel pro
 	return failedAny, nil
 }
 
-func runCase(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel provider.Selection,
-	caseRunner provider.CaseRunner, cli string, c evalspec.Case) (bool, results.CaseResult, error) {
+func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
+	evalRunner provider.EvalRunner, cli string, c evalspec.Eval) (bool, results.EvalResult, error) {
 
-	ws, cleanup, err := workspace.New("cases.", set.Plugin.SkillsDir,
-		unionSkillDirs(opts.Selected), c.Files, opts.KeepWorkspaces)
+	copies := make(map[string]string, len(c.Files))
+	for _, ref := range c.Files {
+		copies[ref.Dest] = ref.Source
+	}
+	ws, cleanup, err := workspace.New("evals.", set.Plugin.SkillsDir,
+		unionSkillDirs(opts.Selected), copies, opts.KeepWorkspaces)
 	if err != nil {
-		return false, results.CaseResult{}, err
+		return false, results.EvalResult{}, err
 	}
 	defer cleanup()
 	if opts.KeepWorkspaces {
@@ -179,7 +190,7 @@ func runCase(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel prov
 	if c.TimeoutSeconds > 0 {
 		timeout = time.Duration(c.TimeoutSeconds) * time.Second
 	}
-	spec := caseRunner.CaseSpec(ws, provider.CaseInput{
+	spec := evalRunner.EvalSpec(ws, provider.EvalInput{
 		Prompt:       c.Prompt,
 		MaxTurns:     c.MaxTurns,
 		AllowedTools: c.AllowedTools,
@@ -188,30 +199,41 @@ func runCase(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel prov
 
 	res, err := opts.Runner.Run(ctx, spec, timeout, nil)
 	if err != nil {
-		return false, results.CaseResult{}, err
+		return false, results.EvalResult{}, err
 	}
 	if res.TimedOut {
 		fmt.Fprintf(opts.Stderr, "  warn: %s timed out after %s; grading partial output\n", cli, timeout)
 	}
-	output, usage := caseRunner.ParseCaseOutput(res.Stdout)
+	output, usage := evalRunner.ParseEvalOutput(res.Stdout)
 	runSeconds := results.Round1(res.Elapsed.Seconds()) // agent run only; grading excluded
 
-	// Grade assertions; buffer the verdict lines so concurrent cases don't
+	// Grade assertions; buffer the verdict lines so concurrent evals don't
 	// interleave their output.
 	graded := make([]results.GradedAssertion, len(c.Assertions))
 	lines := ""
-	casePassed := true
+	evalPassed := true
 	for i, a := range c.Assertions {
 		passed, evidence := grade.Assertion(ctx, a, grade.Options{
-			Runner:     opts.Runner,
-			Workspace:  ws,
-			Output:     output,
-			Timeout:    timeout,
-			JudgeModel: opts.JudgeModel,
+			Runner:         opts.Runner,
+			Workspace:      ws,
+			Output:         output,
+			ExpectedOutput: c.ExpectedOutput,
+			Timeout:        timeout,
+			JudgeModel:     opts.JudgeModel,
 		})
-		graded[i] = results.GradedAssertion{Assertion: a, Passed: passed, Evidence: evidence}
+		source := "assertion"
+		if a.FromExpectation {
+			source = "expectation"
+		}
+		graded[i] = results.GradedAssertion{
+			Assertion: a,
+			Text:      grade.Describe(a),
+			Passed:    passed,
+			Evidence:  evidence,
+			Source:    source,
+		}
 		if passed != nil && !*passed {
-			casePassed = false
+			evalPassed = false
 		}
 		marker := "SKIP"
 		if passed != nil {
@@ -220,18 +242,24 @@ func runCase(ctx context.Context, opts CaseOptions, set layout.EvalSet, sel prov
 				marker = "PASS"
 			}
 		}
-		lines += fmt.Sprintf("  [%s] %s: %s\n", marker, c.ID, assertionLabel(a))
+		lines += fmt.Sprintf("  [%s] %s: %s\n", marker, c.ID, graded[i].Text)
 	}
 	fmt.Fprint(opts.Stdout, lines)
 
-	result := results.CaseResult{
-		ID:         c.ID,
-		Passed:     &casePassed,
-		RunSeconds: &runSeconds,
-		Assertions: graded,
-		Measured:   measured(sel.Model, usage),
+	result := results.EvalResult{
+		ID:           c.ID,
+		Name:         c.Name,
+		Passed:       &evalPassed,
+		Expectations: graded,
+		Summary:      results.SummarizeExpectations(graded),
+		Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
+		Measured:     measured(sel.Model, usage),
 	}
-	return casePassed, result, nil
+	if m := result.Measured; m != nil && m.InputTokens != nil && m.OutputTokens != nil {
+		total := *m.InputTokens + *m.OutputTokens
+		result.Timing.TotalTokens = &total
+	}
+	return evalPassed, result, nil
 }
 
 // measured converts harness-reported usage, computing the cost from the
@@ -255,12 +283,12 @@ func measured(model provider.Model, usage *provider.Usage) *results.Measured {
 	}
 }
 
-func buildCaseEntry(opts CaseOptions, sel provider.Selection, executed bool,
-	entryResults []results.CaseResult) *results.CaseEntry {
-	entry := &results.CaseEntry{
+func buildEvalEntry(opts EvalOptions, sel provider.Selection, executed bool,
+	entryResults []results.EvalResult) *results.EvalEntry {
+	entry := &results.EvalEntry{
 		Header:  opts.header(sel, executed),
 		Results: entryResults,
-		Summary: results.CaseSummary{Total: len(entryResults)},
+		Summary: results.EvalSummary{Total: len(entryResults)},
 	}
 
 	estimates := make([]*results.Estimate, len(entryResults))
@@ -270,19 +298,28 @@ func buildCaseEntry(opts CaseOptions, sel provider.Selection, executed bool,
 	entry.Summary.Estimate = results.SumEstimates(estimates)
 
 	if executed {
-		passed := 0
+		passed, failed := 0, 0
 		var runSum float64
 		var runCount int
 		for _, r := range entryResults {
-			if r.Passed != nil && *r.Passed {
-				passed++
+			if r.Passed != nil {
+				if *r.Passed {
+					passed++
+				} else {
+					failed++
+				}
 			}
-			if r.RunSeconds != nil {
-				runSum += *r.RunSeconds
+			if r.Timing != nil && r.Timing.ExecutorDurationSeconds != nil {
+				runSum += *r.Timing.ExecutorDurationSeconds
 				runCount++
 			}
 		}
 		entry.Summary.Passed = &passed
+		entry.Summary.Failed = &failed
+		if passed+failed > 0 {
+			rate := results.Round6(float64(passed) / float64(passed+failed))
+			entry.Summary.PassRate = &rate
+		}
 		if runCount > 0 {
 			avg := results.Round1(runSum / float64(runCount))
 			entry.Summary.AvgRunSeconds = &avg
@@ -292,7 +329,7 @@ func buildCaseEntry(opts CaseOptions, sel provider.Selection, executed bool,
 	return entry
 }
 
-func sumMeasured(entryResults []results.CaseResult) *results.Measured {
+func sumMeasured(entryResults []results.EvalResult) *results.Measured {
 	var in, out int
 	var cost float64
 	var hasIn, hasOut, hasCost bool
@@ -330,29 +367,29 @@ func sumMeasured(entryResults []results.CaseResult) *results.Measured {
 	return sum
 }
 
-// caseSkipReason is why --new may skip this skill/model, or "" when a (re)run
+// evalSkipReason is why --new may skip this skill/model, or "" when a (re)run
 // is needed. Fields a run could never fill are exempt: costs for unpriced
 // models, execution fields when no runner is available or this invocation is
 // count-only, measured usage for providers that never report it (cursor),
 // and token counts the counting API cannot produce.
-func caseSkipReason(entry *results.CaseEntry, cases []evalspec.Case, model provider.Model,
-	execute, reportsUsage, countCapable bool, probe func(evalspec.Case) bool) string {
+func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provider.Model,
+	execute, reportsUsage, countCapable bool, probe func(evalspec.Eval) bool) string {
 
-	stored := map[string]results.CaseResult{}
+	stored := map[string]results.EvalResult{}
 	if entry != nil {
 		for _, r := range entry.Results {
 			stored[r.ID] = r
 		}
 	}
 	priced := model.InputUSD != nil && model.OutputUSD != nil
-	var uncounted *evalspec.Case
-	for _, c := range cases {
+	var uncounted *evalspec.Eval
+	for _, c := range evals {
 		r, ok := stored[c.ID]
 		if !ok {
 			return ""
 		}
 		if execute {
-			if r.Passed == nil || r.RunSeconds == nil {
+			if r.Passed == nil || r.Timing == nil || r.Timing.ExecutorDurationSeconds == nil {
 				return ""
 			}
 			if reportsUsage {
@@ -380,21 +417,12 @@ func caseSkipReason(entry *results.CaseEntry, cases []evalspec.Case, model provi
 	return "token counts unavailable"
 }
 
-func applicableCases(cases []evalspec.Case, providerName string) []evalspec.Case {
-	var out []evalspec.Case
-	for _, c := range cases {
+func applicableEvals(evals []evalspec.Eval, providerName string) []evalspec.Eval {
+	var out []evalspec.Eval
+	for _, c := range evals {
 		if !c.SkipsProvider(providerName) {
 			out = append(out, c)
 		}
 	}
 	return out
-}
-
-func assertionLabel(a evalspec.Assertion) string {
-	for _, label := range []string{a.Text, a.Pattern, a.Run, a.Path} {
-		if label != "" {
-			return label
-		}
-	}
-	return a.Type
 }

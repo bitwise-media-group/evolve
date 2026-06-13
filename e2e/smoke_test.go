@@ -93,10 +93,10 @@ func TestSmoke(t *testing.T) {
 func buildEvolve(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "evolve")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/evolve")
 	cmd.Dir = ".."
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("go build ./cmd: %v\n%s", err, out)
+		t.Fatalf("go build ./cmd/evolve: %v\n%s", err, out)
 	}
 	return bin
 }

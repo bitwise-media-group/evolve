@@ -1,0 +1,16 @@
+{
+  "tool_calls": {
+    "Read": 5,
+    "Write": 2,
+    "Bash": 8,
+    "Edit": 1,
+    "Glob": 2,
+    "Grep": 0
+  },
+  "total_tool_calls": 18,
+  "total_steps": 6,
+  "files_created": ["filled_form.pdf", "field_values.json"],
+  "errors_encountered": 0,
+  "output_chars": 12450,
+  "transcript_chars": 3200
+}

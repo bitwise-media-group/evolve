@@ -113,9 +113,9 @@ func TestScanLine(t *testing.T) {
 	}
 }
 
-func TestParseCaseOutputAnthropic(t *testing.T) {
+func TestParseEvalOutputAnthropic(t *testing.T) {
 	stdout := `{"result":"done","usage":{"input_tokens":10,"cache_creation_input_tokens":5,"cache_read_input_tokens":85,"output_tokens":42},"total_cost_usd":0.12}`
-	text, usage := NewAnthropic().ParseCaseOutput([]byte(stdout))
+	text, usage := NewAnthropic().ParseEvalOutput([]byte(stdout))
 	if text != "done" {
 		t.Errorf("text = %q, want done", text)
 	}
@@ -123,18 +123,18 @@ func TestParseCaseOutputAnthropic(t *testing.T) {
 		t.Errorf("usage = %+v, want input=100 output=42 cost=0.12", usage)
 	}
 
-	text, usage = NewAnthropic().ParseCaseOutput([]byte("not json at all"))
+	text, usage = NewAnthropic().ParseEvalOutput([]byte("not json at all"))
 	if text != "not json at all" || usage != nil {
 		t.Errorf("unparseable: text=%q usage=%v, want raw stdout and nil", text, usage)
 	}
 }
 
-func TestParseCaseOutputOpenAI(t *testing.T) {
+func TestParseEvalOutputOpenAI(t *testing.T) {
 	stdout := `{"type":"item.completed","item":{"type":"agent_message","text":"first"}}
 {"type":"item.completed","item":{"type":"reasoning","text":"hidden"}}
 {"type":"item.completed","item":{"type":"agent_message","text":"second"}}
 {"type":"turn.completed","usage":{"input_tokens":1000,"output_tokens":50}}`
-	text, usage := NewOpenAI().ParseCaseOutput([]byte(stdout))
+	text, usage := NewOpenAI().ParseEvalOutput([]byte(stdout))
 	if text != "first\nsecond" {
 		t.Errorf("text = %q, want %q", text, "first\nsecond")
 	}
@@ -143,8 +143,8 @@ func TestParseCaseOutputOpenAI(t *testing.T) {
 	}
 }
 
-func TestParseCaseOutputCursor(t *testing.T) {
-	text, usage := NewCursor().ParseCaseOutput([]byte(`{"type":"result","subtype":"success","is_error":false,"result":"all done"}`))
+func TestParseEvalOutputCursor(t *testing.T) {
+	text, usage := NewCursor().ParseEvalOutput([]byte(`{"type":"result","subtype":"success","is_error":false,"result":"all done"}`))
 	if text != "all done" || usage != nil {
 		t.Errorf("got text=%q usage=%v, want %q and nil usage", text, usage, "all done")
 	}

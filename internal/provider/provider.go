@@ -39,8 +39,8 @@ type Usage struct {
 	CostUSD      *float64
 }
 
-// CaseInput is the runner-relevant subset of a behavioral case.
-type CaseInput struct {
+// EvalInput is the runner-relevant subset of a behavioral case.
+type EvalInput struct {
 	Prompt       string
 	MaxTurns     int    // 0 = the provider default (25)
 	AllowedTools string // "" = the provider default tool set
@@ -61,12 +61,12 @@ type Provider interface {
 	ScanLine(line []byte, skill string) (hit bool, note string)
 }
 
-// CaseRunner is the optional capability of running behavioral cases.
-type CaseRunner interface {
-	CaseSpec(ws string, c CaseInput, model string) CommandSpec
-	// ParseCaseOutput extracts the final assistant text and measured usage
+// EvalRunner is the optional capability of running behavioral evals.
+type EvalRunner interface {
+	EvalSpec(ws string, c EvalInput, model string) CommandSpec
+	// ParseEvalOutput extracts the final assistant text and measured usage
 	// from the CLI's full stdout. usage is nil where unsupported.
-	ParseCaseOutput(stdout []byte) (finalText string, usage *Usage)
+	ParseEvalOutput(stdout []byte) (finalText string, usage *Usage)
 	// ReportsUsage reports whether live sessions ever yield measured usage;
 	// false (cursor) exempts the measured fields from --new completeness.
 	ReportsUsage() bool

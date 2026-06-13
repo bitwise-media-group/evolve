@@ -12,9 +12,11 @@ import (
 
 // New creates a temp workspace. dirs are workspace-relative skills locations
 // (e.g. ".claude/skills") — pass the union across the selected providers so
-// one workspace serves a whole model sweep. The returned cleanup removes the
-// workspace; pass keep=true to leave it behind for debugging.
-func New(prefix string, skillsDir string, dirs []string, fixtures map[string]string,
+// one workspace serves a whole model sweep. copies maps workspace-relative
+// destinations to absolute fixture paths, copied in byte-for-byte. The
+// returned cleanup removes the workspace; pass keep=true to leave it behind
+// for debugging.
+func New(prefix string, skillsDir string, dirs []string, copies map[string]string,
 	keep bool) (string, func(), error) {
 	ws, err := os.MkdirTemp("", prefix)
 	if err != nil {
@@ -45,17 +47,22 @@ func New(prefix string, skillsDir string, dirs []string, fixtures map[string]str
 		}
 	}
 
-	for rel, content := range fixtures {
+	for rel, src := range copies {
 		if !filepath.IsLocal(rel) {
 			cleanup()
 			return "", nil, fmt.Errorf("fixture path %q escapes the workspace", rel)
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			cleanup()
+			return "", nil, fmt.Errorf("fixture %s: %w", rel, err)
 		}
 		path := filepath.Join(ws, rel)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			cleanup()
 			return "", nil, err
 		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			cleanup()
 			return "", nil, err
 		}

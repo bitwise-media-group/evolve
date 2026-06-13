@@ -98,22 +98,22 @@ func (c *checker) checkEvalSpecs() {
 	}
 	for _, set := range sets {
 		if set.TriggersPath != "" {
-			triggers, err := evalspec.LoadTriggers(set.TriggersPath)
+			spec, err := evalspec.LoadTriggers(set.TriggersPath)
 			if err != nil {
 				c.errf("%s: %v", c.repo.Rel(set.TriggersPath), err)
 			} else {
-				for _, problem := range evalspec.ValidateTriggers(triggers) {
+				for _, problem := range evalspec.ValidateTriggers(spec.Triggers) {
 					c.errf("%s: %s", c.repo.Rel(set.TriggersPath), problem)
 				}
 			}
 		}
-		if set.CasesPath != "" {
-			cases, err := evalspec.LoadCases(set.CasesPath)
+		if set.EvalsPath != "" {
+			spec, err := evalspec.LoadEvals(set.EvalsPath)
 			if err != nil {
-				c.errf("%s: %v", c.repo.Rel(set.CasesPath), err)
+				c.errf("%s: %v", c.repo.Rel(set.EvalsPath), err)
 			} else {
-				for _, problem := range evalspec.ValidateCases(cases) {
-					c.errf("%s: %s", c.repo.Rel(set.CasesPath), problem)
+				for _, problem := range evalspec.ValidateEvals(spec.Evals) {
+					c.errf("%s: %s", c.repo.Rel(set.EvalsPath), problem)
 				}
 			}
 		}

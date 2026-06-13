@@ -18,7 +18,7 @@ func TestRunAllForwardsFlags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	for _, sub := range []*cobra.Command{checkCmd, triggersCmd, casesCmd, reportCmd} {
+	for _, sub := range []*cobra.Command{checksCmd, triggersCmd, evalsCmd, reportCmd} {
 		if err := forwardFlags(runAllCmd.Flags(), sub.Flags()); err != nil {
 			t.Fatalf("forward to %s: %v", sub.Name(), err)
 		}
@@ -28,11 +28,11 @@ func TestRunAllForwardsFlags(t *testing.T) {
 		t.Errorf("triggers flags = %q/%d/%d, want claude-haiku-4-5/1/1",
 			triggersFlags.Models, triggersFlags.Jobs, triggersFlags.Runs)
 	}
-	if casesFlags.Models != "claude-haiku-4-5" || casesFlags.Jobs != 1 {
-		t.Errorf("cases flags = %q/%d, want claude-haiku-4-5/1", casesFlags.Models, casesFlags.Jobs)
+	if evalsFlags.Models != "claude-haiku-4-5" || evalsFlags.Jobs != 1 {
+		t.Errorf("evals flags = %q/%d, want claude-haiku-4-5/1", evalsFlags.Models, evalsFlags.Jobs)
 	}
-	if triggersFlags.Timeout != 120 || casesFlags.Timeout != 600 {
+	if triggersFlags.Timeout != 120 || evalsFlags.Timeout != 600 {
 		t.Errorf("timeouts = %d/%d, want the per-tier defaults 120/600",
-			triggersFlags.Timeout, casesFlags.Timeout)
+			triggersFlags.Timeout, evalsFlags.Timeout)
 	}
 }

@@ -18,6 +18,7 @@ import (
 func newTestCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "test"}
 	cmd.Flags().String("layout", "auto", "")
+	cmd.Flags().String("results-format", "", "")
 	return cmd
 }
 
@@ -43,7 +44,6 @@ func TestLoadConfigFormats(t *testing.T) {
 				"max_skill_lines": 200, // trailing commas too
 			},
 		}`},
-		{".evolve.toml", "layout = \"marketplace\"\n\n[checks]\nmax_skill_lines = 200\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -82,11 +82,63 @@ func TestLoadConfigMissingIsOptional(t *testing.T) {
 func TestLoadConfigAmbiguous(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, ".evolve.yaml", "layout: multi\n")
-	writeFile(t, dir, ".evolve.toml", "layout = \"single\"\n")
+	writeFile(t, dir, ".evolve.json", `{"layout": "single"}`)
 	o := &Options{Viper: viper.New(), Root: dir, Layout: "auto"}
 	err := o.LoadConfig(newTestCmd())
 	if err == nil || !strings.Contains(err.Error(), "ambiguous config") {
 		t.Fatalf("LoadConfig error = %v, want ambiguous config", err)
+	}
+}
+
+// TestLoadConfigIgnoresTOML pins the clean break: .evolve.toml is no longer
+// a recognized config file.
+func TestLoadConfigIgnoresTOML(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".evolve.toml", "layout = \"marketplace\"\n")
+	o := &Options{Viper: viper.New(), Root: dir, Layout: "auto"}
+	if err := o.LoadConfig(newTestCmd()); err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if o.Layout != "auto" || o.ConfigFileName() != "" {
+		t.Errorf("toml config was loaded: layout=%q file=%q", o.Layout, o.ConfigFileName())
+	}
+}
+
+func TestLoadConfigResultsFormat(t *testing.T) {
+	dir := t.TempDir()
+	o := &Options{Viper: viper.New(), Root: dir, Layout: "auto"}
+	if err := o.LoadConfig(newTestCmd()); err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if o.ResultsFormat != "json" {
+		t.Errorf("default ResultsFormat = %q, want json", o.ResultsFormat)
+	}
+
+	writeFile(t, dir, ".evolve.yaml", "results_format: yml\n")
+	o = &Options{Viper: viper.New(), Root: dir, Layout: "auto"}
+	if err := o.LoadConfig(newTestCmd()); err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if o.ResultsFormat != "yaml" {
+		t.Errorf("ResultsFormat = %q, want yaml (yml canonicalized)", o.ResultsFormat)
+	}
+
+	// An explicit flag beats the config file.
+	cmd := newTestCmd()
+	if err := cmd.Flags().Set("results-format", "jsonc"); err != nil {
+		t.Fatal(err)
+	}
+	o = &Options{Viper: viper.New(), Root: dir, Layout: "auto", ResultsFormat: "jsonc"}
+	if err := o.LoadConfig(cmd); err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if o.ResultsFormat != "jsonc" {
+		t.Errorf("ResultsFormat = %q, want jsonc (explicit flag)", o.ResultsFormat)
+	}
+
+	o = &Options{Viper: viper.New(), Root: t.TempDir(), Layout: "auto", ResultsFormat: "toml"}
+	if err := o.LoadConfig(newTestCmd()); err == nil {
+		t.Error("LoadConfig: want error for unknown results format")
 	}
 }
 

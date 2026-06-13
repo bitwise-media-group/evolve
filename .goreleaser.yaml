@@ -18,7 +18,7 @@ env:
 # ^ref: https://goreleaser.com/customization/build/
 builds:
   - id: evolve
-    main: ./cmd
+    main: ./cmd/evolve
     binary: evolve
     flags:
       - -trimpath

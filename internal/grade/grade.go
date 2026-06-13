@@ -21,8 +21,7 @@ import (
 const judgePrompt = `You are grading an AI coding agent's work. Assertion to verify:
 
 %s
-
-The agent's final response was:
+%sThe agent's final response was:
 ---
 %s
 ---
@@ -40,13 +39,14 @@ type Runner interface {
 		onLine func([]byte) bool) (runner.Result, error)
 }
 
-// Options configures grading for one case.
+// Options configures grading for one eval.
 type Options struct {
-	Runner     Runner
-	Workspace  string        // the case's throwaway workspace
-	Output     string        // the agent's final response text
-	Timeout    time.Duration // shared by command assertions and the judge
-	JudgeModel string        // "" = DefaultJudgeModel
+	Runner         Runner
+	Workspace      string        // the eval's throwaway workspace
+	Output         string        // the agent's final response text
+	ExpectedOutput string        // the eval author's success description, judge context only
+	Timeout        time.Duration // shared by command assertions and the judge
+	JudgeModel     string        // "" = DefaultJudgeModel
 }
 
 // Assertion grades one assertion. passed is tri-state: nil means skipped
@@ -135,7 +135,12 @@ func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
 	if model == "" {
 		model = DefaultJudgeModel
 	}
-	prompt := fmt.Sprintf(judgePrompt, assertion, truncate(opts.Output, 8000), opts.Workspace)
+	expected := "\n"
+	if opts.ExpectedOutput != "" {
+		expected = "\nThe eval author's description of the expected output (context, not a " +
+			"separate assertion):\n---\n" + truncate(opts.ExpectedOutput, 2000) + "\n---\n\n"
+	}
+	prompt := fmt.Sprintf(judgePrompt, assertion, expected, truncate(opts.Output, 8000), opts.Workspace)
 	res, err := opts.Runner.Run(ctx, provider.CommandSpec{
 		Argv: []string{"claude", "-p", prompt,
 			"--model", model,
@@ -173,6 +178,37 @@ func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
 		evidence = fmt.Sprint(verdict.Evidence)
 	}
 	return verdict.Passed, truncate(evidence, 200)
+}
+
+// Describe renders an assertion as the human-readable statement that results
+// files carry as the expectation text (grading.json's expectations[].text).
+// The templates are stable: committed results diff only when grading does.
+func Describe(a evalspec.Assertion) string {
+	switch a.Type {
+	case "file_exists":
+		return "file " + a.Path + " exists"
+	case "file_absent":
+		return "file " + a.Path + " is absent"
+	case "regex":
+		if a.Path != "" {
+			return a.Path + " matches /" + a.Pattern + "/"
+		}
+		return "output matches /" + a.Pattern + "/"
+	case "not_regex":
+		if a.Path != "" {
+			return a.Path + " does not match /" + a.Pattern + "/"
+		}
+		return "output does not match /" + a.Pattern + "/"
+	case "command":
+		exit := 0
+		if a.ExpectExit != nil {
+			exit = *a.ExpectExit
+		}
+		return fmt.Sprintf("command `%s` exits %d", a.Run, exit)
+	case "llm":
+		return a.Text
+	}
+	return a.Type
 }
 
 func truncate(s string, n int) string {

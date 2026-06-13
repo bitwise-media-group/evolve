@@ -12,6 +12,10 @@
   // Default: unset — the OS user cache dir.
   // "cache_dir": "~/.cache/evolve",
 
+  // Format for committed results files and the EVALUATION rollup: json,
+  // jsonc, or yaml.
+  "results_format": "json",
+
   "checks": {
     // License every SKILL.md must declare; when unset, skills must not declare
     // one.
@@ -40,9 +44,9 @@
       // Default: unset — no gate.
       // "triggers_min_pass_rate": 0.8,
 
-      // Minimum cases pass rate (0-1); report --check exits 1 below it.
+      // Minimum evals pass rate (0-1); report --check exits 1 below it.
       // Default: unset — no gate.
-      // "cases_min_pass_rate": 0.9,
+      // "evals_min_pass_rate": 0.9,
 
       // Model keys (provider/model-id) the thresholds apply to.
       // Default: unset — every model with stored results.

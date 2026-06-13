@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/grading.schema.json",
+  "title": "grading.json (skill-creator superset)",
+  "description": "One graded run, compatible with skill-creator's grading.json: an unmodified skill-creator document validates, and evolve's per-eval results embed these shapes (see results.schema.json).",
+  "type": "object",
+  "required": ["expectations", "summary"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "expectations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/expectation" }
+    },
+    "summary": { "$ref": "#/$defs/summary" },
+    "execution_metrics": { "$ref": "metrics.schema.json" },
+    "timing": { "$ref": "timing.schema.json" },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "user_notes_summary": { "$ref": "#/$defs/userNotesSummary" },
+    "eval_feedback": { "$ref": "#/$defs/evalFeedback" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "expectation": {
+      "description": "One graded expectation. skill-creator emits text/passed/evidence; evolve adds the authored assertion echo (type, path, pattern, ...) and a tri-state passed where null means skipped.",
+      "type": "object",
+      "required": ["text", "passed", "evidence"],
+      "properties": {
+        "text": { "type": "string" },
+        "passed": { "type": ["boolean", "null"] },
+        "evidence": { "type": "string" },
+        "source": { "enum": ["expectation", "assertion"] },
+        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "llm"] },
+        "path": { "type": "string" },
+        "pattern": { "type": "string" },
+        "run": { "type": "string" },
+        "cwd": { "type": "string" },
+        "requires": { "type": "string" },
+        "expect_exit": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "summary": {
+      "description": "Aggregate verdict counts. pass_rate = passed/(passed+failed) — identical to skill-creator's passed/total when nothing was skipped; omitted or null when nothing executed.",
+      "type": "object",
+      "required": ["passed", "failed", "total"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "claim": {
+      "type": "object",
+      "required": ["claim", "type", "verified", "evidence"],
+      "properties": {
+        "claim": { "type": "string" },
+        "type": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "evidence": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "userNotesSummary": {
+      "type": "object",
+      "properties": {
+        "uncertainties": { "type": "array", "items": { "type": "string" } },
+        "needs_review": { "type": "array", "items": { "type": "string" } },
+        "workarounds": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "evalFeedback": {
+      "type": "object",
+      "properties": {
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["assertion", "reason"],
+            "properties": {
+              "assertion": { "type": "string" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "overall": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

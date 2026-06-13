@@ -1,1 +1,1 @@
-[{ "query": "solo?", "should_trigger": true }]
+{ "triggers": [{ "query": "solo?", "should_trigger": true }] }

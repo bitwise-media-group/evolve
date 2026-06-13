@@ -69,7 +69,7 @@ func (c *Cursor) ScanLine(line []byte, skill string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 
-func (c *Cursor) CaseSpec(ws string, in CaseInput, model string) CommandSpec {
+func (c *Cursor) EvalSpec(ws string, in EvalInput, model string) CommandSpec {
 	// Cursor has no equivalents of --max-turns or --allowedTools; its
 	// sandboxing is runner-level (--force in a throwaway workspace).
 	return CommandSpec{
@@ -87,9 +87,9 @@ func (c *Cursor) CaseSpec(ws string, in CaseInput, model string) CommandSpec {
 // ReportsUsage is a value indicating whether or not Cursor CLI exposes no usage or cost in any output format.
 func (c *Cursor) ReportsUsage() bool { return false }
 
-// ParseCaseOutput reads the final JSON result object. Cursor reports no
+// ParseEvalOutput reads the final JSON result object. Cursor reports no
 // usage, so usage is always nil.
-func (c *Cursor) ParseCaseOutput(stdout []byte) (string, *Usage) {
+func (c *Cursor) ParseEvalOutput(stdout []byte) (string, *Usage) {
 	var payload struct {
 		Result string `json:"result"`
 	}

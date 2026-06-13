@@ -20,7 +20,7 @@ reporting, or no published pricing).
 | Cursor | Cursor — Sonnet 4.5 (`sonnet-4.5`) | 2/2 | 100% | 12.7s | n/a | n/a |
 | Google | Gemini 3.5 Flash (`gemini-3.5-flash`) | — | — | — | 2,580 | $0.0039 |
 
-### Cases
+### Evals
 
 | Provider | Model | Passed | Avg run | Input tokens | Est. input cost | Measured in/out | Measured cost |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -37,15 +37,15 @@ Last run 2026-06-11T10:00:00Z (evolve test, timeout 120s), 3 runs per query.
 | Write tests \| with pipes | yes | 3/3 | PASS | 9.1s | 1,385 | $0.0138 |
 | Write pytest tests | no | 2/3 | FAIL | 5.0s | 1,385 | $0.0138 |
 
-### Cases — solo-skill
+### Evals — solo-skill
 
 Last run 2026-06-11T12:00:00Z (evolve test, timeout 600s).
 
-| Case | Result | Run | Input tokens | Est. cost | Measured in/out | Measured cost |
+| Eval | Result | Run | Input tokens | Est. cost | Measured in/out | Measured cost |
 | --- | --- | --- | --- | --- | --- | --- |
 | basic | FAIL | 84.2s | 1,827 | $0.0183 | 233,680/3,142 | $0.7824 |
 
-- `basic` failed ``: x missing
+- `basic` failed `file x exists`: x missing
 
 ## Cursor — `sonnet-4.5`
 

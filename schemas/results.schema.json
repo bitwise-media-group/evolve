@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/results.schema.json",
+  "title": "evolve results file (schema 2)",
+  "description": "One skill's committed results (evals/<skill>/results.<ext>; format selected by results_format). Each per-eval result is a superset of a skill-creator grading.json document. Consumers must treat an absent key and an explicit null identically.",
+  "type": "object",
+  "required": ["schema", "plugin", "skill"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": 2 },
+    "plugin": { "type": "string" },
+    "skill": { "type": "string" },
+    "triggers": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/modelKeyMap" }],
+      "additionalProperties": { "$ref": "#/$defs/triggerEntry" }
+    },
+    "evals": {
+      "allOf": [{ "$ref": "common.schema.json#/$defs/modelKeyMap" }],
+      "additionalProperties": { "$ref": "#/$defs/evalEntry" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "triggerEntry": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/header" },
+        {
+          "type": "object",
+          "required": ["results", "summary"],
+          "properties": {
+            "results": { "type": "array", "items": { "$ref": "#/$defs/triggerResult" } },
+            "summary": { "$ref": "#/$defs/triggerSummary" }
+          }
+        }
+      ]
+    },
+    "triggerResult": {
+      "type": "object",
+      "required": ["query", "should_trigger"],
+      "properties": {
+        "query": { "type": "string" },
+        "should_trigger": { "type": "boolean" },
+        "hits": { "type": "integer", "minimum": 0 },
+        "runs": { "type": "integer", "minimum": 1 },
+        "passed": { "type": ["boolean", "null"] },
+        "avg_run_seconds": { "type": "number", "minimum": 0 },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" }
+      },
+      "additionalProperties": true
+    },
+    "triggerSummary": {
+      "type": "object",
+      "required": ["total"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "avg_run_seconds": { "type": "number", "minimum": 0 },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" }
+      },
+      "additionalProperties": true
+    },
+    "evalEntry": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/header" },
+        {
+          "type": "object",
+          "required": ["results", "summary"],
+          "properties": {
+            "results": { "type": "array", "items": { "$ref": "#/$defs/evalResult" } },
+            "summary": { "$ref": "#/$defs/evalSummary" }
+          }
+        }
+      ]
+    },
+    "evalResult": {
+      "description": "One eval's outcome: grading.json's expectations/summary/execution_metrics/timing (and, once populated, claims/user_notes_summary/eval_feedback) plus evolve's identity, token, and cost extras. Count-only runs carry just id and estimate.",
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "passed": { "type": ["boolean", "null"] },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
+        "measured": { "$ref": "common.schema.json#/$defs/measured" },
+        "expectations": {
+          "type": "array",
+          "items": { "$ref": "grading.schema.json#/$defs/expectation" }
+        },
+        "summary": { "$ref": "grading.schema.json#/$defs/summary" },
+        "execution_metrics": { "$ref": "metrics.schema.json" },
+        "timing": { "$ref": "timing.schema.json" },
+        "claims": {
+          "type": "array",
+          "items": { "$ref": "grading.schema.json#/$defs/claim" }
+        },
+        "user_notes_summary": { "$ref": "grading.schema.json#/$defs/userNotesSummary" },
+        "eval_feedback": { "$ref": "grading.schema.json#/$defs/evalFeedback" }
+      },
+      "additionalProperties": true
+    },
+    "evalSummary": {
+      "type": "object",
+      "required": ["total"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "avg_run_seconds": { "type": "number", "minimum": 0 },
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
+        "measured": { "$ref": "common.schema.json#/$defs/measured" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

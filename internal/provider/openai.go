@@ -55,7 +55,7 @@ func (o *OpenAI) ScanLine(line []byte, skill string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 
-func (o *OpenAI) CaseSpec(ws string, c CaseInput, model string) CommandSpec {
+func (o *OpenAI) EvalSpec(ws string, c EvalInput, model string) CommandSpec {
 	return CommandSpec{
 		Argv: []string{
 			"codex", "exec", c.Prompt,
@@ -67,10 +67,10 @@ func (o *OpenAI) CaseSpec(ws string, c CaseInput, model string) CommandSpec {
 	}
 }
 
-// ParseCaseOutput concatenates agent messages from the codex event stream and
+// ParseEvalOutput concatenates agent messages from the codex event stream and
 // captures the last turn's usage. Codex reports tokens but not cost; the
 // engine prices the tokens from the model matrix.
-func (o *OpenAI) ParseCaseOutput(stdout []byte) (string, *Usage) {
+func (o *OpenAI) ParseEvalOutput(stdout []byte) (string, *Usage) {
 	var texts []string
 	var usage *Usage
 	for line := range strings.SplitSeq(string(stdout), "\n") {

@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "tool_version": "test",
   "latest_run": "2026-06-11T12:00:00Z",
   "plugins": {
@@ -9,6 +9,7 @@
           "provider": "anthropic",
           "display": "Claude Fable 5",
           "passed": 1,
+          "failed": 1,
           "total": 2,
           "pass_rate": 0.5,
           "avg_run_seconds": 7.1,
@@ -21,6 +22,7 @@
           "provider": "cursor",
           "display": "Cursor — Sonnet 4.5",
           "passed": 2,
+          "failed": 0,
           "total": 2,
           "pass_rate": 1,
           "avg_run_seconds": 12.7
@@ -35,11 +37,12 @@
           }
         }
       },
-      "cases": {
+      "evals": {
         "anthropic/claude-fable-5": {
           "provider": "anthropic",
           "display": "Claude Fable 5",
           "passed": 0,
+          "failed": 1,
           "total": 1,
           "pass_rate": 0,
           "avg_run_seconds": 84.2,

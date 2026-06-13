@@ -32,8 +32,8 @@ var modelsCmd = &cobra.Command{
 				}
 			}
 			caps := "triggers"
-			if _, ok := p.(provider.CaseRunner); ok {
-				caps += "+cases"
+			if _, ok := p.(provider.EvalRunner); ok {
+				caps += "+evals"
 			}
 			if _, ok := p.(provider.TokenCounter); ok {
 				caps += "+counting"

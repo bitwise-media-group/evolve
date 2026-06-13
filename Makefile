@@ -1,7 +1,7 @@
 # Developer tasks. `make help` lists targets; `make pr` is the full local gate.
 
 APP     := evolve
-APP_PKG := ./cmd
+APP_PKG := ./cmd/evolve
 MODULE  := $(shell go list -m)
 
 # Version metadata stamped into the binary via -ldflags. GoReleaser injects the
@@ -74,10 +74,10 @@ lint-fix: ## lint the go code and auto-fix issues
 	go tool -modfile=tools/go.mod golangci-lint run --fix
 
 license-check: ## check license headers
-	go tool -modfile=tools/go.mod addlicense -check cmd internal
+	go tool -modfile=tools/go.mod addlicense -check cmd internal schemas
 
 license: ## inject license headers
-	go tool -modfile=tools/go.mod addlicense -c 'BitWise Media Group Ltd' -l mit -s=only -v cmd internal
+	go tool -modfile=tools/go.mod addlicense -c 'BitWise Media Group Ltd' -l mit -s=only -v cmd internal schemas
 
 test: ## run the unit tests (+ fuzz seed corpora)
 	go test ./...

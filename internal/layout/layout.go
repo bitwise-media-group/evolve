@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/manifest"
 )
 
@@ -53,9 +54,9 @@ type EvalSet struct {
 	Plugin       Plugin
 	Skill        string
 	SkillDir     string // Plugin.SkillsDir/Skill (may not exist; checks flag that)
-	TriggersPath string // "" when the skill has no triggers.json
-	CasesPath    string // "" when the skill has no cases.json
-	ResultsPath  string // evals/<skill>/results.json (created on first run)
+	TriggersPath string // "" when the skill has no triggers.<ext>
+	EvalsPath    string // "" when the skill has no evals.<ext>
+	ResultsDir   string // evals/<skill>, where results.<ext> persists
 }
 
 // Detect resolves root (or walks up from the working directory when root is
@@ -167,7 +168,7 @@ func newPlugin(name, dir string) Plugin {
 }
 
 // EvalSets enumerates every evals/<skill>/ directory that defines triggers or
-// cases, across all plugins, in (plugin, skill) order.
+// evals, across all plugins, in (plugin, skill) order.
 func (r *Repo) EvalSets() ([]EvalSet, error) {
 	var sets []EvalSet
 	for _, p := range r.Plugins {
@@ -184,18 +185,18 @@ func (r *Repo) EvalSets() ([]EvalSet, error) {
 			}
 			dir := filepath.Join(p.EvalsDir, e.Name())
 			set := EvalSet{
-				Plugin:      p,
-				Skill:       e.Name(),
-				SkillDir:    filepath.Join(p.SkillsDir, e.Name()),
-				ResultsPath: filepath.Join(dir, "results.json"),
+				Plugin:     p,
+				Skill:      e.Name(),
+				SkillDir:   filepath.Join(p.SkillsDir, e.Name()),
+				ResultsDir: dir,
 			}
-			if path := filepath.Join(dir, "triggers.json"); isFile(path) {
-				set.TriggersPath = path
+			if set.TriggersPath, err = encfmt.FindOne(dir, "triggers"); err != nil {
+				return nil, err
 			}
-			if path := filepath.Join(dir, "cases.json"); isFile(path) {
-				set.CasesPath = path
+			if set.EvalsPath, err = encfmt.FindOne(dir, "evals"); err != nil {
+				return nil, err
 			}
-			if set.TriggersPath != "" || set.CasesPath != "" {
+			if set.TriggersPath != "" || set.EvalsPath != "" {
 				sets = append(sets, set)
 			}
 		}

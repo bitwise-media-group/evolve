@@ -83,11 +83,11 @@ func triggerRepoFixture(t *testing.T) *layout.Repo {
 	}
 	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
 	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\ndescription: x. Use when testing.\nlicense: MIT\n---\nbody\n")
-	write("evals/solo-skill/triggers.json", `[
+	write("evals/solo-skill/triggers.json", `{"triggers": [
 		{"query": "please trigger this", "should_trigger": true},
 		{"query": "unrelated request", "should_trigger": false},
 		{"query": "skip me on fake", "should_trigger": true, "skip_providers": ["fake"]}
-	]`)
+	]}`)
 	repo, err := layout.Detect(root, layout.Auto)
 	if err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestTriggersWritesResults(t *testing.T) {
 	}
 
 	path := filepath.Join(repo.Root, "evals", "solo-skill", "results.json")
-	file := results.Load(path, "solo", "solo-skill")
+	file, _ := results.LoadDir(filepath.Dir(path), "solo", "solo-skill")
 	entry := file.Triggers["fake/model-1"]
 	if entry == nil {
 		t.Fatalf("no fake/model-1 entry; stdout:\n%s", stdout.String())
@@ -168,7 +168,7 @@ func TestTriggersWithoutCountingCapability(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Triggers["fake/model-1"]
 	if entry.Pricing != nil {
 		t.Error("unpriced model must serialize pricing: null")
@@ -192,7 +192,7 @@ func TestTriggersDetectsFailures(t *testing.T) {
 	repo := triggerRepoFixture(t)
 	// Overwrite triggers: expect a trigger on a query the fake never triggers.
 	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
-	os.WriteFile(path, []byte(`[{"query": "never fires", "should_trigger": true}]`), 0o644)
+	os.WriteFile(path, []byte(`{"triggers": [{"query": "never fires", "should_trigger": true}]}`), 0o644)
 
 	opts := triggerOptions(t, repo, &countingTriggerProvider{})
 	failed, err := Triggers(context.Background(), opts)
@@ -202,7 +202,7 @@ func TestTriggersDetectsFailures(t *testing.T) {
 	if !failed {
 		t.Error("failed = false, want true")
 	}
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	if r := file.Triggers["fake/model-1"].Results[0]; *r.Passed {
 		t.Errorf("result = %+v, want failed", r)
 	}
@@ -236,10 +236,11 @@ func TestTriggersNewRerunsAfterEvalChange(t *testing.T) {
 	// Add a new query: --new must rerun.
 	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
 	data, _ := os.ReadFile(path)
-	var triggers []map[string]any
-	json.Unmarshal(data, &triggers)
-	triggers = append(triggers, map[string]any{"query": "brand new please trigger", "should_trigger": true})
-	updated, _ := json.Marshal(triggers)
+	var spec map[string]any
+	json.Unmarshal(data, &spec)
+	spec["triggers"] = append(spec["triggers"].([]any),
+		map[string]any{"query": "brand new please trigger", "should_trigger": true})
+	updated, _ := json.Marshal(spec)
 	os.WriteFile(path, updated, 0o644)
 
 	var stdout bytes.Buffer
@@ -251,7 +252,7 @@ func TestTriggersNewRerunsAfterEvalChange(t *testing.T) {
 	if strings.Contains(stdout.String(), "skip:") {
 		t.Errorf("--new skipped despite a new query:\n%s", stdout.String())
 	}
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	if got := len(file.Triggers["fake/model-1"].Results); got != 3 {
 		t.Errorf("results = %d, want 3 after the added query", got)
 	}
@@ -266,7 +267,7 @@ func TestTriggersCountOnly(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file := results.Load(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"), "solo", "solo-skill")
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Triggers["fake/model-1"]
 	if entry.Executed || entry.RunsPerQuery != 0 {
 		t.Errorf("count-only entry = %+v, want executed=false", entry.Header)

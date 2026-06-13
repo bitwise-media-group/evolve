@@ -4,7 +4,9 @@
 package layout
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -109,16 +111,48 @@ func TestEvalSets(t *testing.T) {
 	if alpha.Plugin.Name != "alpha" || alpha.Skill != "alpha-skill" {
 		t.Errorf("sets[0] = %s/%s, want alpha/alpha-skill", alpha.Plugin.Name, alpha.Skill)
 	}
-	if alpha.TriggersPath == "" || alpha.CasesPath != "" {
-		t.Errorf("alpha-skill: TriggersPath=%q CasesPath=%q, want triggers only", alpha.TriggersPath, alpha.CasesPath)
+	if alpha.TriggersPath == "" || alpha.EvalsPath != "" {
+		t.Errorf("alpha-skill: TriggersPath=%q EvalsPath=%q, want triggers only", alpha.TriggersPath, alpha.EvalsPath)
 	}
-	if want := filepath.Join(alpha.Plugin.EvalsDir, "alpha-skill", "results.json"); alpha.ResultsPath != want {
-		t.Errorf("ResultsPath = %s, want %s", alpha.ResultsPath, want)
+	if want := filepath.Join(alpha.Plugin.EvalsDir, "alpha-skill"); alpha.ResultsDir != want {
+		t.Errorf("ResultsDir = %s, want %s", alpha.ResultsDir, want)
 	}
 
 	beta := sets[1]
-	if beta.TriggersPath != "" || beta.CasesPath == "" {
-		t.Errorf("beta-skill: TriggersPath=%q CasesPath=%q, want cases only", beta.TriggersPath, beta.CasesPath)
+	if beta.TriggersPath != "" || beta.EvalsPath == "" {
+		t.Errorf("beta-skill: TriggersPath=%q EvalsPath=%q, want evals only", beta.TriggersPath, beta.EvalsPath)
+	}
+}
+
+// TestEvalSetsMultiFormat covers discovery of non-JSON definitions and the
+// one-extension-per-stem rule.
+func TestEvalSetsMultiFormat(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
+	write("evals/skill-a/evals.yaml", "evals: []\n")
+	repo, err := Detect(root, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sets, err := repo.EvalSets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 1 || filepath.Base(sets[0].EvalsPath) != "evals.yaml" {
+		t.Fatalf("sets = %+v, want one yaml eval set", sets)
+	}
+
+	write("evals/skill-a/evals.json", `{"evals": []}`)
+	if _, err := repo.EvalSets(); err == nil || !strings.Contains(err.Error(), "keep exactly one") {
+		t.Errorf("EvalSets error = %v, want ambiguity error", err)
 	}
 }
 

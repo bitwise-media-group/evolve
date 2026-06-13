@@ -1,1 +1,1 @@
-[{ "query": "test query", "should_trigger": true }]
+{ "triggers": [{ "query": "test query", "should_trigger": true }] }

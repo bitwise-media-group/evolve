@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/bitwise-media-group/evolve/internal/run"
@@ -43,6 +42,10 @@ func Schema() []Option {
 			Doc:      "Directory holding the token-count cache.",
 		},
 		{
+			Key: "results_format", Type: "string", Value: "json",
+			Doc: "Format for committed results files and the EVALUATION rollup: json, jsonc, or yaml.",
+		},
+		{
 			Key: "checks.license", Type: "string", Example: "MIT",
 			Fallback: "the license field is forbidden",
 			Doc:      "License every SKILL.md must declare; when unset, skills must not declare one.",
@@ -73,9 +76,9 @@ func Schema() []Option {
 			Doc:      "Minimum triggers pass rate (0-1); report --check exits 1 below it.",
 		},
 		{
-			Key: "report.thresholds.cases_min_pass_rate", Type: "float", Example: 0.9,
+			Key: "report.thresholds.evals_min_pass_rate", Type: "float", Example: 0.9,
 			Fallback: "no gate",
-			Doc:      "Minimum cases pass rate (0-1); report --check exits 1 below it.",
+			Doc:      "Minimum evals pass rate (0-1); report --check exits 1 below it.",
 		},
 		{
 			Key: "report.thresholds.models", Type: "list of strings", Example: []string{"anthropic/claude-fable-5"},
@@ -102,7 +105,7 @@ func Markdown() []byte {
 	b.WriteString("# Configuration\n" +
 		"\n" +
 		"evolve reads an optional config file named `.evolve.<ext>` from the repository root (`--root`),\n" +
-		"where `<ext>` is one of `yaml`, `yml`, `json`, `jsonc`, or `toml`. At most one config file may\n" +
+		"where `<ext>` is one of `yaml`, `yml`, `json`, or `jsonc`. At most one config file may\n" +
 		"exist — two formats side by side is an error. Settings layer lowest precedence first: built-in\n" +
 		"defaults, the config file, `EVOLVE_*` environment variables, then explicit flags.\n" +
 		"\n" +
@@ -137,8 +140,7 @@ func Markdown() []byte {
 		"copy one to the repository root:\n" +
 		"\n" +
 		"- [`.evolve.yaml`](.evolve.yaml)\n" +
-		"- [`.evolve.jsonc`](.evolve.jsonc)\n" +
-		"- [`.evolve.toml`](.evolve.toml)\n")
+		"- [`.evolve.jsonc`](.evolve.jsonc)\n")
 	return []byte(b.String())
 }
 
@@ -178,22 +180,6 @@ func ExampleJSONC() []byte {
   //   }
   // }
 }
-`)
-	return []byte(b.String())
-}
-
-// ExampleTOML renders the annotated .evolve.toml example.
-func ExampleTOML() []byte {
-	var b strings.Builder
-	b.WriteString(header("#"))
-	writeTOML(&b, tree(), nil)
-	b.WriteString("\n")
-	writeComment(&b, "# ", providersBlockDoc())
-	b.WriteString(`# [[providers.cursor.models]]
-# id = "sonnet-4.5"
-# display = "Cursor - Sonnet 4.5"
-# input_per_mtok = 3.0
-# output_per_mtok = 15.0
 `)
 	return []byte(b.String())
 }
@@ -346,52 +332,6 @@ func writeJSONC(b *strings.Builder, nodes []*node, depth int) {
 	}
 }
 
-// writeTOML emits leaves before subtables, as TOML requires; sections that
-// hold only other sections (report) contribute to the header path without
-// emitting a header of their own.
-func writeTOML(b *strings.Builder, nodes []*node, path []string) {
-	for _, n := range nodes {
-		if n.children != nil {
-			continue
-		}
-		b.WriteString("\n")
-		writeComment(b, "# ", n.doc)
-		if n.commented {
-			b.WriteString("# ")
-			b.WriteString(n.key)
-			b.WriteString(" = ")
-			b.WriteString(tomlValue(n.value))
-			b.WriteString("\n")
-		} else {
-			b.WriteString(n.key)
-			b.WriteString(" = ")
-			b.WriteString(tomlValue(n.value))
-			b.WriteString("\n")
-		}
-	}
-	for _, n := range nodes {
-		if n.children == nil {
-			continue
-		}
-		sub := append(append([]string{}, path...), n.key)
-		if hasLeaves(n) {
-			b.WriteString("\n[")
-			b.WriteString(strings.Join(sub, "."))
-			b.WriteString("]\n")
-		}
-		writeTOML(b, n.children, sub)
-	}
-}
-
-func hasLeaves(n *node) bool {
-	for _, c := range n.children {
-		if c.children == nil {
-			return true
-		}
-	}
-	return false
-}
-
 // jsonValue renders v as a JSON literal, which is also valid in YAML flow
 // context. Schema values are static, so encoding cannot fail.
 func jsonValue(v any) string {
@@ -402,19 +342,6 @@ func jsonValue(v any) string {
 		panic(err)
 	}
 	return strings.TrimSuffix(b.String(), "\n")
-}
-
-// tomlValue matches jsonValue except floats keep a decimal point, which TOML
-// requires.
-func tomlValue(v any) string {
-	if f, ok := v.(float64); ok {
-		s := strconv.FormatFloat(f, 'g', -1, 64)
-		if !strings.ContainsAny(s, ".eE") {
-			s += ".0"
-		}
-		return s
-	}
-	return jsonValue(v)
 }
 
 // mdCell escapes pipes so rendered values cannot break the table row.

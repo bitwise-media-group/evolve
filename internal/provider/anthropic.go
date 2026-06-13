@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// DefaultAllowedTools is the Claude tool grammar cases run with when they do
+// DefaultAllowedTools is the Claude tool grammar evals run with when they do
 // not specify their own (ported from the Python harness's DEFAULT_TOOLS).
 const DefaultAllowedTools = "Read Write Edit Glob Grep Skill Bash(terraform *) Bash(tflint *) Bash(mkdir *)"
 
@@ -90,7 +90,7 @@ func (a *Anthropic) ScanLine(line []byte, skill string) (bool, string) {
 	return false, ""
 }
 
-func (a *Anthropic) CaseSpec(ws string, c CaseInput, model string) CommandSpec {
+func (a *Anthropic) EvalSpec(ws string, c EvalInput, model string) CommandSpec {
 	maxTurns := c.MaxTurns
 	if maxTurns == 0 {
 		maxTurns = 25
@@ -111,10 +111,10 @@ func (a *Anthropic) CaseSpec(ws string, c CaseInput, model string) CommandSpec {
 	}
 }
 
-// ParseCaseOutput reads the claude JSON payload. Cache writes/reads are input
+// ParseEvalOutput reads the claude JSON payload. Cache writes/reads are input
 // tokens too; they are folded in so the figure reflects everything the
 // session consumed (cost_usd already does).
-func (a *Anthropic) ParseCaseOutput(stdout []byte) (string, *Usage) {
+func (a *Anthropic) ParseEvalOutput(stdout []byte) (string, *Usage) {
 	var payload struct {
 		Result string `json:"result"`
 		Usage  *struct {

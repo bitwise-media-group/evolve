@@ -14,7 +14,7 @@ import (
 )
 
 // Google drives the `gemini` CLI and the Gemini countTokens API. It has no
-// behavioral-case runner yet, so its models are token-counted only for cases.
+// behavioral-eval runner yet, so its models are token-counted only for evals.
 type Google struct {
 	base
 	CountURLBase string // model id and :countTokens are appended

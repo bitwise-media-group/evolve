@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/history.schema.json",
+  "title": "history.json (skill-creator superset)",
+  "description": "Version progression for an improvement loop, compatible with skill-creator's history.json. Evolve extras are additive and optional; an evolve improve mode emits against this contract.",
+  "type": "object",
+  "required": ["started_at", "skill_name", "current_best", "iterations"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "skill_name": { "type": "string" },
+    "current_best": { "type": "string" },
+    "iterations": { "type": "array", "items": { "$ref": "#/$defs/iteration" } }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "iteration": {
+      "type": "object",
+      "required": ["version", "parent", "expectation_pass_rate", "grading_result", "is_current_best"],
+      "properties": {
+        "version": { "type": "string" },
+        "parent": { "type": ["string", "null"] },
+        "expectation_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "grading_result": { "enum": ["baseline", "won", "lost", "tie"] },
+        "is_current_best": { "type": "boolean" },
+        "model_key": { "type": "string", "pattern": "^[^/]+/." },
+        "ran_at": { "type": "string", "format": "date-time" },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "notes": { "type": "string" },
+        "results_ref": {
+          "description": "Repository-relative path to the iteration's results file.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

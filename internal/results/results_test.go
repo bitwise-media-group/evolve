@@ -52,34 +52,40 @@ func sample() *File {
 
 func ptr[T any](v T) *T { return &v }
 
-func TestSaveLoadRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "evals", "go-testing", "results.json")
-	f := sample()
-	if err := f.Save(path); err != nil {
+// saveDir writes the sample in format and returns the emitted path.
+func saveDir(t *testing.T, f *File, dir, format string) string {
+	t.Helper()
+	path, err := f.SaveDir(dir, format)
+	if err != nil {
 		t.Fatal(err)
 	}
-	loaded := Load(path, "golang", "go-testing")
-	entry := loaded.Triggers["anthropic/claude-fable-5"]
-	if entry == nil || !entry.Executed || *entry.Summary.Passed != 1 {
-		t.Fatalf("loaded entry = %+v", entry)
-	}
-	if entry.Pricing == nil || *entry.Pricing.InputPerMTok != 10.0 {
-		t.Errorf("pricing = %+v", entry.Pricing)
-	}
-	if loaded.Triggers["cursor/sonnet-4.5"].Pricing != nil {
-		t.Error("cursor pricing must stay nil")
+	return path
+}
+
+func TestSaveLoadRoundTrip(t *testing.T) {
+	for _, format := range []string{"json", "jsonc", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "evals", "go-testing")
+			saveDir(t, sample(), dir, format)
+			loaded, _ := LoadDir(dir, "golang", "go-testing")
+			entry := loaded.Triggers["anthropic/claude-fable-5"]
+			if entry == nil || !entry.Executed || *entry.Summary.Passed != 1 {
+				t.Fatalf("loaded entry = %+v", entry)
+			}
+			if entry.Pricing == nil || *entry.Pricing.InputPerMTok != 10.0 {
+				t.Errorf("pricing = %+v", entry.Pricing)
+			}
+			if loaded.Triggers["cursor/sonnet-4.5"].Pricing != nil {
+				t.Error("cursor pricing must stay nil")
+			}
+		})
 	}
 }
 
 func TestSaveDeterministic(t *testing.T) {
-	dir := t.TempDir()
-	p1, p2 := filepath.Join(dir, "a.json"), filepath.Join(dir, "b.json")
-	if err := sample().Save(p1); err != nil {
-		t.Fatal(err)
-	}
-	if err := sample().Save(p2); err != nil {
-		t.Fatal(err)
-	}
+	d1, d2 := t.TempDir(), t.TempDir()
+	p1 := saveDir(t, sample(), d1, "json")
+	p2 := saveDir(t, sample(), d2, "json")
 	b1, _ := os.ReadFile(p1)
 	b2, _ := os.ReadFile(p2)
 	if string(b1) != string(b2) {
@@ -90,11 +96,30 @@ func TestSaveDeterministic(t *testing.T) {
 	}
 }
 
-func TestSerializedShape(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "r.json")
-	if err := sample().Save(path); err != nil {
-		t.Fatal(err)
+// TestSaveDirFormatSwitch pins that history survives a format change and the
+// stale sibling disappears.
+func TestSaveDirFormatSwitch(t *testing.T) {
+	dir := t.TempDir()
+	saveDir(t, sample(), dir, "json")
+	loaded, _ := LoadDir(dir, "golang", "go-testing")
+	path := saveDir(t, loaded, dir, "yaml")
+	if filepath.Base(path) != "results.yaml" {
+		t.Errorf("path = %s", path)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "results.json")); !os.IsNotExist(err) {
+		t.Error("stale results.json must be removed on format switch")
+	}
+	again, _ := LoadDir(dir, "golang", "go-testing")
+	if entry := again.Triggers["anthropic/claude-fable-5"]; entry == nil || *entry.Summary.Passed != 1 {
+		t.Errorf("yaml reload = %+v, want history preserved", entry)
+	}
+	if again.Triggers["cursor/sonnet-4.5"].Pricing != nil {
+		t.Error("explicit-null pricing must survive the yaml round trip")
+	}
+}
+
+func TestSerializedShape(t *testing.T) {
+	path := saveDir(t, sample(), t.TempDir(), "json")
 	data, _ := os.ReadFile(path)
 	text := string(data)
 
@@ -113,48 +138,77 @@ func TestSerializedShape(t *testing.T) {
 }
 
 func TestLoadToleratesGarbage(t *testing.T) {
-	dir := t.TempDir()
-	missing := Load(filepath.Join(dir, "nope.json"), "p", "s")
+	missing, _ := LoadDir(t.TempDir(), "p", "s")
 	if missing.Schema != Schema || missing.Plugin != "p" {
 		t.Errorf("missing-file load = %+v", missing)
 	}
 
-	bad := filepath.Join(dir, "bad.json")
-	os.WriteFile(bad, []byte("{corrupt"), 0o644)
-	if f := Load(bad, "p", "s"); len(f.Triggers) != 0 {
+	bad := t.TempDir()
+	os.WriteFile(filepath.Join(bad, "results.json"), []byte("{corrupt"), 0o644)
+	if f, _ := LoadDir(bad, "p", "s"); len(f.Triggers) != 0 {
 		t.Error("corrupt file must load fresh")
 	}
 
-	old := filepath.Join(dir, "old.json")
-	os.WriteFile(old, []byte(`{"schema": 2, "models": {"m": {}}}`), 0o644)
-	if f := Load(old, "p", "s"); len(f.Triggers) != 0 || f.Schema != Schema {
+	old := t.TempDir()
+	os.WriteFile(filepath.Join(old, "results.json"), []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644)
+	if f, _ := LoadDir(old, "p", "s"); len(f.Triggers) != 0 || f.Schema != Schema {
 		t.Error("old-schema file must load fresh (clean break)")
 	}
 }
 
 func TestGradedAssertionFlattens(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "c.json")
 	f := &File{Schema: Schema, Plugin: "p", Skill: "s"}
 	exit := 0
-	f.SetCase("anthropic/claude-fable-5", &CaseEntry{
+	graded := []GradedAssertion{{
+		Assertion: evalspec.Assertion{Type: "command", Run: "go test ./...", Requires: "go", ExpectExit: &exit,
+			Text: "authored text must not double-emit"},
+		Text:   "command `go test ./...` exits 0",
+		Passed: nil, Evidence: "skipped: go not installed",
+		Source: "assertion",
+	}}
+	f.SetEval("anthropic/claude-fable-5", &EvalEntry{
 		Header: Header{Provider: "anthropic", Model: "claude-fable-5", TimeoutSeconds: 600},
-		Results: []CaseResult{{
+		Results: []EvalResult{{
 			ID: "c1", Passed: ptr(true),
-			Assertions: []GradedAssertion{{
-				Assertion: evalspec.Assertion{Type: "command", Run: "go test ./...", Requires: "go", ExpectExit: &exit},
-				Passed:    nil, Evidence: "skipped: go not installed",
-			}},
+			Expectations: graded,
+			Summary:      SummarizeExpectations(graded),
 		}},
-		Summary: CaseSummary{Total: 1},
+		Summary: EvalSummary{Total: 1},
 	})
-	if err := f.Save(path); err != nil {
-		t.Fatal(err)
-	}
-	text, _ := os.ReadFile(path)
-	for _, want := range []string{`"type": "command"`, `"run": "go test ./..."`, `"passed": null`, `"evidence": "skipped: go not installed"`} {
-		if !strings.Contains(string(text), want) {
-			t.Errorf("serialized case missing %s:\n%s", want, text)
+	path := saveDir(t, f, t.TempDir(), "json")
+	data, _ := os.ReadFile(path)
+	text := string(data)
+	for _, want := range []string{
+		`"expectations": [`, `"type": "command"`, `"run": "go test ./..."`,
+		"\"text\": \"command `go test ./...` exits 0\"", `"passed": null`,
+		`"evidence": "skipped: go not installed"`, `"source": "assertion"`,
+		`"skipped": 1`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("serialized eval missing %s:\n%s", want, text)
 		}
+	}
+	// The outer derived text shadows the embedded authored text: one key.
+	if strings.Count(text, `"text":`) != 1 {
+		t.Errorf("want exactly one text key:\n%s", text)
+	}
+	if strings.Contains(text, `"cases"`) {
+		t.Error("schema 2 must name the section evals, not cases")
+	}
+}
+
+func TestSummarizeExpectations(t *testing.T) {
+	s := SummarizeExpectations([]GradedAssertion{
+		{Passed: ptr(true)}, {Passed: ptr(true)}, {Passed: ptr(false)}, {Passed: nil},
+	})
+	if s.Passed != 2 || s.Failed != 1 || s.Skipped != 1 || s.Total != 4 {
+		t.Errorf("summary = %+v", s)
+	}
+	if s.PassRate == nil || *s.PassRate != 0.666667 {
+		t.Errorf("pass_rate = %v, want 0.666667 (skips excluded)", s.PassRate)
+	}
+	if all := SummarizeExpectations([]GradedAssertion{{Passed: nil}}); all.PassRate != nil {
+		t.Errorf("all-skipped pass_rate = %v, want nil", all.PassRate)
 	}
 }
 

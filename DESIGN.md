@@ -1,7 +1,7 @@
 # Design
 
 evolve is a single Go CLI that evaluates coding-agent plugins: static checks (Tier 0), trigger-accuracy evals (Tier 1),
-behavioral cases (Tier 2), and committed Markdown/JSON reports. The README covers usage; this document records the
+behavioral evals (Tier 2), and committed Markdown/JSON reports. The README covers usage; this document records the
 conventions the codebase follows.
 
 ## Ergonomics
@@ -10,10 +10,10 @@ Commands are flat verbs, except the eval tiers, which nest under `run`:
 
 ```text
 evolve <verb>
-evolve run check|triggers|cases|all
+evolve run checks|triggers|evals|all
 ```
 
-`evolve run all` chains the tiers — check, triggers, cases, then report — and keeps going past tier failures so later
+`evolve run all` chains the tiers — check, triggers, evals, then report — and keeps going past tier failures so later
 tiers still produce signal.
 
 Global flags (`--root`, `--layout`, `--json`, `-v`) apply to every command. Configuration layers, lowest precedence
@@ -28,13 +28,13 @@ restores exit 1 on failures (`cli.ErrFailures`). `report --check` always exits 1
 
 ```text
 ./go.mod
-./cmd/main.go          # main entry point and root command (package main)
-./cmd/<verb>.go        # one file per subcommand
-./cmd/docs.go          # hidden command that regenerates docs/cli, docs/man, and docs/config
+./cmd/evolve/main.go   # main entry point and root command (package main)
+./cmd/evolve/<verb>.go # one file per subcommand
+./cmd/evolve/docs.go   # hidden command that regenerates docs/cli, docs/man, and docs/config
 
 ./internal/cli/...     # shared command plumbing: global Options, config layering,
                        # provider/repo/threshold resolution
-./internal/run/...     # the three eval engines: checks, triggers, cases
+./internal/run/...     # the three eval engines: checks, triggers, evals
 ./internal/<area>/...  # one package per remaining concern (grade, report, results,
                        # runner, workspace, ...)
 
@@ -50,8 +50,8 @@ package carries its package documentation in a `doc.go`.
 
 ## Architecture
 
-Each subcommand lives in its own `cmd/<verb>.go` as a package-level `<verb>Cmd` var plus a `<Verb>Flags` struct, with
-the file's `init()` registering its flags and adding the command to its parent (`rootCmd`, or `runCmd` for the eval
+Each subcommand lives in its own `cmd/evolve/<verb>.go` as a package-level `<verb>Cmd` var plus a `<Verb>Flags` struct,
+with the file's `init()` registering its flags and adding the command to its parent (`rootCmd`, or `runCmd` for the eval
 tiers). Shared global state lives in the package-level `opts` (`cli.Options`).
 
 `internal/cli` owns the resolved global state (`Options`) and the helpers that turn it into a detected repository, an

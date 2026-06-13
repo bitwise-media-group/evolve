@@ -118,7 +118,7 @@ func TestCursorHasNoCounting(t *testing.T) {
 	if _, ok := p.(TokenCounter); ok {
 		t.Error("cursor must not implement TokenCounter")
 	}
-	if _, ok := p.(CaseRunner); !ok {
-		t.Error("cursor must implement CaseRunner")
+	if _, ok := p.(EvalRunner); !ok {
+		t.Error("cursor must implement EvalRunner")
 	}
 }

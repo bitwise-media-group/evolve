@@ -4,24 +4,26 @@
 package results
 
 import (
-	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
 
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 )
 
-// Schema is the current results.json schema version.
-const Schema = 1
+// Schema is the current results-file schema version. v2 made the per-eval
+// result a superset of skill-creator's grading.json (expectations with
+// text/passed/evidence, summary, timing) and renamed the cases section.
+const Schema = 2
 
-// File is one evals/<skill>/results.json.
+// File is one evals/<skill>/results.<ext>.
 type File struct {
 	Schema   int                      `json:"schema"`
 	Plugin   string                   `json:"plugin"`
 	Skill    string                   `json:"skill"`
 	Triggers map[string]*TriggerEntry `json:"triggers,omitempty"`
-	Cases    map[string]*CaseEntry    `json:"cases,omitempty"`
+	Evals    map[string]*EvalEntry    `json:"evals,omitempty"`
 }
 
 // Header is the run metadata common to both entry kinds.
@@ -80,76 +82,160 @@ type TriggerResult struct {
 // TriggerSummary aggregates a trigger entry.
 type TriggerSummary struct {
 	Passed        *int      `json:"passed,omitempty"`
+	Failed        *int      `json:"failed,omitempty"`
 	Total         int       `json:"total"`
+	PassRate      *float64  `json:"pass_rate,omitempty"`
 	AvgRunSeconds *float64  `json:"avg_run_seconds,omitempty"`
 	Estimate      *Estimate `json:"estimate,omitempty"`
 }
 
-// CaseEntry is one model's behavioral sweep over a skill.
-type CaseEntry struct {
+// EvalEntry is one model's behavioral sweep over a skill.
+type EvalEntry struct {
 	Header
-	Results []CaseResult `json:"results"`
-	Summary CaseSummary  `json:"summary"`
+	Results []EvalResult `json:"results"`
+	Summary EvalSummary  `json:"summary"`
 }
 
-// GradedAssertion is an authored assertion plus its verdict. Passed is
-// tri-state: nil means skipped (e.g. a required binary is not installed).
+// GradedAssertion is one graded expectation: skill-creator's grading.json
+// entry shape (text, passed, evidence) plus the authored assertion echoed
+// for full fidelity. Text shadows the embedded assertion's authored text —
+// llm entries carry it verbatim, deterministic checks a derived statement.
+// Passed is tri-state: nil means skipped (e.g. a required binary is not
+// installed). Source records which authored field produced the entry.
 type GradedAssertion struct {
 	evalspec.Assertion
+	Text     string `json:"text"`
 	Passed   *bool  `json:"passed"`
 	Evidence string `json:"evidence"`
+	Source   string `json:"source,omitempty"` // "expectation" or "assertion"
 }
 
-// CaseResult is one case's outcome.
-type CaseResult struct {
-	ID         string            `json:"id"`
-	Passed     *bool             `json:"passed,omitempty"`
-	RunSeconds *float64          `json:"run_seconds,omitempty"`
-	Estimate   *Estimate         `json:"estimate,omitempty"`
-	Measured   *Measured         `json:"measured,omitempty"`
-	Assertions []GradedAssertion `json:"assertions,omitempty"`
+// GradeSummary aggregates one eval's graded expectations with grading.json's
+// field names. PassRate excludes skips — passed/(passed+failed), identical
+// to passed/total when nothing was skipped — and is omitted when nothing
+// executed.
+type GradeSummary struct {
+	Passed   int      `json:"passed"`
+	Failed   int      `json:"failed"`
+	Total    int      `json:"total"`
+	PassRate *float64 `json:"pass_rate,omitempty"`
+	Skipped  int      `json:"skipped,omitempty"`
 }
 
-// CaseSummary aggregates a case entry.
-type CaseSummary struct {
+// Timing mirrors skill-creator's timing.json field names. Wave 1 populates
+// the executor duration (the agent run; grading excluded) and the measured
+// token total; the grader fields await grading instrumentation.
+type Timing struct {
+	TotalTokens             *int     `json:"total_tokens,omitempty"`
+	DurationMS              *int     `json:"duration_ms,omitempty"`
+	TotalDurationSeconds    *float64 `json:"total_duration_seconds,omitempty"`
+	ExecutorStart           string   `json:"executor_start,omitempty"`
+	ExecutorEnd             string   `json:"executor_end,omitempty"`
+	ExecutorDurationSeconds *float64 `json:"executor_duration_seconds,omitempty"`
+	GraderStart             string   `json:"grader_start,omitempty"`
+	GraderEnd               string   `json:"grader_end,omitempty"`
+	GraderDurationSeconds   *float64 `json:"grader_duration_seconds,omitempty"`
+}
+
+// ExecutionMetrics mirrors skill-creator's metrics.json field names;
+// population arrives with transcript instrumentation (wave 2).
+type ExecutionMetrics struct {
+	ToolCalls         map[string]int `json:"tool_calls,omitempty"`
+	TotalToolCalls    *int           `json:"total_tool_calls,omitempty"`
+	TotalSteps        *int           `json:"total_steps,omitempty"`
+	FilesCreated      []string       `json:"files_created,omitempty"`
+	ErrorsEncountered *int           `json:"errors_encountered,omitempty"`
+	OutputChars       *int           `json:"output_chars,omitempty"`
+	TranscriptChars   *int           `json:"transcript_chars,omitempty"`
+}
+
+// EvalResult is one eval's outcome — a superset of a skill-creator
+// grading.json document, plus evolve's identity, token, and cost extras.
+type EvalResult struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name,omitempty"`
+	Passed           *bool             `json:"passed,omitempty"`
+	Estimate         *Estimate         `json:"estimate,omitempty"`
+	Measured         *Measured         `json:"measured,omitempty"`
+	Expectations     []GradedAssertion `json:"expectations,omitempty"`
+	Summary          *GradeSummary     `json:"summary,omitempty"`
+	ExecutionMetrics *ExecutionMetrics `json:"execution_metrics,omitempty"`
+	Timing           *Timing           `json:"timing,omitempty"`
+}
+
+// EvalSummary aggregates an eval entry.
+type EvalSummary struct {
 	Passed        *int      `json:"passed,omitempty"`
+	Failed        *int      `json:"failed,omitempty"`
 	Total         int       `json:"total"`
+	PassRate      *float64  `json:"pass_rate,omitempty"`
 	AvgRunSeconds *float64  `json:"avg_run_seconds,omitempty"`
 	Estimate      *Estimate `json:"estimate,omitempty"`
 	Measured      *Measured `json:"measured,omitempty"`
 }
 
-// Load reads the results file at path, or initialises a fresh one when the
-// file is missing, unparseable, or has a different schema (clean break from
-// the Python harness's formats).
-func Load(path, plugin, skill string) *File {
-	fresh := &File{Schema: Schema, Plugin: plugin, Skill: skill}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fresh
+// generatedComment heads results files in the formats that carry comments.
+const generatedComment = "Maintained by evolve run; do not edit by hand."
+
+// Find returns the path of the existing results file in dir, probing the
+// supported extensions in discovery order, or "" when none exists.
+func Find(dir string) string {
+	for _, ext := range encfmt.Extensions {
+		path := filepath.Join(dir, "results."+ext)
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path
+		}
 	}
-	var f File
-	if json.Unmarshal(data, &f) != nil || f.Schema != Schema {
-		return fresh
-	}
-	f.Plugin, f.Skill = plugin, skill
-	return &f
+	return ""
 }
 
-// Save writes the file atomically with deterministic formatting.
-func (f *File) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+// LoadDir finds and decodes the results file in dir regardless of format,
+// or initialises a fresh one when the file is missing, unparseable, or has
+// a different schema (clean break). reset reports that an existing file was
+// discarded, so callers can tell the user history is starting over.
+func LoadDir(dir, plugin, skill string) (f *File, reset bool) {
+	fresh := &File{Schema: Schema, Plugin: plugin, Skill: skill}
+	path := Find(dir)
+	if path == "" {
+		return fresh, false
 	}
-	data, err := json.MarshalIndent(f, "", "  ")
+	var loaded File
+	if encfmt.DecodeFile(path, &loaded) != nil || loaded.Schema != Schema {
+		return fresh, true
+	}
+	loaded.Plugin, loaded.Skill = plugin, skill
+	return &loaded, false
+}
+
+// SaveDir writes results.<format> atomically with deterministic formatting,
+// then removes stale results siblings left by a format switch. It returns
+// the written path.
+func (f *File) SaveDir(dir, format string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	format = encfmt.Canonical(format)
+	if format == "" {
+		format = "json"
+	}
+	data, err := encfmt.Marshal(f, format, generatedComment)
 	if err != nil {
-		return err
+		return "", err
 	}
+	path := filepath.Join(dir, "results."+format)
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
-		return err
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return "", err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return "", err
+	}
+	for _, ext := range encfmt.Extensions {
+		if stale := filepath.Join(dir, "results."+ext); stale != path {
+			_ = os.Remove(stale)
+		}
+	}
+	return path, nil
 }
 
 // SetTrigger stores entry under the model key, creating the section.
@@ -160,12 +246,12 @@ func (f *File) SetTrigger(key string, entry *TriggerEntry) {
 	f.Triggers[key] = entry
 }
 
-// SetCase stores entry under the model key, creating the section.
-func (f *File) SetCase(key string, entry *CaseEntry) {
-	if f.Cases == nil {
-		f.Cases = map[string]*CaseEntry{}
+// SetEval stores entry under the model key, creating the section.
+func (f *File) SetEval(key string, entry *EvalEntry) {
+	if f.Evals == nil {
+		f.Evals = map[string]*EvalEntry{}
 	}
-	f.Cases[key] = entry
+	f.Evals[key] = entry
 }
 
 // Round1 rounds to 1 decimal (seconds), Round6 to 6 (costs) — always round
@@ -196,6 +282,27 @@ func NewEstimate(tokens *int, inputPerMTok *float64) *Estimate {
 		e.InputCostUSD = &cost
 	}
 	return e
+}
+
+// SummarizeExpectations tallies one eval's graded expectations into the
+// grading.json summary shape.
+func SummarizeExpectations(graded []GradedAssertion) *GradeSummary {
+	s := &GradeSummary{Total: len(graded)}
+	for _, g := range graded {
+		switch {
+		case g.Passed == nil:
+			s.Skipped++
+		case *g.Passed:
+			s.Passed++
+		default:
+			s.Failed++
+		}
+	}
+	if executed := s.Passed + s.Failed; executed > 0 {
+		rate := Round6(float64(s.Passed) / float64(executed))
+		s.PassRate = &rate
+	}
+	return s
 }
 
 // SumEstimates totals per-result estimates; nil when none exist. The cost

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package run implements the three eval engines behind `evolve run`: static
-// checks (Tier 0), trigger accuracy (Tier 1), and behavioral cases (Tier 2).
+// checks (Tier 0), trigger accuracy (Tier 1), and behavioral evals (Tier 2).
 //
 // Checks port the Python harness's run_checks.py — SKILL.md frontmatter,
 // plugin manifest structure and version sync, and marketplace consistency —
@@ -20,7 +20,7 @@
 // token estimate per query — SKILL.md plus the query, the marginal context a
 // triggering eval loads — priced at the model's input rate.
 //
-// Cases: for every evals/<skill>/cases.json, each case's prompt runs through
+// Evals: for every evals/<skill>/evals.json, each eval's prompt runs through
 // a headless agent session in a throwaway fixture workspace (with the
 // plugin's skills installed), then assertions are graded — deterministic
 // first, LLM judge last. Executed runs record the harness-reported usage of
