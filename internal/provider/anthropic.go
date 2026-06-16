@@ -33,10 +33,15 @@ func NewAnthropic() *Anthropic {
 			name:    "anthropic",
 			display: "Anthropic",
 			clis:    []string{"claude"},
-			// EVOLVE_ANTHROPIC_API_KEY lets token counting use a dedicated key
-			// independent of whatever credential the claude CLI itself uses, so
-			// a blocked CLAUDE_CODE_OAUTH_TOKEN does not also break cost estimates.
-			envKeys:   []string{"EVOLVE_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"},
+			// The EVOLVE_* vars let token counting use a dedicated credential,
+			// independent of whatever the claude CLI itself uses, so a blocked
+			// CLAUDE_CODE_OAUTH_TOKEN does not also break cost estimates. Both an
+			// API-key (x-api-key) and an OAuth-token (Bearer) form are accepted,
+			// since an OAuth token sent as an API key is rejected.
+			envKeys: []string{
+				"EVOLVE_ANTHROPIC_API_KEY", "EVOLVE_CLAUDE_CODE_OAUTH_TOKEN",
+				"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN",
+			},
 			skillDirs: []string{filepath.Join(".claude", "skills")},
 			models: []Model{
 				{ID: "claude-haiku-4-5", Display: "Claude Haiku 4.5", InputUSD: usd(1.00), OutputUSD: usd(5.00)},

@@ -14,6 +14,7 @@ import (
 
 func TestCountTokensAnthropic(t *testing.T) {
 	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
+	t.Setenv("EVOLVE_CLAUDE_CODE_OAUTH_TOKEN", "")
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-api-key"); got != "test-key" {
@@ -46,6 +47,7 @@ func TestCountTokensAnthropic(t *testing.T) {
 
 func TestCountTokensAnthropicOAuth(t *testing.T) {
 	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
+	t.Setenv("EVOLVE_CLAUDE_CODE_OAUTH_TOKEN", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +71,7 @@ func TestCountTokensAnthropicOAuth(t *testing.T) {
 
 func TestCountTokensNoCredential(t *testing.T) {
 	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
+	t.Setenv("EVOLVE_CLAUDE_CODE_OAUTH_TOKEN", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
@@ -100,6 +103,36 @@ func TestCountTokensAnthropicProprietary(t *testing.T) {
 	a.Client = srv.Client()
 	if got, err := a.CountTokens(context.Background(), "m", "x"); err != nil || got != 5 {
 		t.Errorf("CountTokens = %d, %v; want 5, nil", got, err)
+	}
+}
+
+// TestCountTokensAnthropicProprietaryOAuth pins that EVOLVE_CLAUDE_CODE_OAUTH_TOKEN
+// is sent as an OAuth bearer token (with the oauth beta header), not an API key,
+// so an OAuth credential that 401s as x-api-key works here.
+func TestCountTokensAnthropicProprietaryOAuth(t *testing.T) {
+	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
+	t.Setenv("EVOLVE_CLAUDE_CODE_OAUTH_TOKEN", "evolve-oauth")
+	t.Setenv("ANTHROPIC_API_KEY", "provider-key")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "provider-oauth")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("authorization"); got != "Bearer evolve-oauth" {
+			t.Errorf("authorization = %q, want the proprietary OAuth token as a bearer (highest priority)", got)
+		}
+		if got := r.Header.Get("anthropic-beta"); got != "oauth-2025-04-20" {
+			t.Errorf("anthropic-beta = %q", got)
+		}
+		if got := r.Header.Get("x-api-key"); got != "" {
+			t.Errorf("x-api-key = %q, want no API-key header for an OAuth token", got)
+		}
+		json.NewEncoder(w).Encode(map[string]int{"input_tokens": 4})
+	}))
+	defer srv.Close()
+
+	a := NewAnthropic()
+	a.CountURL = srv.URL
+	a.Client = srv.Client()
+	if got, err := a.CountTokens(context.Background(), "m", "x"); err != nil || got != 4 {
+		t.Errorf("CountTokens = %d, %v; want 4, nil", got, err)
 	}
 }
 
