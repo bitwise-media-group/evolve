@@ -1,0 +1,27 @@
+# Fast-forward merge notice — thin caller for the org's reusable merge-notice
+# workflow. When a PR is opened it posts a one-time comment explaining this repo
+# merges by fast-forward (a maintainer comments `/merge`, see merge.yaml) so
+# newcomers don't reach for the GitHub merge button.
+#
+# pull_request_target (not pull_request) so the notice also reaches fork PRs,
+# where it matters most; the reusable workflow only posts a static comment with a
+# pull-requests:write token and never checks out or runs PR code, so the elevated
+# context is safe. No App token or secret is needed.
+#
+# The reusable workflow is pinned to a full commit SHA (tag in the comment);
+# Dependabot keeps the pin fresh.
+name: Fast-forward merge notice
+
+on:
+  pull_request_target:
+    types: [opened]
+
+# the reusable workflow comments with GITHUB_TOKEN; grant just that
+permissions:
+  pull-requests: write
+
+jobs:
+  notice:
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge-notice.yaml@077a003a620f49bd0062c73fc761dbea05d7fb70 # v1.1.0
+    with:
+      pr-number: ${{ github.event.pull_request.number }}

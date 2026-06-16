@@ -1,111 +1,38 @@
-# Release pipeline — release-please watches main, keeps a release PR current
-# from the Conventional Commit history, and when that PR merges cuts a draft
-# GitHub release plus the vX.Y.Z tag. GoReleaser then adopts the draft —
-# binary archives + checksums + SBOMs + keyless cosign signatures, a Homebrew
-# cask pushed to bitwise-media-group/homebrew-tap, and a GitHub
-# build-provenance attestation over everything in checksums.txt — and only
-# publishes it once every asset is in place.
+# Release pipeline — thin caller for the org's reusable release-go workflow.
+# release-please watches main and keeps a release PR current from the Conventional
+# Commit history; when that PR merges the workflow cuts the draft GitHub release +
+# vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
+# keyless cosign signatures, the Homebrew cask pushed to
+# bitwise-media-group/homebrew-tap, and a SLSA build-provenance attestation over
+# everything in checksums.txt.
 #
-# Everything authenticates with the workflow's own GITHUB_TOKEN. The one
-# caveat: PRs created with that token never trigger other workflows, so
-# ci.yaml does not run on release PRs (they only touch CHANGELOG.md and the
-# version manifest, both exempt from the format gates anyway).
+# The reusable workflow is pinned to a full commit SHA (tag in the comment) so a
+# moved tag can never change what runs; Dependabot keeps the pin fresh.
 name: Release
 
 on:
   push:
     branches: [main]
 
-permissions: {} # granted per job
-
-# concurrent release-please runs can open duplicate release PRs; queue them.
-concurrency:
-  group: release
+# ceiling for the reusable workflow's release-please + goreleaser jobs
+permissions:
+  # create the release/tag and upload assets
+  contents: write
+  # release-please creates pr labels via the issues api
+  issues: write
+  # release-please opens the release pull request
+  pull-requests: write
+  # cosign keyless signing
+  id-token: write
+  # github build-provenance attestation
+  attestations: write
+  # artifact storage record for the attestation
+  artifact-metadata: write
 
 jobs:
-  release-please:
-    runs-on: ubuntu-latest
-    permissions:
-      # create draft release and git tag
-      contents: write
-      # create pr labels via issues api
-      issues: write
-      # create the release pull request
-      pull-requests: write
-    outputs:
-      release_created: ${{ steps.release-please.outputs.release_created }}
-      tag_name: ${{ steps.release-please.outputs.tag_name }}
-    steps:
-      # First pass cuts the release only; the release PR is built in a
-      # second pass below, once the tag exists.
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v5.0.0
-        id: release-please
-        with:
-          skip-github-pull-request: true
-
-      # The draft release has no tag yet — GitHub would only create it on
-      # publish — and GoReleaser cannot version without one, so create it at
-      # the released commit.
-      - name: Create release tag
-        if: ${{ steps.release-please.outputs.release_created }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release-please.outputs.tag_name }}
-          SHA: ${{ steps.release-please.outputs.sha }}
-        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"
-
-      # Build the release PR only now that the tag exists. A draft release
-      # whose tag ref is missing is invisible to release-please's
-      # latest-release lookup, so computing the PR in the same pass that
-      # cuts a release treats every released commit as unreleased and opens
-      # a duplicate vNext PR.
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v5.0.0
-        with:
-          skip-github-release: true
-
-  goreleaser:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ubuntu-latest
-    permissions:
-      # upload assets and publish the draft release
-      contents: write
-      # use id token for cosign keyless signing
-      id-token: write
-      # write github provenance attestation
-      attestations: write
-      # create artifact storage record for github attestation
-      artifact-metadata: write
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-          fetch-depth: 0 # GoReleaser needs full history + tags for the changelog
-
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      # cosign for the binary_signs keyless signing config.
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      # SBOMs use the syft pinned in tools/go.mod (invoked via `go tool`
-      # by the sboms config) — no separate syft install step.
-      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7.2.2
-        with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # PAT with write access to bitwise-media-group/homebrew-tap — the
-          # default GITHUB_TOKEN cannot push the cask to another repository.
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-
-      # Attest SLSA build provenance (the default mode when no predicate is
-      # given) for every file listed in checksums.txt (archives + SBOMs +
-      # signature bundles). Verify with:
-      #   gh attestation verify --owner bitwise-media-group <file>
-      - uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
-        with:
-          subject-checksums: ./dist/checksums.txt
+  release:
+    uses: bitwise-media-group/github-workflows/.github/workflows/release-go.yaml@077a003a620f49bd0062c73fc761dbea05d7fb70 # v1.1.0
+    secrets:
+      # PAT with write access to bitwise-media-group/homebrew-tap — the default
+      # GITHUB_TOKEN cannot push the cask to another repository.
+      homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

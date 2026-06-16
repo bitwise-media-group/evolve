@@ -1,0 +1,35 @@
+# Fast-forward merge — thin caller for the org's reusable merge workflow. A
+# maintainer comments `/merge` on an approved, green PR and the base branch is
+# fast-forwarded to the PR head: the commit objects are untouched, so the original
+# developer's signature is preserved and release-please sees each Conventional
+# Commit individually.
+#
+# issue_comment runs in the base-repo context, so the App credentials are
+# available even for fork PRs. The reusable workflow owns the first-pass
+# author_association gate and re-verifies write access, approval, passing checks,
+# and a genuine fast-forward authoritatively, so a misconfigured caller cannot
+# move a branch on its own.
+#
+# Org prerequisites (see bitwise-media-group/ff-merge): the FF_MERGE_CLIENT_ID
+# variable + FF_MERGE_PRIVATE_KEY secret, and the "FF Merge" App installed on this
+# repo and in main's ruleset bypass list.
+#
+# The reusable workflow is pinned to a full commit SHA (tag in the comment);
+# Dependabot keeps the pin fresh.
+name: Fast-forward merge
+
+on:
+  issue_comment:
+    types: [created]
+
+# the App token does the privileged work; the job's GITHUB_TOKEN needs nothing
+permissions: {}
+
+jobs:
+  fast-forward:
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge.yaml@077a003a620f49bd0062c73fc761dbea05d7fb70 # v1.1.0
+    with:
+      pr-number: ${{ github.event.issue.number }}
+      app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
