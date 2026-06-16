@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,7 +28,7 @@ func NewOpenAI() *OpenAI {
 			name:      "openai",
 			display:   "OpenAI",
 			clis:      []string{"codex"},
-			envKeys:   []string{"OPENAI_API_KEY"},
+			envKeys:   []string{"EVOLVE_OPENAI_API_KEY", "OPENAI_API_KEY"},
 			skillDirs: []string{filepath.Join(".agents", "skills")},
 			models: []Model{
 				// Spark is a research-preview Codex model; OpenAI has not published API pricing.
@@ -104,9 +105,42 @@ func (o *OpenAI) ParseEvalOutput(stdout []byte) (string, *Usage) {
 // ReportsUsage is a value indicating whether or not codex reports token usage (cost is computed from pricing).
 func (o *OpenAI) ReportsUsage() bool { return true }
 
+// RuntimeError detects a codex run that produced no agent output (auth
+// blocked, crash) so it is reported distinctly from a failed eval. A run that
+// emitted any agent_message event is gradable, regardless of exit code.
+func (o *OpenAI) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return "empty CLI output"
+	}
+	for line := range strings.SplitSeq(string(stdout), "\n") {
+		var event struct {
+			Type string `json:"type"`
+			Item struct {
+				Type string `json:"type"`
+			} `json:"item"`
+		}
+		if json.Unmarshal([]byte(line), &event) != nil {
+			continue
+		}
+		if event.Type == "item.completed" && event.Item.Type == "agent_message" {
+			return "" // produced agent output — gradable
+		}
+	}
+	if exitCode != 0 {
+		return "codex produced no agent output"
+	}
+	return ""
+}
+
 // CountTokens calls POST /v1/responses/input_tokens.
 func (o *OpenAI) CountTokens(ctx context.Context, modelID, text string) (int, error) {
-	key := os.Getenv("OPENAI_API_KEY")
+	var key string
+	for _, env := range o.envKeys {
+		if v := os.Getenv(env); v != "" {
+			key = v
+			break
+		}
+	}
 	if key == "" {
 		return 0, ErrNoCredential
 	}

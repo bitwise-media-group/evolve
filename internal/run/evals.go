@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -133,13 +134,28 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 			return failed, err
 		}
 		if entry.Executed {
-			fmt.Fprintf(opts.Stdout, "  %d/%d evals passed%s\n",
-				*entry.Summary.Passed, entry.Summary.Total, avgSuffix(entry.Summary.AvgRunSeconds))
+			errored := ""
+			if entry.Summary.Errored != nil {
+				errored = fmt.Sprintf(", %d errored", *entry.Summary.Errored)
+			}
+			fmt.Fprintf(opts.Stdout, "  %d/%d evals passed%s%s\n",
+				*entry.Summary.Passed, entry.Summary.Total, errored, avgSuffix(entry.Summary.AvgRunSeconds))
 		}
 		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(saved))
 	}
 	return failed, nil
 }
+
+// evalOutcome is the tri-state result of one eval run: it passed, it ran and
+// failed assertions, or the agent run itself failed (a runtime error) and
+// never produced a gradable answer.
+type evalOutcome int
+
+const (
+	outcomePass evalOutcome = iota
+	outcomeFail
+	outcomeError
+)
 
 func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
 	evalRunner provider.EvalRunner, cli string, evals []evalspec.Eval, entryResults []results.EvalResult) (bool, error) {
@@ -147,30 +163,35 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel pro
 	var failedAny bool
 	g, runCtx := errgroup.WithContext(ctx)
 	g.SetLimit(opts.Jobs)
-	verdicts := make([]bool, len(evals))
+	outcomes := make([]evalOutcome, len(evals))
 	for i, c := range evals {
 		g.Go(func() error {
-			passed, result, err := runEval(runCtx, opts, set, sel, evalRunner, cli, c)
+			outcome, result, err := runEval(runCtx, opts, set, sel, evalRunner, cli, c)
 			if err != nil {
 				return err
 			}
 			result.Estimate = entryResults[i].Estimate // counting happened up front
 			entryResults[i] = result
-			verdicts[i] = passed
+			outcomes[i] = outcome
 			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
 		return false, err
 	}
-	for _, ok := range verdicts {
-		failedAny = failedAny || !ok
+	// A runtime error and an assertion failure both fail the sweep, but a
+	// runtime error is not an abort: it is recorded per eval so a blocked
+	// credential surfaces as "N errored", not a cascade of cancellations.
+	for _, o := range outcomes {
+		if o != outcomePass {
+			failedAny = true
+		}
 	}
 	return failedAny, nil
 }
 
 func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
-	evalRunner provider.EvalRunner, cli string, c evalspec.Eval) (bool, results.EvalResult, error) {
+	evalRunner provider.EvalRunner, cli string, c evalspec.Eval) (evalOutcome, results.EvalResult, error) {
 
 	copies := make(map[string]string, len(c.Files))
 	for _, ref := range c.Files {
@@ -179,7 +200,7 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 	ws, cleanup, err := workspace.New("evals.", set.Plugin.SkillsDir,
 		unionSkillDirs(opts.Selected), copies, opts.KeepWorkspaces)
 	if err != nil {
-		return false, results.EvalResult{}, err
+		return outcomeError, results.EvalResult{}, err
 	}
 	defer cleanup()
 	if opts.KeepWorkspaces {
@@ -199,13 +220,28 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 
 	res, err := opts.Runner.Run(ctx, spec, timeout, nil)
 	if err != nil {
-		return false, results.EvalResult{}, err
+		return outcomeError, results.EvalResult{}, err
 	}
 	if res.TimedOut {
 		fmt.Fprintf(opts.Stderr, "  warn: %s timed out after %s; grading partial output\n", cli, timeout)
 	}
-	output, usage := evalRunner.ParseEvalOutput(res.Stdout)
+
+	// A run that produced no usable output (auth blocked, crash) is a runtime
+	// failure, not an eval failure — surface it loudly instead of grading empty
+	// output into a silent FAIL.
 	runSeconds := results.Round1(res.Elapsed.Seconds()) // agent run only; grading excluded
+	if reason := evalRunner.RuntimeError(res.Stdout, res.ExitCode, res.TimedOut); reason != "" {
+		fmt.Fprintf(opts.Stdout, "  [ERROR] %s: %s runtime failure (exit %d): %s\n",
+			c.ID, cli, res.ExitCode, tailStderr(res.StderrTail))
+		return outcomeError, results.EvalResult{
+			ID:           c.ID,
+			Name:         c.Name,
+			RuntimeError: reason,
+			Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
+		}, nil
+	}
+
+	output, usage := evalRunner.ParseEvalOutput(res.Stdout)
 
 	// Grade assertions; buffer the verdict lines so concurrent evals don't
 	// interleave their output.
@@ -259,7 +295,26 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 		total := *m.InputTokens + *m.OutputTokens
 		result.Timing.TotalTokens = &total
 	}
-	return evalPassed, result, nil
+	outcome := outcomeFail
+	if evalPassed {
+		outcome = outcomePass
+	}
+	return outcome, result, nil
+}
+
+// tailStderr renders a stderr tail as a single short diagnostic line. The
+// runner already caps StderrTail to the last few KB; the fatal message sits at
+// the end, so keep the tail and collapse newlines.
+func tailStderr(s string) string {
+	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ")
+	if s == "" {
+		return "(no stderr)"
+	}
+	const max = 200
+	if len(s) > max {
+		s = "…" + s[len(s)-max:]
+	}
+	return s
 }
 
 // measured converts harness-reported usage, computing the cost from the
@@ -298,16 +353,17 @@ func buildEvalEntry(opts EvalOptions, sel provider.Selection, executed bool,
 	entry.Summary.Estimate = results.SumEstimates(estimates)
 
 	if executed {
-		passed, failed := 0, 0
+		passed, failed, errored := 0, 0, 0
 		var runSum float64
 		var runCount int
 		for _, r := range entryResults {
-			if r.Passed != nil {
-				if *r.Passed {
-					passed++
-				} else {
-					failed++
-				}
+			switch {
+			case r.RuntimeError != "":
+				errored++
+			case r.Passed != nil && *r.Passed:
+				passed++
+			case r.Passed != nil:
+				failed++
 			}
 			if r.Timing != nil && r.Timing.ExecutorDurationSeconds != nil {
 				runSum += *r.Timing.ExecutorDurationSeconds
@@ -316,6 +372,9 @@ func buildEvalEntry(opts EvalOptions, sel provider.Selection, executed bool,
 		}
 		entry.Summary.Passed = &passed
 		entry.Summary.Failed = &failed
+		if errored > 0 {
+			entry.Summary.Errored = &errored
+		}
 		if passed+failed > 0 {
 			rate := results.Round6(float64(passed) / float64(passed+failed))
 			entry.Summary.PassRate = &rate
@@ -387,6 +446,9 @@ func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provi
 		r, ok := stored[c.ID]
 		if !ok {
 			return ""
+		}
+		if execute && r.RuntimeError != "" {
+			return "" // a prior runtime error is not a completed result; re-run it
 		}
 		if execute {
 			if r.Passed == nil || r.Timing == nil || r.Timing.ExecutorDurationSeconds == nil {

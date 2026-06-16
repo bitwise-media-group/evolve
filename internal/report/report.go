@@ -52,6 +52,7 @@ type ModelRollup struct {
 	Display       string            `json:"display"`
 	Passed        *int              `json:"passed,omitempty"`
 	Failed        *int              `json:"failed,omitempty"`
+	Errored       *int              `json:"errored,omitempty"`
 	Total         int               `json:"total"`
 	PassRate      *float64          `json:"pass_rate,omitempty"`
 	AvgRunSeconds *float64          `json:"avg_run_seconds,omitempty"`
@@ -253,6 +254,12 @@ func rollupEvals(files []*results.File) map[string]*ModelRollup {
 			if entry.Executed && entry.Summary.Passed != nil {
 				addExecuted(m, *entry.Summary.Passed, entry.Summary.Total, entry.Summary.AvgRunSeconds)
 			}
+			if entry.Summary.Errored != nil {
+				if m.Errored == nil {
+					m.Errored = new(int)
+				}
+				*m.Errored += *entry.Summary.Errored
+			}
 			m.Estimate = mergeEstimates(m.Estimate, entry.Summary.Estimate)
 			m.Measured = mergeMeasured(m.Measured, entry.Summary.Measured)
 		}
@@ -290,10 +297,19 @@ func addExecuted(m *ModelRollup, passed, total int, avg *float64) {
 func finalize(rollups map[string]*ModelRollup) {
 	for _, m := range rollups {
 		if m.Passed != nil && m.executed > 0 {
-			failed := m.executed - *m.Passed
-			m.Failed = &failed
-			rate := results.Round6(float64(*m.Passed) / float64(m.executed))
-			m.PassRate = &rate
+			// Errored runs are excluded from the pass-rate and failed counts
+			// (they never produced a gradable answer), but kept in the avg-run
+			// weighting since they did consume wall-clock.
+			errored := 0
+			if m.Errored != nil {
+				errored = *m.Errored
+			}
+			if graded := m.executed - errored; graded > 0 {
+				failed := graded - *m.Passed
+				m.Failed = &failed
+				rate := results.Round6(float64(*m.Passed) / float64(graded))
+				m.PassRate = &rate
+			}
 			if m.AvgRunSeconds != nil {
 				avg := results.Round1(*m.AvgRunSeconds / float64(m.executed))
 				m.AvgRunSeconds = &avg

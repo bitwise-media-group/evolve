@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -97,4 +98,23 @@ func (c *Cursor) ParseEvalOutput(stdout []byte) (string, *Usage) {
 		return string(stdout), nil
 	}
 	return payload.Result, nil
+}
+
+// RuntimeError detects a cursor run that produced no result object (auth
+// blocked, crash) so it is reported distinctly from a failed eval. A run with
+// a non-empty result is gradable.
+func (c *Cursor) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return "empty CLI output"
+	}
+	var payload struct {
+		Result string `json:"result"`
+	}
+	if json.Unmarshal(stdout, &payload) == nil && payload.Result != "" {
+		return "" // gradable answer
+	}
+	if exitCode != 0 {
+		return "cursor produced no result"
+	}
+	return ""
 }

@@ -54,6 +54,12 @@ func (f *fakeEvalProvider) ParseEvalOutput(stdout []byte) (string, *provider.Usa
 	return string(stdout), &provider.Usage{InputTokens: &in, OutputTokens: &out}
 }
 func (f *fakeEvalProvider) ReportsUsage() bool { return f.reportsUsage }
+func (f *fakeEvalProvider) RuntimeError(stdout []byte, _ int, _ bool) string {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return "empty CLI output"
+	}
+	return ""
+}
 
 type countingEvalProvider struct{ fakeEvalProvider }
 
@@ -64,12 +70,16 @@ func (c *countingEvalProvider) CountTokens(_ context.Context, _, text string) (i
 // fakeEvalRunner simulates the agent (writes a file, emits output), fakes the
 // judge, and runs shell commands for real.
 type fakeEvalRunner struct {
-	exec runner.Exec
+	exec       runner.Exec
+	agentFails bool // when set, the agent run produces no output and exits non-zero
 }
 
 func (f *fakeEvalRunner) Run(ctx context.Context, spec provider.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
 	switch {
 	case len(spec.Argv) > 1 && spec.Argv[1] == "AGENT":
+		if f.agentFails {
+			return runner.Result{ExitCode: 1, StderrTail: "auth error: invalid token", Elapsed: time.Second}, nil
+		}
 		if err := os.WriteFile(filepath.Join(spec.Dir, "created.txt"), []byte("agent artifact"), 0o644); err != nil {
 			return runner.Result{}, err
 		}
@@ -245,6 +255,69 @@ func TestEvalsDetectsFailure(t *testing.T) {
 	}
 	if !failed {
 		t.Error("failed = false, want true")
+	}
+}
+
+func TestEvalsRuntimeError(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	opts.Runner = &fakeEvalRunner{agentFails: true}
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+
+	failed, err := Evals(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failed {
+		t.Errorf("failed = false, want true (a runtime error fails the sweep):\n%s", stdout.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "[ERROR]") || !strings.Contains(out, "1 errored") {
+		t.Errorf("stdout missing runtime-error diagnostics:\n%s", out)
+	}
+
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	entry := file.Evals["fake/model-1"]
+	if entry == nil {
+		t.Fatal("no entry written")
+	}
+	r := entry.Results[0]
+	if r.RuntimeError == "" || r.Passed != nil {
+		t.Errorf("result = %+v, want RuntimeError set and Passed nil", r)
+	}
+	if len(r.Expectations) != 0 {
+		t.Errorf("an errored eval must not grade assertions, got %d", len(r.Expectations))
+	}
+	if entry.Summary.Errored == nil || *entry.Summary.Errored != 1 {
+		t.Errorf("summary.Errored = %v, want 1", entry.Summary.Errored)
+	}
+	if entry.Summary.Passed == nil || *entry.Summary.Passed != 0 ||
+		entry.Summary.Failed == nil || *entry.Summary.Failed != 0 {
+		t.Errorf("summary passed/failed = %v/%v, want 0/0", entry.Summary.Passed, entry.Summary.Failed)
+	}
+	if entry.Summary.PassRate != nil {
+		t.Errorf("pass rate = %v, want nil (nothing graded)", entry.Summary.PassRate)
+	}
+}
+
+func TestEvalsRuntimeErrorRerunUnderNew(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	opts.Runner = &fakeEvalRunner{agentFails: true}
+
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	// --new must re-run a prior runtime error, not treat it as a complete result.
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	opts.New = true
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if out := stdout.String(); strings.Contains(out, "skip:") || !strings.Contains(out, "[ERROR]") {
+		t.Errorf("--new skipped a prior runtime error instead of re-running:\n%s", out)
 	}
 }
 

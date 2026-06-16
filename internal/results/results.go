@@ -15,6 +15,12 @@ import (
 // Schema is the current results-file schema version. v2 made the per-eval
 // result a superset of skill-creator's grading.json (expectations with
 // text/passed/evidence, summary, timing) and renamed the cases section.
+//
+// The runtime-error fields (EvalResult.RuntimeError, EvalSummary.Errored) are
+// additive and omitempty, so they do not change the schema number: old files
+// load unchanged, and an older binary simply ignores them. They do shift the
+// meaning of the failed count — an eval whose agent never produced usable
+// output is now reported as errored rather than failed.
 const Schema = 2
 
 // File is one evals/<skill>/results.<ext>.
@@ -152,8 +158,13 @@ type ExecutionMetrics struct {
 // EvalResult is one eval's outcome — a superset of a skill-creator
 // grading.json document, plus evolve's identity, token, and cost extras.
 type EvalResult struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name,omitempty"`
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+	// RuntimeError is a non-empty reason when the agent run produced no usable
+	// output (auth blocked, crash, error envelope) — a runtime failure as
+	// opposed to an eval that ran but failed assertions. When set, Passed is
+	// nil: the eval neither passed nor failed.
+	RuntimeError     string            `json:"runtime_error,omitempty"`
 	Passed           *bool             `json:"passed,omitempty"`
 	Estimate         *Estimate         `json:"estimate,omitempty"`
 	Measured         *Measured         `json:"measured,omitempty"`
@@ -163,10 +174,13 @@ type EvalResult struct {
 	Timing           *Timing           `json:"timing,omitempty"`
 }
 
-// EvalSummary aggregates an eval entry.
+// EvalSummary aggregates an eval entry. Errored counts evals whose agent run
+// failed to produce usable output (see EvalResult.RuntimeError); they are
+// excluded from PassRate, like skips.
 type EvalSummary struct {
 	Passed        *int      `json:"passed,omitempty"`
 	Failed        *int      `json:"failed,omitempty"`
+	Errored       *int      `json:"errored,omitempty"`
 	Total         int       `json:"total"`
 	PassRate      *float64  `json:"pass_rate,omitempty"`
 	AvgRunSeconds *float64  `json:"avg_run_seconds,omitempty"`

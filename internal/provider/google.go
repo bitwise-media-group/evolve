@@ -28,7 +28,7 @@ func NewGoogle() *Google {
 			name:      "google",
 			display:   "Google",
 			clis:      []string{"gemini"},
-			envKeys:   []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"},
+			envKeys:   []string{"EVOLVE_GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"},
 			skillDirs: []string{filepath.Join(".gemini", "skills")},
 			models: []Model{
 				{ID: "gemini-3.1-flash-lite", Display: "Gemini 3.1 Flash-Lite", InputUSD: usd(0.25), OutputUSD: usd(1.50)},

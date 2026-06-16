@@ -70,6 +70,11 @@ type EvalRunner interface {
 	// ReportsUsage reports whether live sessions ever yield measured usage;
 	// false (cursor) exempts the measured fields from --new completeness.
 	ReportsUsage() bool
+	// RuntimeError returns a short reason when the agent run produced no
+	// usable output (auth blocked, crash, empty/error envelope), or "" when
+	// the output is gradable. A benign non-zero exit (e.g. max-turns) that
+	// still produced a result returns "" — it is graded, not errored.
+	RuntimeError(stdout []byte, exitCode int, timedOut bool) string
 }
 
 // TokenCounter is the optional capability of counting input tokens through

@@ -13,6 +13,7 @@ import (
 )
 
 func TestCountTokensAnthropic(t *testing.T) {
+	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("x-api-key"); got != "test-key" {
@@ -44,6 +45,7 @@ func TestCountTokensAnthropic(t *testing.T) {
 }
 
 func TestCountTokensAnthropicOAuth(t *testing.T) {
+	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,11 +68,38 @@ func TestCountTokensAnthropicOAuth(t *testing.T) {
 }
 
 func TestCountTokensNoCredential(t *testing.T) {
+	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
 	if _, err := NewAnthropic().CountTokens(context.Background(), "m", "x"); !errors.Is(err, ErrNoCredential) {
 		t.Errorf("err = %v, want ErrNoCredential", err)
+	}
+}
+
+// TestCountTokensAnthropicProprietary pins that EVOLVE_ANTHROPIC_API_KEY takes
+// priority over the provider's own vars and is sent as an API key (x-api-key),
+// not an OAuth bearer token.
+func TestCountTokensAnthropicProprietary(t *testing.T) {
+	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "evolve-key")
+	t.Setenv("ANTHROPIC_API_KEY", "provider-key")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "oauth-tok")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("x-api-key"); got != "evolve-key" {
+			t.Errorf("x-api-key = %q, want the proprietary key sent first as an API key", got)
+		}
+		if got := r.Header.Get("authorization"); got != "" {
+			t.Errorf("authorization = %q, want no bearer header for an API key", got)
+		}
+		json.NewEncoder(w).Encode(map[string]int{"input_tokens": 5})
+	}))
+	defer srv.Close()
+
+	a := NewAnthropic()
+	a.CountURL = srv.URL
+	a.Client = srv.Client()
+	if got, err := a.CountTokens(context.Background(), "m", "x"); err != nil || got != 5 {
+		t.Errorf("CountTokens = %d, %v; want 5, nil", got, err)
 	}
 }
 

@@ -30,6 +30,21 @@ func TestRunCollectsStdout(t *testing.T) {
 	}
 }
 
+func TestRunSurfacesExitCode(t *testing.T) {
+	// A non-zero exit is data the eval runtime-error classifier relies on, not
+	// an error the runner should swallow or return.
+	res, err := (&Exec{}).Run(context.Background(), sh(`echo out; exit 7`), 5*time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 7 {
+		t.Errorf("ExitCode = %d, want 7", res.ExitCode)
+	}
+	if got := string(res.Stdout); got != "out\n" {
+		t.Errorf("stdout = %q, want %q", got, "out\n")
+	}
+}
+
 func TestRunScanHitExitsEarly(t *testing.T) {
 	// The process would sleep for 60s after the hit line; the scan must kill
 	// it as soon as the hit is seen.

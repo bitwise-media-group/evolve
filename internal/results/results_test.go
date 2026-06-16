@@ -197,6 +197,50 @@ func TestGradedAssertionFlattens(t *testing.T) {
 	}
 }
 
+func TestRuntimeErrorSerialization(t *testing.T) {
+	f := &File{Schema: Schema, Plugin: "p", Skill: "s"}
+	errored := 1
+	f.SetEval("anthropic/claude-fable-5", &EvalEntry{
+		Header:  Header{Provider: "anthropic", Model: "claude-fable-5", TimeoutSeconds: 600, Executed: true},
+		Results: []EvalResult{{ID: "c1", RuntimeError: "empty CLI output"}}, // Passed stays nil
+		Summary: EvalSummary{Total: 1, Errored: &errored},
+	})
+	dir := t.TempDir()
+	path := saveDir(t, f, dir, "json")
+	text := string(mustRead(t, path))
+	if !strings.Contains(text, `"runtime_error": "empty CLI output"`) {
+		t.Errorf("missing runtime_error:\n%s", text)
+	}
+	if !strings.Contains(text, `"errored": 1`) {
+		t.Errorf("missing errored count:\n%s", text)
+	}
+	if strings.Contains(text, `"passed"`) {
+		t.Errorf("an errored result/summary must omit passed:\n%s", text)
+	}
+
+	// Additive fields must not trigger a schema reset; values round-trip.
+	loaded, reset := LoadDir(dir, "p", "s")
+	if reset {
+		t.Error("additive omitempty fields must not force a schema reset")
+	}
+	entry := loaded.Evals["anthropic/claude-fable-5"]
+	if r := entry.Results[0]; r.RuntimeError != "empty CLI output" || r.Passed != nil {
+		t.Errorf("loaded result = %+v", r)
+	}
+	if e := entry.Summary.Errored; e == nil || *e != 1 {
+		t.Errorf("loaded errored = %v, want 1", e)
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func TestSummarizeExpectations(t *testing.T) {
 	s := SummarizeExpectations([]GradedAssertion{
 		{Passed: ptr(true)}, {Passed: ptr(true)}, {Passed: ptr(false)}, {Passed: nil},

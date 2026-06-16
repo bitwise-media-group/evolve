@@ -104,12 +104,15 @@ func renderDetail(pf pluginFiles, caps capabilityMap) string {
 				b.WriteString("| --- | --- | --- | --- | --- | --- | --- |\n")
 				for _, r := range entry.Results {
 					fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s |\n",
-						cell(r.ID, 60), fmtVerdict(r.Passed), fmtSecs(runSeconds(r.Timing)),
+						cell(r.ID, 60), evalVerdict(r), fmtSecs(runSeconds(r.Timing)),
 						fmtEstimateTokens(r.Estimate, provName, caps), fmtEstimateCost(r.Estimate, entry.Pricing, provName, caps),
 						fmtMeasuredInOut(r.Measured, provName, caps), fmtMeasuredCostDetail(r.Measured, entry.Pricing, provName, caps))
 				}
-				// Failed expectations get surfaced under the table.
+				// Runtime errors and failed expectations get surfaced under the table.
 				for _, r := range entry.Results {
+					if r.RuntimeError != "" {
+						fmt.Fprintf(&b, "\n- `%s` runtime error: %s\n", r.ID, cell(r.RuntimeError, 160))
+					}
 					for _, a := range r.Expectations {
 						if a.Passed != nil && !*a.Passed {
 							fmt.Fprintf(&b, "\n- `%s` failed `%s`: %s\n", r.ID, a.Text, cell(a.Evidence, 160))
@@ -147,7 +150,15 @@ func fmtPassed(m *ModelRollup) string {
 	if m.Passed == nil {
 		return "—"
 	}
-	return fmt.Sprintf("%d/%d", *m.Passed, m.executed)
+	errored := 0
+	if m.Errored != nil {
+		errored = *m.Errored
+	}
+	s := fmt.Sprintf("%d/%d", *m.Passed, m.executed-errored)
+	if errored > 0 {
+		s += fmt.Sprintf(" (%d errored)", errored)
+	}
+	return s
 }
 
 func fmtRate(rate *float64) string {
@@ -180,6 +191,16 @@ func fmtVerdict(passed *bool) string {
 	default:
 		return "FAIL"
 	}
+}
+
+// evalVerdict renders an eval's verdict cell, distinguishing a runtime error
+// (the agent run failed to produce a gradable answer) from a graded
+// pass/fail/skip.
+func evalVerdict(r results.EvalResult) string {
+	if r.RuntimeError != "" {
+		return "ERROR"
+	}
+	return fmtVerdict(r.Passed)
 }
 
 func fmtTokensCell(m *ModelRollup, caps capabilityMap) string {

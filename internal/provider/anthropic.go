@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,10 +30,13 @@ type Anthropic struct {
 func NewAnthropic() *Anthropic {
 	return &Anthropic{
 		base: base{
-			name:      "anthropic",
-			display:   "Anthropic",
-			clis:      []string{"claude"},
-			envKeys:   []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"},
+			name:    "anthropic",
+			display: "Anthropic",
+			clis:    []string{"claude"},
+			// EVOLVE_ANTHROPIC_API_KEY lets token counting use a dedicated key
+			// independent of whatever credential the claude CLI itself uses, so
+			// a blocked CLAUDE_CODE_OAUTH_TOKEN does not also break cost estimates.
+			envKeys:   []string{"EVOLVE_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"},
 			skillDirs: []string{filepath.Join(".claude", "skills")},
 			models: []Model{
 				{ID: "claude-haiku-4-5", Display: "Claude Haiku 4.5", InputUSD: usd(1.00), OutputUSD: usd(5.00)},
@@ -142,6 +146,38 @@ func (a *Anthropic) ParseEvalOutput(stdout []byte) (string, *Usage) {
 // ReportsUsage is a value indicating whether or not the claude CLI reports session usage and cost.
 func (a *Anthropic) ReportsUsage() bool { return true }
 
+// RuntimeError detects a claude CLI run that produced no usable answer (auth
+// blocked, init crash, error envelope without output) so it can be reported
+// distinctly from an eval that ran and failed its assertions. A run with any
+// non-empty result is gradable — this deliberately includes max-turns/partial
+// runs, which the CLI reports with is_error=true but a populated result.
+func (a *Anthropic) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return "empty CLI output"
+	}
+	var env struct {
+		Result  string `json:"result"`
+		IsError bool   `json:"is_error"`
+		Subtype string `json:"subtype"`
+	}
+	if json.Unmarshal(stdout, &env) != nil {
+		if exitCode != 0 {
+			return "unparseable CLI output"
+		}
+		return "" // a clean exit with plain-text output is degenerate but gradable
+	}
+	if env.Result != "" {
+		return "" // there is an answer to grade (success, or a partial/max-turns run)
+	}
+	if env.IsError {
+		if env.Subtype != "" {
+			return "claude run error (" + env.Subtype + ")"
+		}
+		return "claude run error"
+	}
+	return "" // empty-result success: grade it (assertions may inspect the workspace)
+}
+
 // CountTokens calls POST /v1/messages/count_tokens with an API key
 // (x-api-key) or an OAuth token (Authorization: Bearer + the oauth beta
 // header).
@@ -172,7 +208,11 @@ func (a *Anthropic) authHeaders() map[string]string {
 		if value == "" {
 			continue
 		}
-		if env == "ANTHROPIC_API_KEY" {
+		// Pick the header style by credential kind, not the literal var name:
+		// any *_API_KEY (ANTHROPIC_API_KEY, EVOLVE_ANTHROPIC_API_KEY) is an API
+		// key sent via x-api-key; OAuth/auth tokens go on Authorization: Bearer
+		// with the oauth beta header.
+		if strings.HasSuffix(env, "_API_KEY") {
 			return map[string]string{"x-api-key": value, "anthropic-version": "2023-06-01"}
 		}
 		return map[string]string{
