@@ -1,0 +1,43 @@
+# Auto-merge — thin caller for the org's reusable auto-merge workflow, the
+# set-and-forget companion to merge.yaml. A maintainer arms a PR once (comments
+# `/auto-merge` or adds the `auto-merge` label) and it is fast-forwarded
+# automatically the moment it is approved and every required check is green,
+# preserving each commit's signature. Remove the label to cancel.
+#
+# All four triggers are required: issue_comment + pull_request(labeled) arm the
+# PR; pull_request_review(approved) and workflow_run(completed) attempt the merge
+# when the state changes. The workflow_run list names every workflow that must
+# pass — "Continuous Integration" (ci.yaml) and "CodeQL" (codeql.yaml); whichever
+# finishes last triggers the attempt, and ff-merge re-verifies all checks before
+# moving the ref. None of these run PR code; the reusable workflow only mints a
+# token and calls the API.
+#
+# Org prerequisites (see bitwise-media-group/ff-merge): the FF_MERGE_CLIENT_ID
+# variable + FF_MERGE_PRIVATE_KEY secret, and the "FF Merge" App installed on this
+# repo and in main's ruleset bypass list — the same App as the /merge flow.
+#
+# The reusable workflow is pinned to a full commit SHA (tag in the comment);
+# Dependabot keeps the pin fresh.
+name: Auto-merge
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [labeled]
+  pull_request_review:
+    types: [submitted]
+  workflow_run:
+    workflows: ["Continuous Integration", "CodeQL"]
+    types: [completed]
+
+# the App token does the privileged work; the caller grants nothing
+permissions: {}
+
+jobs:
+  auto-merge:
+    uses: bitwise-media-group/github-workflows/.github/workflows/auto-merge.yaml@077a003a620f49bd0062c73fc761dbea05d7fb70 # v1.1.0
+    with:
+      app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
+    secrets:
+      app-private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
