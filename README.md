@@ -110,17 +110,20 @@ completion.
 
 ## Providers
 
-| Provider  | Runner CLI             | Credential                                | Triggers | Evals | Token counting |
-| --------- | ---------------------- | ----------------------------------------- | -------- | ----- | -------------- |
-| anthropic | `claude`               | `ANTHROPIC_API_KEY` (or OAuth token vars) | yes      | yes   | yes            |
-| openai    | `codex`                | `OPENAI_API_KEY`                          | yes      | yes   | yes            |
-| google    | `gemini`               | `GEMINI_API_KEY` / `GOOGLE_API_KEY`       | yes      | no    | yes            |
-| cursor    | `agent` (cursor-agent) | `CURSOR_API_KEY`                          | yes      | yes   | no             |
+| Provider  | Runner CLI             | Credential                                              | Triggers | Evals | Token counting |
+| --------- | ---------------------- | ------------------------------------------------------- | -------- | ----- | -------------- |
+| anthropic | `claude`               | `ANTHROPIC_API_KEY` (or OAuth token vars)               | yes      | yes   | yes            |
+| openai    | `codex`                | `OPENAI_API_KEY`                                        | yes      | yes   | yes            |
+| google    | `gemini`               | `GEMINI_API_KEY` / `GOOGLE_API_KEY`                     | yes      | no    | yes            |
+| cursor    | `agent` (cursor-agent) | `CURSOR_API_KEY`                                        | yes      | yes   | no             |
+| copilot   | `copilot`              | `COPILOT_GITHUB_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`) | yes      | yes   | no             |
 
-Cursor exposes no token-counting API and its CLI reports no usage or cost, so its estimate/measured figures render as
-`n/a` in reports — structurally absent, not zero. Cursor model ids are config-driven: run `agent models` for the live
-list and pin them via `providers.cursor.models` (the builtin default is conservative). The LLM judge for `llm`
-assertions always runs through `claude` (pinned via `--judge-model`) so grading stays comparable across providers.
+Cursor and Copilot expose no token-counting API and their CLIs report no usage or cost, so their estimate/measured
+figures render as `n/a` in reports — structurally absent, not zero. Both run other vendors' models behind config-driven
+ids: pin them via `providers.cursor.models` / `providers.copilot.models` (the builtin defaults are conservative; for
+Cursor, `agent models` prints the live list). Copilot emits no structured output, so its trigger detection is
+best-effort path matching on the CLI's stdout. The LLM judge for `llm` assertions always runs through `claude` (pinned
+via `--judge-model`) so grading stays comparable across providers.
 
 Select models with `--models`: provider names (`anthropic`), model ids (`claude-fable-5`), provider-qualified ids
 (`cursor/sonnet-4.5`), or `all` — comma-separated.

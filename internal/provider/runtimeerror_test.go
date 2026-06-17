@@ -60,3 +60,13 @@ func TestRuntimeErrorCursor(t *testing.T) {
 		t.Error("empty result + non-zero exit must be a runtime error")
 	}
 }
+
+func TestRuntimeErrorCopilot(t *testing.T) {
+	c := NewCopilot()
+	if got := c.RuntimeError([]byte("all done\n"), 0, false); got != "" {
+		t.Errorf("text answer = %q, want gradable", got)
+	}
+	if got := c.RuntimeError([]byte("  \n"), 1, false); got == "" {
+		t.Error("empty stdout must be a runtime error")
+	}
+}

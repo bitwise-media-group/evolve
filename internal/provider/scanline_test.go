@@ -93,6 +93,20 @@ func TestScanLine(t *testing.T) {
 			wantHit:  false,
 		},
 		{
+			name:     "copilot path mention",
+			provider: NewCopilot(),
+			line:     `Read .copilot/skills/go-testing/SKILL.md`,
+			skill:    "go-testing",
+			wantHit:  true,
+		},
+		{
+			name:     "copilot plain prose",
+			provider: NewCopilot(),
+			line:     `Here is how I would approach go testing.`,
+			skill:    "go-testing",
+			wantHit:  false,
+		},
+		{
 			name:     "non-JSON noise",
 			provider: NewAnthropic(),
 			line:     `warning: something`,
@@ -145,6 +159,13 @@ func TestParseEvalOutputOpenAI(t *testing.T) {
 
 func TestParseEvalOutputCursor(t *testing.T) {
 	text, usage := NewCursor().ParseEvalOutput([]byte(`{"type":"result","subtype":"success","is_error":false,"result":"all done"}`))
+	if text != "all done" || usage != nil {
+		t.Errorf("got text=%q usage=%v, want %q and nil usage", text, usage, "all done")
+	}
+}
+
+func TestParseEvalOutputCopilot(t *testing.T) {
+	text, usage := NewCopilot().ParseEvalOutput([]byte("  all done\n"))
 	if text != "all done" || usage != nil {
 		t.Errorf("got text=%q usage=%v, want %q and nil usage", text, usage, "all done")
 	}

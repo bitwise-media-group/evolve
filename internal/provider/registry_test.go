@@ -31,6 +31,7 @@ func TestSelect(t *testing.T) {
 			"anthropic/claude-opus-4-8", "anthropic/claude-fable-5"}},
 		{spec: "claude-fable-5", want: []string{"anthropic/claude-fable-5"}},
 		{spec: "cursor/sonnet-4.5", want: []string{"cursor/sonnet-4.5"}},
+		{spec: "copilot/claude-sonnet-4.6", want: []string{"copilot/claude-sonnet-4.6"}},
 		{spec: "claude-fable-5, gpt-5.5", want: []string{"anthropic/claude-fable-5", "openai/gpt-5.5"}},
 		{spec: "anthropic,claude-fable-5", want: []string{ // dedup
 			"anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6",
@@ -71,7 +72,7 @@ func TestSelectAll(t *testing.T) {
 			names = append(names, s.Provider.Name())
 		}
 	}
-	if want := "anthropic openai google cursor"; strings.Join(names, " ") != want {
+	if want := "anthropic openai google cursor copilot"; strings.Join(names, " ") != want {
 		t.Errorf("providers = %v, want %s", names, want)
 	}
 }
