@@ -110,18 +110,20 @@ completion.
 
 ## Providers
 
-| Provider  | Runner CLI             | Credential                                              | Triggers | Evals | Token counting |
-| --------- | ---------------------- | ------------------------------------------------------- | -------- | ----- | -------------- |
-| anthropic | `claude`               | `ANTHROPIC_API_KEY` (or OAuth token vars)               | yes      | yes   | yes            |
-| openai    | `codex`                | `OPENAI_API_KEY`                                        | yes      | yes   | yes            |
-| google    | `gemini`               | `GEMINI_API_KEY` / `GOOGLE_API_KEY`                     | yes      | no    | yes            |
-| cursor    | `agent` (cursor-agent) | `CURSOR_API_KEY`                                        | yes      | yes   | no             |
-| copilot   | `copilot`              | `COPILOT_GITHUB_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`) | yes      | yes   | no             |
+| Provider    | Runner CLI             | Credential                                              | Triggers | Evals | Token counting |
+| ----------- | ---------------------- | ------------------------------------------------------- | -------- | ----- | -------------- |
+| anthropic   | `claude`               | `ANTHROPIC_API_KEY` (or OAuth token vars)               | yes      | yes   | yes            |
+| openai      | `codex`                | `OPENAI_API_KEY`                                        | yes      | yes   | yes            |
+| google      | `gemini`               | `GEMINI_API_KEY` / `GOOGLE_API_KEY`                     | yes      | no    | yes            |
+| cursor      | `agent` (cursor-agent) | `CURSOR_API_KEY`                                        | yes      | yes   | no             |
+| copilot     | `copilot`              | `COPILOT_GITHUB_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`) | yes      | yes   | no             |
+| antigravity | `agy`                  | OAuth login via `agy` (no API-key env var)              | yes      | yes   | no             |
 
-Cursor and Copilot expose no token-counting API and their CLIs report no usage or cost, so their estimate/measured
-figures render as `n/a` in reports — structurally absent, not zero. Both run other vendors' models behind config-driven
-ids: pin them via `providers.cursor.models` / `providers.copilot.models` (the builtin defaults are conservative; for
-Cursor, `agent models` prints the live list). Copilot emits no structured output, so its trigger detection is
+Cursor, Copilot, and Antigravity expose no token-counting API and their CLIs report no usage or cost, so their
+estimate/measured figures render as `n/a` in reports — structurally absent, not zero. They run other vendors' models
+behind config-driven ids: pin them via `providers.cursor.models` / `providers.copilot.models` /
+`providers.antigravity.models` (the builtin defaults are conservative; `agent models` and `agy models` print the live
+lists for Cursor and Antigravity). Copilot and Antigravity emit no structured output, so their trigger detection is
 best-effort path matching on the CLI's stdout. The LLM judge for `llm` assertions always runs through `claude` (pinned
 via `--judge-model`) so grading stays comparable across providers.
 

@@ -100,8 +100,22 @@ func TestScanLine(t *testing.T) {
 			wantHit:  true,
 		},
 		{
+			name:     "antigravity path mention",
+			provider: NewAntigravity(),
+			line:     `Read .antigravity/skills/go-testing/SKILL.md`,
+			skill:    "go-testing",
+			wantHit:  true,
+		},
+		{
 			name:     "copilot plain prose",
 			provider: NewCopilot(),
+			line:     `Here is how I would approach go testing.`,
+			skill:    "go-testing",
+			wantHit:  false,
+		},
+		{
+			name:     "antigravity plain prose",
+			provider: NewAntigravity(),
 			line:     `Here is how I would approach go testing.`,
 			skill:    "go-testing",
 			wantHit:  false,
@@ -166,6 +180,13 @@ func TestParseEvalOutputCursor(t *testing.T) {
 
 func TestParseEvalOutputCopilot(t *testing.T) {
 	text, usage := NewCopilot().ParseEvalOutput([]byte("  all done\n"))
+	if text != "all done" || usage != nil {
+		t.Errorf("got text=%q usage=%v, want %q and nil usage", text, usage, "all done")
+	}
+}
+
+func TestParseEvalOutputAntigravity(t *testing.T) {
+	text, usage := NewAntigravity().ParseEvalOutput([]byte("  all done\n"))
 	if text != "all done" || usage != nil {
 		t.Errorf("got text=%q usage=%v, want %q and nil usage", text, usage, "all done")
 	}

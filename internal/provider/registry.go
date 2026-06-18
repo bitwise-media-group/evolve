@@ -12,7 +12,7 @@ import (
 // name appears in overrides getting its model list replaced (replace, not
 // merge — partial merges create "which price won?" ambiguity).
 func All(overrides map[string][]Model) []Provider {
-	providers := []Provider{NewAnthropic(), NewOpenAI(), NewGoogle(), NewCursor(), NewCopilot()}
+	providers := []Provider{NewAnthropic(), NewOpenAI(), NewGoogle(), NewCursor(), NewCopilot(), NewAntigravity()}
 	for _, p := range providers {
 		if models, ok := overrides[p.Name()]; ok && len(models) > 0 {
 			p.(modelSetter).setModels(models)

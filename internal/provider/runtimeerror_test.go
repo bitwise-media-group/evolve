@@ -70,3 +70,13 @@ func TestRuntimeErrorCopilot(t *testing.T) {
 		t.Error("empty stdout must be a runtime error")
 	}
 }
+
+func TestRuntimeErrorAntigravity(t *testing.T) {
+	a := NewAntigravity()
+	if got := a.RuntimeError([]byte("all done\n"), 0, false); got != "" {
+		t.Errorf("text answer = %q, want gradable", got)
+	}
+	if got := a.RuntimeError([]byte("  \n"), 1, false); got == "" {
+		t.Error("empty stdout must be a runtime error")
+	}
+}
