@@ -82,8 +82,9 @@ func (o *OpenAI) ParseEvalOutput(stdout []byte) (string, *Usage) {
 				Text string `json:"text"`
 			} `json:"item"`
 			Usage *struct {
-				InputTokens  *int `json:"input_tokens"`
-				OutputTokens *int `json:"output_tokens"`
+				InputTokens       *int `json:"input_tokens"`
+				CachedInputTokens *int `json:"cached_input_tokens"`
+				OutputTokens      *int `json:"output_tokens"`
 			} `json:"usage"`
 		}
 		if json.Unmarshal([]byte(line), &event) != nil {
@@ -93,7 +94,25 @@ func (o *OpenAI) ParseEvalOutput(stdout []byte) (string, *Usage) {
 			texts = append(texts, event.Item.Text)
 		}
 		if event.Type == "turn.completed" && event.Usage != nil {
-			usage = &Usage{InputTokens: event.Usage.InputTokens, OutputTokens: event.Usage.OutputTokens}
+			// Codex reports input_tokens as the whole prompt with
+			// cached_input_tokens a subset of it. The Usage contract wants
+			// fresh (uncached) input on InputTokens and cache hits reported
+			// separately, so split the cached portion off rather than letting
+			// re-read context inflate the headline input figure.
+			u := &Usage{OutputTokens: event.Usage.OutputTokens}
+			if in := event.Usage.InputTokens; in != nil {
+				fresh := *in
+				if cached := event.Usage.CachedInputTokens; cached != nil {
+					read := *cached
+					if read > fresh {
+						read = fresh
+					}
+					fresh -= read
+					u.CacheReadTokens = &read
+				}
+				u.InputTokens = &fresh
+			}
+			usage = u
 		}
 	}
 	if len(texts) == 0 {
