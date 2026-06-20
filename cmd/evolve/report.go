@@ -35,7 +35,7 @@ var reportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := reconcileStaleResults(cmd, !opts.JSON && isTerminal(cmd)); err != nil {
+		if err := reconcileStaleResults(cmd, interactiveTUI(cmd, opts.JSON)); err != nil {
 			return err
 		}
 		active, _, err := opts.ActiveModelKeys()

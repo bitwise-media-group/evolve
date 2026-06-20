@@ -4,13 +4,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
@@ -25,12 +23,18 @@ var runAllCmd = &cobra.Command{
 	Short: "Run everything: checks, triggers, evals, then regenerate reports",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := reconcileStaleResults(cmd, isTerminal(cmd)); err != nil {
+		interactive := interactiveTUI(cmd, allFlags.NoTUI)
+		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err
+		}
+		if interactive {
+			return uiRun(cmd, &allFlags.SweepFlags, run.Tiers{Triggers: true, Evals: true},
+				allFlags.Runs, "", grade.DefaultJudgeModel, "run: some checks or cases failed", true)
 		}
 
 		// Checks first, then one interleaved triggers+evals sweep (so a skill/model
-		// pair finishes both tiers before the next), then the committed reports.
+		// pair finishes both tiers before the next), then the committed reports —
+		// the same execution order the TUI uses.
 		var failures bool
 		if err := runSub(cmd, checksCmd, &failures); err != nil {
 			return err
@@ -68,23 +72,6 @@ var runAllCmd = &cobra.Command{
 		}
 		return nil
 	},
-}
-
-// runSub runs a sibling subcommand (checks/report) inline, folding an
-// ErrFailures into the failures flag rather than aborting.
-func runSub(cmd, sub *cobra.Command, failures *bool) error {
-	sub.SetContext(cmd.Context())
-	if err := forwardFlags(cmd.Flags(), sub.Flags()); err != nil {
-		return err
-	}
-	if err := sub.RunE(sub, nil); err != nil {
-		if errors.Is(err, cli.ErrFailures) {
-			*failures = true
-			return nil
-		}
-		return err
-	}
-	return nil
 }
 
 // forwardFlags applies the flags explicitly set on `run all` to one tier's

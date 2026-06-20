@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -24,8 +25,13 @@ var triggersCmd = &cobra.Command{
 	Short: "Run Tier 1 trigger-accuracy evals through headless agent sessions",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := reconcileStaleResults(cmd, isTerminal(cmd)); err != nil {
+		interactive := interactiveTUI(cmd, triggersFlags.NoTUI)
+		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err
+		}
+		if interactive {
+			return uiRun(cmd, &triggersFlags.SweepFlags, run.Tiers{Triggers: true},
+				triggersFlags.Runs, "", grade.DefaultJudgeModel, "triggers: some queries failed", false)
 		}
 
 		common, err := triggersFlags.sweepOptions(cmd)

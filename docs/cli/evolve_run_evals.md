@@ -20,6 +20,7 @@ evolve run evals [flags]
       --models string          comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
       --modified               only run evals whose authored skill content or case definition changed since their stored results
       --new                    only run evals whose stored results are missing values a rerun could fill
+      --no-tui                 disable the interactive TUI even on a terminal (also: EVOLVE_NO_TUI=1)
       --skill string           only run evals for this skill
       --stale-results string   keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)
       --timeout int            seconds per agent run (default 600)

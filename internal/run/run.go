@@ -79,6 +79,19 @@ type Options struct {
 	RetainRoot string
 }
 
+// ClearSelectionFlags returns a copy with every per-case selection flag
+// (--new/--failed/--modified) cleared. The TUI calls it once the form has
+// encoded the user's choice as an explicit per-model Filter: with a Filter
+// present those flags must be off, or the engine would re-derive the run-set and
+// override what the user picked. Clearing them all in one place means a new
+// selection flag cannot silently leak past the form into the engine.
+func (o Options) ClearSelectionFlags() Options {
+	o.New = false
+	o.Failed = false
+	o.Modified = false
+	return o
+}
+
 // retain reports the parent directory new workspaces are created under and
 // whether they must outlive their per-unit cleanup. Retention is on whenever a
 // RetainRoot is set (the TUI) or the user passed --keep-workspaces.

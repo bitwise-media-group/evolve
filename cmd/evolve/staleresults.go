@@ -6,21 +6,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 )
-
-// isTerminal reports whether the command's stdout is a real terminal, used to
-// decide whether the stale-results reconciliation may prompt interactively.
-func isTerminal(cmd *cobra.Command) bool {
-	f, ok := cmd.OutOrStdout().(*os.File)
-	return ok && term.IsTerminal(int(f.Fd()))
-}
 
 // reconcileStaleResults runs at the start of the run and report commands. When
 // default_models is configured and results files hold models outside it, it

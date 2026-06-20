@@ -76,3 +76,7 @@ touching engine output formats, the `e2e/` golden files may need updating (its o
 - Conventional Commits; commit signing is handed off via a `commit.sh` script (see the global agent instructions) rather
   than committed from a sandbox.
 - Clean breaks over backward-compat shims: drop problematic formats rather than add deprecation aliases.
+- No `*T`-pointer helper functions (e.g. `func ip(v int) *int { return &v }`). Go 1.26's `new(expr)` allocates and
+  initializes in one call, so write `new(1400)` / `new(0.004)` directly. Mind the type: `new(expr)` uses the
+  expression's own default type, not the assignment context — for a `*float64` field write `new(1.0)`, not `new(1)`
+  (which is `*int`).

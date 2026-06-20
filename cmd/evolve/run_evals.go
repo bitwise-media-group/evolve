@@ -26,8 +26,13 @@ var evalsCmd = &cobra.Command{
 	Short: "Run Tier 2 behavioral evals: agent sessions graded by assertions",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := reconcileStaleResults(cmd, isTerminal(cmd)); err != nil {
+		interactive := interactiveTUI(cmd, evalsFlags.NoTUI)
+		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err
+		}
+		if interactive {
+			return uiRun(cmd, &evalsFlags.SweepFlags, run.Tiers{Evals: true},
+				3, evalsFlags.Eval, evalsFlags.JudgeModel, "evals: some evals failed", false)
 		}
 
 		common, err := evalsFlags.sweepOptions(cmd)

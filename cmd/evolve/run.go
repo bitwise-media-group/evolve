@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -60,6 +61,7 @@ type SweepFlags struct {
 	FailedOnly     bool
 	ModifiedOnly   bool
 	KeepWorkspaces bool
+	NoTUI          bool
 }
 
 func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
@@ -80,11 +82,19 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 	cmd.Flags().BoolVar(&f.KeepWorkspaces, "keep-workspaces", false, "keep throwaway workspaces for debugging")
 	cmd.Flags().String("stale-results", "",
 		"keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)")
+	cmd.Flags().BoolVar(&f.NoTUI, "no-tui", false,
+		"disable the interactive TUI even on a terminal (also: EVOLVE_NO_TUI=1)")
 }
 
 // sweepOptions resolves the global flags and the sweep flags into the engine
 // configuration triggers and evals share.
 func (f *SweepFlags) sweepOptions(cmd *cobra.Command) (run.Options, error) {
+	return f.sweepOptionsW(cmd, cmd.ErrOrStderr())
+}
+
+// sweepOptionsW is sweepOptions with an explicit destination for token-counter
+// diagnostics, so the TUI can redirect them off the terminal.
+func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (run.Options, error) {
 	repo, err := opts.Repo()
 	if err != nil {
 		return run.Options{}, err
@@ -97,7 +107,7 @@ func (f *SweepFlags) sweepOptions(cmd *cobra.Command) (run.Options, error) {
 	if err != nil {
 		return run.Options{}, err
 	}
-	counter, err := opts.Counter(cmd.ErrOrStderr())
+	counter, err := opts.Counter(counterOut)
 	if err != nil {
 		return run.Options{}, err
 	}
