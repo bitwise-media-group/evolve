@@ -61,6 +61,16 @@ effective provider set, a token counter, and report thresholds. The engines (`ru
 as explicit options — the trigger and case engines embed the shared `run.Options` — and write through the interfaces
 they declare, so they test against fakes; `runner` is the only package that touches `os/exec`.
 
+Because `runner` is that single exec chokepoint, it also enforces filesystem isolation: agent CLIs run in full-auto
+(`--dangerously-skip-permissions` and the like), so `cmd.Dir` alone would not stop a run from wandering into other
+checkouts. When `Exec.Sandbox` is enabled (the default), every command is wrapped in an OS sandbox — `sandbox-exec` on
+macOS, `bubblewrap` on Linux — that denies writes under the configured `sandbox.protected_roots` (default: the parent of
+the repo under test) while re-permitting the per-run workspace. It is a denylist, not an allowlist: reads, the network,
+and writes to dependency caches stay open so build tooling (`go mod download`, `npm ci`, `uv sync`, `terraform init`,
+and unknown future tools) keeps working — the sandbox only protects source repositories. It fails closed (an enabled
+sandbox with no available helper errors rather than running unconfined); `--no-sandbox` / `sandbox.enabled=false` opts
+out.
+
 The CLI reference in `docs/cli` and the man pages in `docs/man` are generated from the cobra command tree, and the
 configuration reference plus annotated example config files in `docs/config` from `internal/configdoc`'s schema (all via
 `make docs`) and committed, so reviewing a flag or config change shows the documentation diff alongside the code.

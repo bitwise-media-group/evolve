@@ -33,7 +33,12 @@ type Result struct {
 }
 
 // Exec runs commands for real.
-type Exec struct{}
+type Exec struct {
+	// Sandbox, when enabled, confines each run's filesystem writes by wrapping
+	// the command in an OS sandbox. The zero value is disabled, so callers and
+	// tests that build Exec{} run unconfined as before.
+	Sandbox Sandbox
+}
 
 // Run executes spec with the given timeout. When onLine is non-nil, stdout is
 // scanned line by line and onLine returning true ends the run early with
@@ -47,7 +52,12 @@ func (e *Exec) Run(ctx context.Context, spec provider.CommandSpec, timeout time.
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, spec.Argv[0], spec.Argv[1:]...)
+	argv, err := e.Sandbox.wrap(spec.Dir, spec.Argv)
+	if err != nil {
+		return Result{}, err
+	}
+
+	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = spec.Dir
 	cmd.Env = append(os.Environ(), spec.Env...)
 	configureProcessTreeKill(cmd)

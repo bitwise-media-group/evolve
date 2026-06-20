@@ -57,6 +57,18 @@ func Schema() []Option {
 				"--stale-results overrides.",
 		},
 		{
+			Key: "sandbox.enabled", Type: "bool", Value: true,
+			Doc: "Confine agent writes with an OS sandbox (sandbox-exec on macOS, bubblewrap on Linux); " +
+				"--no-sandbox overrides for one run.",
+		},
+		{
+			Key: "sandbox.protected_roots", Type: "list of strings", Example: []string{"~/Repos"},
+			Fallback: "the parent directory of the repository under test",
+			Doc: "Directories kept read-only to agent runs so an escaping agent cannot modify other " +
+				"source repositories; the workspace stays writable. Reads, the network, and tool caches " +
+				"outside these roots are unaffected.",
+		},
+		{
 			Key: "checks.license", Type: "string", Example: "MIT",
 			Fallback: "the license field is forbidden",
 			Doc:      "License every SKILL.md must declare; when unset, skills must not declare one.",
