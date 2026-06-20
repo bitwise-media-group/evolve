@@ -350,8 +350,9 @@ func TestEvalsRuntimeError(t *testing.T) {
 	repo := evalRepoFixture(t)
 	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
 	opts.Runner = &fakeEvalRunner{agentFails: true}
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	opts.Stdout = &stdout
+	opts.Stderr = &stderr
 
 	failed, err := Evals(context.Background(), opts)
 	if err != nil {
@@ -360,8 +361,16 @@ func TestEvalsRuntimeError(t *testing.T) {
 	if !failed {
 		t.Errorf("failed = false, want true (a runtime error fails the sweep):\n%s", stdout.String())
 	}
-	if out := stdout.String(); !strings.Contains(out, "[ERROR]") || !strings.Contains(out, "1 errored") {
-		t.Errorf("stdout missing runtime-error diagnostics:\n%s", out)
+	// The per-item [ERROR] diagnostic is a failure, so it goes to stderr (with
+	// the stderr tail the CLI reported); the "N errored" rollup stays on stdout.
+	if out := stderr.String(); !strings.Contains(out, "[ERROR]") || !strings.Contains(out, "auth error: invalid token") {
+		t.Errorf("stderr missing runtime-error diagnostics:\n%s", out)
+	}
+	if out := stdout.String(); !strings.Contains(out, "1 errored") {
+		t.Errorf("stdout missing errored rollup:\n%s", out)
+	}
+	if strings.Contains(stdout.String(), "[ERROR]") {
+		t.Errorf("[ERROR] detail must not appear on stdout:\n%s", stdout.String())
 	}
 
 	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
@@ -398,14 +407,18 @@ func TestEvalsRuntimeErrorRerunUnderNew(t *testing.T) {
 	}
 
 	// --new must re-run a prior runtime error, not treat it as a complete result.
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	opts.Stdout = &stdout
+	opts.Stderr = &stderr
 	opts.New = true
 	if _, err := Evals(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	if out := stdout.String(); strings.Contains(out, "skip:") || !strings.Contains(out, "[ERROR]") {
-		t.Errorf("--new skipped a prior runtime error instead of re-running:\n%s", out)
+	// The re-run's [ERROR] diagnostic lands on stderr; a skip would surface on
+	// stdout instead.
+	if strings.Contains(stdout.String(), "skip:") || !strings.Contains(stderr.String(), "[ERROR]") {
+		t.Errorf("--new skipped a prior runtime error instead of re-running:\nstdout:\n%s\nstderr:\n%s",
+			stdout.String(), stderr.String())
 	}
 }
 

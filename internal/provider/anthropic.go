@@ -167,9 +167,10 @@ func (a *Anthropic) RuntimeError(stdout []byte, exitCode int, timedOut bool) str
 		return "empty CLI output"
 	}
 	var env struct {
-		Result  string `json:"result"`
-		IsError bool   `json:"is_error"`
-		Subtype string `json:"subtype"`
+		Result  string   `json:"result"`
+		IsError bool     `json:"is_error"`
+		Subtype string   `json:"subtype"`
+		Errors  []string `json:"errors"`
 	}
 	if json.Unmarshal(stdout, &env) != nil {
 		if exitCode != 0 {
@@ -181,12 +182,32 @@ func (a *Anthropic) RuntimeError(stdout []byte, exitCode int, timedOut bool) str
 		return "" // there is an answer to grade (success, or a partial/max-turns run)
 	}
 	if env.IsError {
-		if env.Subtype != "" {
-			return "claude run error (" + env.Subtype + ")"
-		}
-		return "claude run error"
+		return anthropicErrorReason(env.Subtype, env.Errors)
 	}
 	return "" // empty-result success: grade it (assertions may inspect the workspace)
+}
+
+// anthropicErrorReason renders the claude error envelope into one diagnostic
+// line. The claude CLI reports a failed run only on stdout: the subtype names
+// the class (error_max_turns, error_during_execution) and the `errors` array
+// carries the human-readable detail ("Reached maximum number of turns (20)").
+// Neither is ever written to stderr, so without lifting them here the run
+// surfaces as a bare non-zero exit with no explanation.
+func anthropicErrorReason(subtype string, errs []string) string {
+	reason := "claude run error"
+	if subtype != "" {
+		reason += " (" + subtype + ")"
+	}
+	cleaned := make([]string, 0, len(errs))
+	for _, e := range errs {
+		if e = strings.TrimSpace(e); e != "" {
+			cleaned = append(cleaned, e)
+		}
+	}
+	if len(cleaned) > 0 {
+		reason += ": " + strings.Join(cleaned, "; ")
+	}
+	return reason
 }
 
 // CountTokens calls POST /v1/messages/count_tokens with an API key

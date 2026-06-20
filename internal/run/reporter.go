@@ -141,7 +141,14 @@ func (r PlainReporter) ItemStarted(UnitRef, ItemStart) {}
 
 func (r PlainReporter) ItemDone(u UnitRef, item ItemResult) {
 	if u.Kind == KindEvals {
-		fmt.Fprint(r.Stdout, item.Detail) // pre-rendered, may span several lines
+		// A runtime-error diagnostic (the agent run produced no gradable output)
+		// is a failure, not a result, so it goes to stderr; the per-assertion
+		// PASS/FAIL block is normal result output and stays on stdout.
+		w := r.Stdout
+		if item.Status == StatusError {
+			w = r.Stderr
+		}
+		fmt.Fprint(w, item.Detail) // pre-rendered, may span several lines
 		return
 	}
 	fmt.Fprintf(r.Stdout, "  [%s] %s\n", marker(item.Status), item.Detail)

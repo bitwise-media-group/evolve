@@ -260,7 +260,7 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 			Label:  c.ID,
 			Status: StatusError,
 			Detail: fmt.Sprintf("  [ERROR] %s: %s runtime failure (exit %d): %s\n",
-				c.ID, cli, res.ExitCode, tailStderr(res.StderrTail)),
+				c.ID, cli, res.ExitCode, errorDetail(reason, res.StderrTail)),
 			Metrics:       ItemMetrics{AvgRunSeconds: &runSeconds},
 			WorkspacePath: workdir,
 			LogPath:       logPath,
@@ -392,19 +392,29 @@ func retainArtifacts(parent, ws string, stdout []byte) (workdir, logPath string)
 	return ws, logPath
 }
 
-// tailStderr renders a stderr tail as a single short diagnostic line. The
-// runner already caps StderrTail to the last few KB; the fatal message sits at
-// the end, so keep the tail and collapse newlines.
-func tailStderr(s string) string {
-	s = strings.ReplaceAll(strings.TrimSpace(s), "\n", " ")
-	if s == "" {
-		return "(no stderr)"
-	}
+// errorDetail renders a runtime failure's diagnostic from the two places a CLI
+// can report one: reason is the provider's read of stdout (claude puts its
+// error subtype and `errors` array there, never on stderr), and stderrTail is
+// what the CLI wrote to stderr (where most other runners report). Whichever is
+// present is shown — and both when they are — so an error is never reduced to a
+// bare exit code. The runner already caps StderrTail to the last few KB; the
+// fatal message sits at the end, so keep the tail and collapse newlines.
+func errorDetail(reason, stderrTail string) string {
+	tail := strings.ReplaceAll(strings.TrimSpace(stderrTail), "\n", " ")
 	const max = 200
-	if len(s) > max {
-		s = "…" + s[len(s)-max:]
+	if len(tail) > max {
+		tail = "…" + tail[len(tail)-max:]
 	}
-	return s
+	switch {
+	case reason != "" && tail != "":
+		return reason + "; stderr: " + tail
+	case reason != "":
+		return reason
+	case tail != "":
+		return tail
+	default:
+		return "(no error output)"
+	}
 }
 
 // measured converts harness-reported usage, computing the cost from the
