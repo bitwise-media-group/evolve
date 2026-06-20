@@ -53,6 +53,7 @@ linters:
       # Tests favor literal fixtures and inline setup over wrapped lines and
       # checked error returns.
       - linters:
+          - dupl
           - errcheck
           - gocyclo
           - lll
