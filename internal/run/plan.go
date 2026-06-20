@@ -129,102 +129,105 @@ func PlanFor(cat []SkillCatalog, sel provider.Selection, f *Filter, tiers Tiers)
 	return Plan(cat, []provider.Selection{sel}, f, tiers)
 }
 
-// Target identifies a (skill, tier) execution unit independent of any model.
-type Target struct {
+// CaseRef identifies one authored case (a trigger query or eval id) within a
+// tier, independent of any model. It is the key the selection form and the
+// per-case run matrix share.
+type CaseRef struct {
 	Skill string
 	Kind  Kind
+	Case  string // trigger query or eval id
 }
 
 // Needs reports, per resolved selection (keyed by Selection.Key()) and per
-// in-play target, whether the engine would run that unit. With --new and/or
-// --failed only the units those flags select are true; otherwise every
-// applicable unit is true. Only targets honored by def (the command's default
-// tiers), SkillFilter, and evalFilter, and with applicable cases for the model,
-// appear. The TUI derives the form's initial tri-state selection from this so
-// it matches non-TUI mode exactly. The --new/--failed check reuses the engine's
-// own skip logic with a counts-unfillable probe (see countsUnfillableTrigger),
-// so it needs no token-counting round trip and never pre-selects a unit whose
-// only gap is a count or price a re-run could not produce.
+// applicable case, whether the engine would run that case, plus a per-case note
+// explaining why it is preselected. Without --new/--failed every applicable case
+// runs (and notes is empty); with them, a case runs exactly when its
+// SelectReason is not ReasonNone — the same predicate the engine uses — so the
+// form's initial selection matches non-TUI mode case for case. Only cases under
+// def's tiers, SkillFilter, and evalFilter, and applicable for the model (its
+// skip_providers honored), appear. Token-count estimates are deliberately not a
+// reason here nor in the engine, so this needs no token-counting round trip.
 func Needs(
 	opts Options, cat []SkillCatalog, sels []provider.Selection, def Tiers, evalFilter string,
-) map[string]map[Target]bool {
-	out := make(map[string]map[Target]bool, len(sels))
+) (need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
+	need = make(map[string]map[CaseRef]bool, len(sels))
 	for _, sel := range sels {
-		out[sel.Key()] = map[Target]bool{}
+		need[sel.Key()] = map[CaseRef]bool{}
 	}
+	notes = map[CaseRef]string{}
+	flags := opts.New || opts.Failed
 	for _, sc := range cat {
 		if opts.SkillFilter != "" && sc.Skill != opts.SkillFilter {
 			continue
 		}
 		var file *results.File
-		if opts.New || opts.Failed {
+		if flags {
 			file, _ = results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 		}
-		for _, sel := range sels {
-			if def.Triggers {
-				if app := applicableTriggers(sc.Triggers, sel.Provider.Name(), sc.Skill, nil); len(app) > 0 {
-					out[sel.Key()][Target{Skill: sc.Skill, Kind: KindTriggers}] = triggerUnitNeeds(opts, file, sel, app)
+		if def.Triggers {
+			for _, t := range sc.Triggers {
+				cr := CaseRef{Skill: sc.Skill, Kind: KindTriggers, Case: t.Query}
+				var perModel []SelectReason
+				for _, sel := range sels {
+					if t.SkipsProvider(sel.Provider.Name()) {
+						continue
+					}
+					reason := ReasonNone
+					if flags {
+						r, ok := lookupTrigger(file, sel.Key(), t.Query)
+						reason = triggerCaseReason(r, ok, t, triggerExecutes(opts, sel), opts.New, opts.Failed)
+					}
+					perModel = append(perModel, reason)
+					need[sel.Key()][cr] = !flags || reason != ReasonNone
+				}
+				if note := aggregateReasons(perModel); note != "" {
+					notes[cr] = note
 				}
 			}
-			if def.Evals {
-				ef := evalOnlyFilter(sc.Skill, evalFilter)
-				if app := applicableEvals(sc.Evals, sel.Provider.Name(), sc.Skill, ef); len(app) > 0 {
-					out[sel.Key()][Target{Skill: sc.Skill, Kind: KindEvals}] = evalUnitNeeds(opts, file, sel, app)
+		}
+		if def.Evals {
+			for _, c := range sc.Evals {
+				if evalFilter != "" && c.ID != evalFilter {
+					continue
+				}
+				cr := CaseRef{Skill: sc.Skill, Kind: KindEvals, Case: c.ID}
+				var perModel []SelectReason
+				for _, sel := range sels {
+					if c.SkipsProvider(sel.Provider.Name()) {
+						continue
+					}
+					reason := ReasonNone
+					if flags {
+						r, ok := lookupEval(file, sel.Key(), c.ID)
+						execute, reportsUsage, priced := evalCapabilities(opts, sel)
+						reason = evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed)
+					}
+					perModel = append(perModel, reason)
+					need[sel.Key()][cr] = !flags || reason != ReasonNone
+				}
+				if note := aggregateReasons(perModel); note != "" {
+					notes[cr] = note
 				}
 			}
 		}
 	}
-	return out
+	return need, notes
 }
 
-// evalOnlyFilter restricts a skill's evals to a single id, mirroring --eval.
-func evalOnlyFilter(skill, evalFilter string) *Filter {
-	if evalFilter == "" {
-		return nil
-	}
-	return &Filter{Evals: map[string]map[string]bool{skill: {evalFilter: true}}}
-}
-
-// countsUnfillable* are the probes the selection form uses instead of a live
-// token-counting round trip. Returning false means "treat a missing count as
-// unresolvable": a unit whose only gap is an absent token count or price — a
-// model with no counting API or pricing, or a prior run made without a working
-// credential (e.g. gpt-5.3-codex-spark) — is reported complete rather than
-// pre-selected for a --new re-run that could not fill it. The actual sweep still
-// probes the live counter, so a count that genuinely can be produced is.
-func countsUnfillableTrigger(evalspec.Trigger) bool { return false }
-func countsUnfillableEval(evalspec.Eval) bool       { return false }
-
-// triggerUnitNeeds reports whether the (model, skill, triggers) unit would run.
-func triggerUnitNeeds(opts Options, file *results.File, sel provider.Selection, app []evalspec.Trigger) bool {
-	if !opts.New && !opts.Failed {
-		return true
-	}
+// triggerExecutes reports whether a trigger sweep would run agents for sel (vs
+// token-count only): a CLI is on PATH and this is not a count-only invocation.
+func triggerExecutes(opts Options, sel provider.Selection) bool {
 	_, cliFound := provider.ResolveCLI(sel.Provider)
-	execute := !opts.CountOnly && cliFound
-	_, countCapable := sel.Provider.(provider.TokenCounter)
-	var entry *results.TriggerEntry
-	if file != nil {
-		entry = file.Triggers[sel.Key()]
-	}
-	return triggerSkipReason(entry, app, sel.Model, execute, countCapable,
-		opts.New, opts.Failed, countsUnfillableTrigger) == ""
+	return !opts.CountOnly && cliFound
 }
 
-// evalUnitNeeds reports whether the (model, skill, evals) unit would run.
-func evalUnitNeeds(opts Options, file *results.File, sel provider.Selection, app []evalspec.Eval) bool {
-	if !opts.New && !opts.Failed {
-		return true
-	}
+// evalCapabilities mirrors runEvalUnit's per-model knobs: whether it executes,
+// whether the provider reports measured usage, and whether the model is priced.
+func evalCapabilities(opts Options, sel provider.Selection) (execute, reportsUsage, priced bool) {
 	evalRunner, isEvalRunner := sel.Provider.(provider.EvalRunner)
 	_, cliFound := provider.ResolveCLI(sel.Provider)
-	execute := isEvalRunner && cliFound && !opts.CountOnly
-	reportsUsage := isEvalRunner && evalRunner.ReportsUsage()
-	_, countCapable := sel.Provider.(provider.TokenCounter)
-	var entry *results.EvalEntry
-	if file != nil {
-		entry = file.Evals[sel.Key()]
-	}
-	return evalSkipReason(entry, app, sel.Model, execute, reportsUsage, countCapable,
-		opts.New, opts.Failed, countsUnfillableEval) == ""
+	execute = isEvalRunner && cliFound && !opts.CountOnly
+	reportsUsage = isEvalRunner && evalRunner.ReportsUsage()
+	priced = sel.Model.InputUSD != nil && sel.Model.OutputUSD != nil
+	return execute, reportsUsage, priced
 }

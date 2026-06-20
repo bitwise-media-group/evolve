@@ -493,6 +493,59 @@ func TestEvalsFailedRerunsRuntimeError(t *testing.T) {
 	}
 }
 
+func TestEvalsFailedPreservesAndNarrows(t *testing.T) {
+	repo := evalRepoFixture(t)
+	// Two evals: "good" passes (created.txt is made), "bad" fails its assertion.
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "evals.json")
+	os.WriteFile(path, []byte(`{"evals": [
+		{"id": "good", "prompt": "create the file", "assertions": [{"type": "file_exists", "path": "created.txt"}]},
+		{"id": "bad", "prompt": "create the file", "assertions": [{"type": "file_exists", "path": "never-created.txt"}]}
+	]}`), 0o644)
+
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	var buf bytes.Buffer
+	opts.Stdout, opts.Stderr = &buf, &buf
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	resultsDir := filepath.Join(repo.Root, "evals", "solo-skill")
+	key := opts.Selected[0].Key()
+	file, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
+	if got := byID(file.Evals[key].Results); got["good"].Passed == nil || !*got["good"].Passed || got["bad"].Passed == nil || *got["bad"].Passed {
+		t.Fatalf("first run: want good pass / bad fail, got %+v", file.Evals[key].Results)
+	}
+
+	// Break the runner so any re-execution errors, then --failed. Only "bad" should
+	// rerun (and now error); "good" must be preserved untouched, proving the rerun
+	// narrowed to the failing case and merged rather than replaced the entry.
+	opts.Runner = &fakeEvalRunner{agentFails: true}
+	opts.Failed = true
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	file, _ = results.LoadDir(resultsDir, "solo", "solo-skill")
+	got := byID(file.Evals[key].Results)
+	if len(got) != 2 {
+		t.Fatalf("merged results = %d, want 2 (both evals retained)", len(got))
+	}
+	if got["good"].Passed == nil || !*got["good"].Passed || got["good"].RuntimeError != "" {
+		t.Errorf("good was not preserved: %+v", got["good"])
+	}
+	if got["bad"].RuntimeError == "" {
+		t.Errorf("bad should have reran under the broken runner: %+v", got["bad"])
+	}
+}
+
+// byID indexes eval results by id for assertion convenience.
+func byID(rs []results.EvalResult) map[string]results.EvalResult {
+	m := make(map[string]results.EvalResult, len(rs))
+	for _, r := range rs {
+		m[r.ID] = r
+	}
+	return m
+}
+
 func TestEvalFilter(t *testing.T) {
 	repo := evalRepoFixture(t)
 	opts := evalOptions(t, repo, &countingEvalProvider{})

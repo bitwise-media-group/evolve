@@ -90,14 +90,20 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 }
 
 // runTriggerUnit runs one (skill, model) trigger unit against the shared results
-// file, skill payload, and read-only trigger workspace. It token-counts every
-// applicable query, optionally executes the sweep, then persists and reports the
-// unit. A unit with no applicable queries reports nothing and returns cleanly.
+// file, skill payload, and read-only trigger workspace. Under --new/--failed it
+// reruns only the queries with a gap, merging their fresh results back over the
+// stored ones; otherwise it runs every selected query. A unit with no applicable
+// queries reports nothing and returns cleanly.
 func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet, sel provider.Selection,
 	file *results.File, skillMD []byte, triggers []evalspec.Trigger, ws string) (failed bool, err error) {
 
 	rep := opts.reporter()
-	applicable := applicableTriggers(triggers, sel.Provider.Name(), set.Skill, opts.Filter)
+	provName := sel.Provider.Name()
+	// modelApplicable is every query valid for this model (skip_providers + skill
+	// only), ignoring the selection filter, so a partial rerun can preserve the
+	// queries it does not touch. applicable then narrows by the selection filter.
+	modelApplicable := applicableTriggers(triggers, provName, set.Skill, nil)
+	applicable := applicableTriggers(triggers, provName, set.Skill, opts.Filter)
 	if len(applicable) == 0 {
 		return false, nil
 	}
@@ -105,15 +111,20 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	cli, cliFound := provider.ResolveCLI(sel.Provider)
 	execute := !opts.CountOnly && cliFound
 
-	probe := func(t evalspec.Trigger) bool {
-		return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, t.Query)) != nil
-	}
-	_, countCapable := sel.Provider.(provider.TokenCounter)
+	// Per-case run-set: under --new/--failed keep only the queries with a gap.
+	// reason != ReasonNone is the same predicate the TUI form preselects on, so
+	// CLI and TUI run the identical set.
+	runSet := applicable
 	if opts.New || opts.Failed {
-		if reason := triggerSkipReason(
-			file.Triggers[sel.Key()], applicable, sel.Model, execute, countCapable, opts.New, opts.Failed, probe,
-		); reason != "" {
-			rep.UnitSkipped(ref, reason)
+		runSet = nil
+		for _, t := range applicable {
+			r, ok := lookupTrigger(file, sel.Key(), t.Query)
+			if triggerCaseReason(r, ok, t, execute, opts.New, opts.Failed) != ReasonNone {
+				runSet = append(runSet, t)
+			}
+		}
+		if len(runSet) == 0 {
+			rep.UnitSkipped(ref, "results complete")
 			return false, nil
 		}
 	}
@@ -126,12 +137,12 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	if execute {
 		mode = ModeRun
 	}
-	rep.UnitStarted(ref, len(applicable), opts.Runs, mode)
+	rep.UnitStarted(ref, len(runSet), opts.Runs, mode)
 
 	// Token counting stays on this goroutine (cache-cheap); only agent runs
 	// go parallel.
-	entryResults := make([]results.TriggerResult, len(applicable))
-	for i, t := range applicable {
+	entryResults := make([]results.TriggerResult, len(runSet))
+	for i, t := range runSet {
 		tokens := opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, t.Query))
 		entryResults[i] = results.TriggerResult{
 			Query:         t.Query,
@@ -140,14 +151,15 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 		}
 	}
 	if execute {
-		batchFailed, err := runQueries(ctx, opts, sel, cli, ws, ref, applicable, entryResults)
+		batchFailed, err := runQueries(ctx, opts, sel, cli, ws, ref, runSet, entryResults)
 		failed = failed || batchFailed
 		if err != nil {
 			return failed, err
 		}
 	}
 
-	entry := buildTriggerEntry(opts, sel, execute, entryResults)
+	merged := mergeTriggerResults(file.Triggers[sel.Key()], entryResults, modelApplicable)
+	entry := buildTriggerEntry(opts, sel, execute, merged)
 	file.SetTrigger(sel.Key(), entry)
 	saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
 	if err != nil {
@@ -317,52 +329,33 @@ func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed boo
 	return entry
 }
 
-// triggerSkipReason is why a --new/--failed sweep may skip this skill/model, or
-// "" when a (re)run is needed. wantNew selects units with data a rerun could
-// fill (a missing/changed query, incomplete execution fields, or a token count
-// the API can produce); wantFailed selects units holding a complete-but-failing
-// query. With both, the conditions union. Fields a run could never fill are
-// exempt regardless: cost for models without published pricing, execution
-// fields when the runner is unavailable or this invocation is count-only, and
-// token counts the counting API cannot produce (probe reports that).
-func triggerSkipReason(entry *results.TriggerEntry, triggers []evalspec.Trigger, model provider.Model,
-	execute, countCapable, wantNew, wantFailed bool, probe func(evalspec.Trigger) bool) string {
+// mergeTriggerResults builds the saved result list for a (possibly partial)
+// rerun: in spec order over the queries valid for this model, it takes the fresh
+// result where the query was just run and the stored result otherwise. This
+// preserves queries the rerun did not touch, updates the ones it did, and prunes
+// queries removed from the spec (absent from modelApplicable).
+func mergeTriggerResults(existing *results.TriggerEntry, fresh []results.TriggerResult,
+	modelApplicable []evalspec.Trigger) []results.TriggerResult {
 
-	stored := map[string]results.TriggerResult{}
-	if entry != nil {
-		for _, r := range entry.Results {
-			stored[r.Query] = r
+	freshByQuery := make(map[string]results.TriggerResult, len(fresh))
+	for _, r := range fresh {
+		freshByQuery[r.Query] = r
+	}
+	storedByQuery := map[string]results.TriggerResult{}
+	if existing != nil {
+		for _, r := range existing.Results {
+			storedByQuery[r.Query] = r
 		}
 	}
-	var uncounted *evalspec.Trigger
-	for _, t := range triggers {
-		r, ok := stored[t.Query]
-		if wantNew {
-			if !ok || r.ShouldTrigger != t.ShouldTrigger {
-				return ""
-			}
-			if execute && (r.Hits == nil || r.Runs == nil || r.Passed == nil || r.AvgRunSeconds == nil) {
-				return ""
-			}
-		}
-		if wantFailed && execute && ok && r.Passed != nil && !*r.Passed {
-			return "" // a prior run did not pass; rerun it
-		}
-		// Estimates a provider can never produce (no counting API) are exempt;
-		// only --new fills counts, so it gates this probe.
-		missingCount := wantNew && countCapable && (r.Estimate == nil ||
-			(model.InputUSD != nil && r.Estimate.InputCostUSD == nil))
-		if uncounted == nil && missingCount {
-			uncounted = &t
+	merged := make([]results.TriggerResult, 0, len(modelApplicable))
+	for _, t := range modelApplicable {
+		if r, ok := freshByQuery[t.Query]; ok {
+			merged = append(merged, r)
+		} else if r, ok := storedByQuery[t.Query]; ok {
+			merged = append(merged, r)
 		}
 	}
-	if uncounted == nil {
-		return "results complete"
-	}
-	if probe(*uncounted) {
-		return ""
-	}
-	return "token counts unavailable"
+	return merged
 }
 
 func applicableTriggers(triggers []evalspec.Trigger, providerName, skill string, f *Filter) []evalspec.Trigger {

@@ -87,26 +87,36 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	file *results.File, skillMD []byte, allEvals []evalspec.Eval,
 ) (failed bool, err error) {
 	rep := opts.reporter()
+	provName := sel.Provider.Name()
 	evalRunner, isEvalRunner := sel.Provider.(provider.EvalRunner)
 	cli, cliFound := provider.ResolveCLI(sel.Provider)
 	execute := isEvalRunner && cliFound && !opts.CountOnly
+	reportsUsage := isEvalRunner && evalRunner.ReportsUsage()
+	priced := sel.Model.InputUSD != nil && sel.Model.OutputUSD != nil
 
-	evals := applicableEvals(allEvals, sel.Provider.Name(), set.Skill, opts.Filter)
+	// modelApplicable is every eval valid for this model (skip_providers + skill
+	// only), ignoring the selection filter, so a partial rerun preserves the evals
+	// it does not touch. evals then narrows by the selection filter.
+	modelApplicable := applicableEvals(allEvals, provName, set.Skill, nil)
+	evals := applicableEvals(allEvals, provName, set.Skill, opts.Filter)
 	if len(evals) == 0 {
 		return false, nil
 	}
 	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindEvals}
 
-	probe := func(c evalspec.Eval) bool {
-		return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt)) != nil
-	}
-	_, countCapable := sel.Provider.(provider.TokenCounter)
+	// Per-case run-set: under --new/--failed keep only the evals with a gap — the
+	// same predicate the TUI form preselects on, so CLI and TUI run an identical set.
+	runSet := evals
 	if opts.New || opts.Failed {
-		reportsUsage := isEvalRunner && evalRunner.ReportsUsage()
-		if reason := evalSkipReason(
-			file.Evals[sel.Key()], evals, sel.Model, execute, reportsUsage, countCapable, opts.New, opts.Failed, probe,
-		); reason != "" {
-			rep.UnitSkipped(ref, reason)
+		runSet = nil
+		for _, c := range evals {
+			r, ok := lookupEval(file, sel.Key(), c.ID)
+			if evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed) != ReasonNone {
+				runSet = append(runSet, c)
+			}
+		}
+		if len(runSet) == 0 {
+			rep.UnitSkipped(ref, "results complete")
 			return false, nil
 		}
 	}
@@ -118,12 +128,12 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	if execute {
 		mode = ModeRun
 	}
-	rep.UnitStarted(ref, len(evals), 0, mode)
+	rep.UnitStarted(ref, len(runSet), 0, mode)
 
 	// Token counting stays on this goroutine; only eval runs go parallel,
 	// each in its own workspace.
-	entryResults := make([]results.EvalResult, len(evals))
-	for i, c := range evals {
+	entryResults := make([]results.EvalResult, len(runSet))
+	for i, c := range runSet {
 		tokens := opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt))
 		entryResults[i] = results.EvalResult{
 			ID:       c.ID,
@@ -131,14 +141,15 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 		}
 	}
 	if execute {
-		batchFailed, err := runEvals(ctx, opts, set, sel, ref, evalRunner, cli, evals, entryResults)
+		batchFailed, err := runEvals(ctx, opts, set, sel, ref, evalRunner, cli, runSet, entryResults)
 		failed = failed || batchFailed
 		if err != nil {
 			return failed, err
 		}
 	}
 
-	entry := buildEvalEntry(opts, sel, execute, entryResults)
+	merged := mergeEvalResults(file.Evals[sel.Key()], entryResults, modelApplicable)
+	entry := buildEvalEntry(opts, sel, execute, merged)
 	file.SetEval(sel.Key(), entry)
 	saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
 	if err != nil {
@@ -551,77 +562,33 @@ func sumMeasured(entryResults []results.EvalResult) *results.Measured {
 	return sum
 }
 
-// evalNewIncomplete reports whether a stored eval result is missing data a
-// --new re-run could fill: an absent result, or — when this run executes — a
-// prior runtime error or absent pass/timing/usage/cost fields the runner would
-// produce. Fields a run could never fill stay exempt (handled by the caller).
-func evalNewIncomplete(r results.EvalResult, ok, execute, reportsUsage, priced bool) bool {
-	if !ok {
-		return true
-	}
-	if !execute {
-		return false
-	}
-	if r.RuntimeError != "" {
-		return true // a prior runtime error is not a completed result
-	}
-	if r.Passed == nil || r.Timing == nil || r.Timing.ExecutorDurationSeconds == nil {
-		return true
-	}
-	if reportsUsage {
-		if r.Measured == nil || r.Measured.InputTokens == nil || r.Measured.OutputTokens == nil {
-			return true
-		}
-		if priced && r.Measured.CostUSD == nil {
-			return true
-		}
-	}
-	return false
-}
+// mergeEvalResults builds the saved result list for a (possibly partial) rerun:
+// in spec order over the evals valid for this model, it takes the fresh result
+// where the eval was just run and the stored result otherwise. This preserves
+// evals the rerun did not touch, updates the ones it did, and prunes evals
+// removed from the spec (absent from modelApplicable).
+func mergeEvalResults(existing *results.EvalEntry, fresh []results.EvalResult,
+	modelApplicable []evalspec.Eval) []results.EvalResult {
 
-// evalSkipReason is why a --new/--failed sweep may skip this skill/model, or ""
-// when a (re)run is needed. wantNew selects units with data a rerun could fill
-// (a missing eval, a prior runtime error, incomplete execution/usage fields, or
-// a token count the API can produce); wantFailed selects units holding a
-// complete eval that errored or failed its assertions. With both, the
-// conditions union. Fields a run could never fill are exempt regardless: costs
-// for unpriced models, execution fields when no runner is available or this
-// invocation is count-only, measured usage for providers that never report it
-// (cursor), and token counts the counting API cannot produce.
-func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provider.Model,
-	execute, reportsUsage, countCapable, wantNew, wantFailed bool, probe func(evalspec.Eval) bool,
-) string {
-	stored := map[string]results.EvalResult{}
-	if entry != nil {
-		for _, r := range entry.Results {
-			stored[r.ID] = r
+	freshByID := make(map[string]results.EvalResult, len(fresh))
+	for _, r := range fresh {
+		freshByID[r.ID] = r
+	}
+	storedByID := map[string]results.EvalResult{}
+	if existing != nil {
+		for _, r := range existing.Results {
+			storedByID[r.ID] = r
 		}
 	}
-	priced := model.InputUSD != nil && model.OutputUSD != nil
-	var uncounted *evalspec.Eval
-	for _, c := range evals {
-		r, ok := stored[c.ID]
-		if wantNew && evalNewIncomplete(r, ok, execute, reportsUsage, priced) {
-			return ""
-		}
-		if wantFailed && execute && ok && (r.RuntimeError != "" || (r.Passed != nil && !*r.Passed)) {
-			return "" // a prior run errored or failed its assertions; rerun it
-		}
-		// Estimates a provider can never produce (no counting API) are exempt;
-		// only --new fills counts, so it gates this probe.
-		missingCount := wantNew && countCapable && (r.Estimate == nil ||
-			(model.InputUSD != nil && r.Estimate.InputCostUSD == nil))
-		if uncounted == nil && missingCount {
-			uncounted = &c
+	merged := make([]results.EvalResult, 0, len(modelApplicable))
+	for _, c := range modelApplicable {
+		if r, ok := freshByID[c.ID]; ok {
+			merged = append(merged, r)
+		} else if r, ok := storedByID[c.ID]; ok {
+			merged = append(merged, r)
 		}
 	}
-	if uncounted == nil {
-		return "results complete"
-	}
-	if probe(*uncounted) {
-		return ""
-	}
-	return "token counts unavailable"
+	return merged
 }
 
 func applicableEvals(evals []evalspec.Eval, providerName, skill string, f *Filter) []evalspec.Eval {

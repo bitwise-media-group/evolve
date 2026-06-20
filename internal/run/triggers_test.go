@@ -339,6 +339,46 @@ func TestTriggersFailedSkipsPassingIgnoresMissing(t *testing.T) {
 	}
 }
 
+func TestTriggersNewMergesAndPrunes(t *testing.T) {
+	repo := triggerRepoFixture(t) // "please trigger this", "unrelated request", (skip me on fake)
+	opts := triggerOptions(t, repo, &countingTriggerProvider{fakeTriggerProvider{priced: true}})
+	opts.Stdout = io.Discard
+	if _, err := Triggers(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	// Drop "unrelated request" and add a brand-new "fresh query". Under --new only
+	// the new query is a gap: the merge must keep "please trigger this", add the
+	// new one, and prune the removed query.
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
+	os.WriteFile(path, []byte(`{"triggers": [
+		{"query": "please trigger this", "should_trigger": true},
+		{"query": "fresh query", "should_trigger": false}
+	]}`), 0o644)
+
+	opts.New = true
+	if _, err := Triggers(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	queries := map[string]bool{}
+	for _, r := range file.Triggers["fake/model-1"].Results {
+		queries[r.Query] = true
+	}
+	if !queries["please trigger this"] {
+		t.Error("merge dropped a complete query the rerun did not touch")
+	}
+	if !queries["fresh query"] {
+		t.Error("the new query was not run")
+	}
+	if queries["unrelated request"] {
+		t.Error("a query removed from the spec was not pruned")
+	}
+	if len(queries) != 2 {
+		t.Errorf("results = %d queries, want 2", len(queries))
+	}
+}
+
 func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 	repo := triggerRepoFixture(t)
 	p := &failCountProvider{} // counting-capable, unpriced, but counting fails
@@ -359,8 +399,8 @@ func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 		t.Fatalf("estimate = %+v, want nil (counting failed)", entry.Results[0].Estimate)
 	}
 
-	// --new must NOT pre-select this unit: its only gap is a token count the
-	// model cannot produce, so a re-run could not fill it.
+	// --new must NOT pre-select this case: its execution data is complete and a
+	// missing token-count estimate is never a selection reason.
 	cat, err := Catalog(topts.Options)
 	if err != nil {
 		t.Fatal(err)
@@ -368,9 +408,13 @@ func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 	withNew := topts.Options
 	withNew.New = true
 	key := topts.Selected[0].Key()
-	tt := Target{Skill: "solo-skill", Kind: KindTriggers}
-	if n := Needs(withNew, cat, topts.Selected, Tiers{Triggers: true}, ""); n[key][tt] {
-		t.Error("--new pre-selected a unit whose only missing data is an unfillable token count")
+	cr := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "please trigger this"}
+	n, notes := Needs(withNew, cat, topts.Selected, Tiers{Triggers: true}, "")
+	if n[key][cr] {
+		t.Error("--new pre-selected a case whose only missing data is a token-count estimate")
+	}
+	if notes[cr] != "" {
+		t.Errorf("note = %q, want empty (complete case)", notes[cr])
 	}
 }
 
