@@ -191,6 +191,11 @@ Highlights:
 `--new` reruns only entries with missing values a rerun could actually fill; interrupted sweeps keep every model that
 finished, so Ctrl-C + `--new` is the resume story.
 
+`--modified` reruns only cases whose authored content changed since their stored results — a trigger when its SKILL.md
+frontmatter or its definition changed, an eval when the skill's files or its definition changed — compared against
+content fingerprints committed alongside the results. It composes with `--new`/`--failed`; a case with no stored
+fingerprint yet (or no result at all) is `--new`'s concern, not `--modified`'s.
+
 ## Migrating from skill-creator
 
 Evolve's eval schemas are a superset of the ones in

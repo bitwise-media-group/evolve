@@ -58,6 +58,7 @@ type SweepFlags struct {
 	CountOnly      bool
 	NewOnly        bool
 	FailedOnly     bool
+	ModifiedOnly   bool
 	KeepWorkspaces bool
 }
 
@@ -74,6 +75,8 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 		"only run evals whose stored results are missing values a rerun could fill")
 	cmd.Flags().BoolVar(&f.FailedOnly, "failed", false,
 		"only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)")
+	cmd.Flags().BoolVar(&f.ModifiedOnly, "modified", false,
+		"only run evals whose authored skill content or case definition changed since their stored results")
 	cmd.Flags().BoolVar(&f.KeepWorkspaces, "keep-workspaces", false, "keep throwaway workspaces for debugging")
 	cmd.Flags().String("stale-results", "",
 		"keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)")
@@ -116,6 +119,7 @@ func (f *SweepFlags) sweepOptions(cmd *cobra.Command) (run.Options, error) {
 		CountOnly:      f.CountOnly,
 		New:            f.NewOnly,
 		Failed:         f.FailedOnly,
+		Modified:       f.ModifiedOnly,
 		KeepWorkspaces: f.KeepWorkspaces,
 		ResultsFormat:  opts.ResultsFormat,
 		ToolVersion:    version.Version,

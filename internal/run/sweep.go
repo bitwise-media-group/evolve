@@ -12,6 +12,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/workspace"
 )
@@ -96,6 +97,17 @@ func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (fa
 	if err != nil {
 		return false, err
 	}
+	// Content fingerprints persisted for --modified: a trigger entry hashes the
+	// SKILL.md frontmatter, an eval entry the whole skill directory.
+	var triggerContent, evalContent string
+	if runTriggers {
+		triggerContent = triggerContentHash(skillMD)
+	}
+	if runEvalsTier {
+		if evalContent, err = skillContentHash(set.SkillDir); err != nil {
+			return false, fmt.Errorf("fingerprinting skill under test: %w", err)
+		}
+	}
 	rep := opts.reporter()
 
 	// The trigger sweep shares one read-only workspace across every model;
@@ -121,35 +133,66 @@ func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (fa
 		ws = w
 	}
 
+	u := sweepUnit{
+		opts: opts, set: set, file: file, skillMD: skillMD,
+		triggers: triggers, evals: evals,
+		triggerContent: triggerContent, evalContent: evalContent,
+		ws: ws, runTriggers: runTriggers, runEvalsTier: runEvalsTier,
+	}
 	for _, sel := range opts.Selected {
-		filter := opts.Filter
-		if opts.Filters != nil {
-			filter = opts.Filters[sel.Key()]
-			if filter == nil {
-				continue // this model is already complete (per --new)
-			}
+		modelFailed, err := runSweepModel(ctx, u, sel)
+		failed = failed || modelFailed
+		if err != nil {
+			return failed, err
 		}
-		if runTriggers {
-			to := opts.Options
-			to.Filter = filter
-			to.Timeout = pickTimeout(opts.TriggerTimeout, opts.Timeout)
-			tf, err := runTriggerUnit(ctx, TriggerOptions{Options: to, Runs: opts.Runs},
-				set, sel, file, skillMD, triggers, ws)
-			failed = failed || tf
-			if err != nil {
-				return failed, err
-			}
+	}
+	return failed, nil
+}
+
+// sweepUnit carries the per-skill invariants every model in a sweep set shares,
+// so runSweepModel is one helper rather than two inline tier blocks per model.
+type sweepUnit struct {
+	opts                        SweepOptions
+	set                         layout.EvalSet
+	file                        *results.File
+	skillMD                     []byte
+	triggers                    []evalspec.Trigger
+	evals                       []evalspec.Eval
+	triggerContent, evalContent string
+	ws                          string
+	runTriggers, runEvalsTier   bool
+}
+
+// runSweepModel runs one model's triggers then evals within a sweep set. A nil
+// per-model filter (the model is already complete under --new) skips it cleanly.
+func runSweepModel(ctx context.Context, u sweepUnit, sel provider.Selection) (failed bool, err error) {
+	filter := u.opts.Filter
+	if u.opts.Filters != nil {
+		filter = u.opts.Filters[sel.Key()]
+		if filter == nil {
+			return false, nil
 		}
-		if runEvalsTier {
-			eo := opts.Options
-			eo.Filter = filter
-			eo.Timeout = pickTimeout(opts.EvalTimeout, opts.Timeout)
-			ef, err := runEvalUnit(ctx, EvalOptions{Options: eo, EvalFilter: opts.EvalFilter, JudgeModel: opts.JudgeModel},
-				set, sel, file, skillMD, evals)
-			failed = failed || ef
-			if err != nil {
-				return failed, err
-			}
+	}
+	if u.runTriggers {
+		to := u.opts.Options
+		to.Filter = filter
+		to.Timeout = pickTimeout(u.opts.TriggerTimeout, u.opts.Timeout)
+		tf, err := runTriggerUnit(ctx, TriggerOptions{Options: to, Runs: u.opts.Runs},
+			u.set, sel, u.file, u.skillMD, u.triggerContent, u.triggers, u.ws)
+		failed = failed || tf
+		if err != nil {
+			return failed, err
+		}
+	}
+	if u.runEvalsTier {
+		eo := u.opts.Options
+		eo.Filter = filter
+		eo.Timeout = pickTimeout(u.opts.EvalTimeout, u.opts.Timeout)
+		ef, err := runEvalUnit(ctx, EvalOptions{Options: eo, EvalFilter: u.opts.EvalFilter, JudgeModel: u.opts.JudgeModel},
+			u.set, sel, u.file, u.skillMD, u.evalContent, u.evals)
+		failed = failed || ef
+		if err != nil {
+			return failed, err
 		}
 	}
 	return failed, nil

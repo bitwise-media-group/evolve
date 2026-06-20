@@ -4,6 +4,7 @@
 package run
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
@@ -67,6 +68,7 @@ type SkillCatalog struct {
 	Skill       string
 	Title       string // SKILL.md frontmatter title (falls back to name)
 	Description string
+	SkillDir    string // the skill's root directory, fingerprinted for --modified
 	ResultsDir  string // evals/<skill>, where results.<ext> persists
 	Triggers    []evalspec.Trigger
 	Evals       []evalspec.Eval
@@ -83,7 +85,7 @@ func Catalog(opts Options) ([]SkillCatalog, error) {
 	}
 	cat := make([]SkillCatalog, 0, len(sets))
 	for _, set := range sets {
-		sc := SkillCatalog{Plugin: set.Plugin.Name, Skill: set.Skill, ResultsDir: set.ResultsDir}
+		sc := SkillCatalog{Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir}
 		if fields, ok, _ := manifest.Frontmatter(filepath.Join(set.SkillDir, "SKILL.md")); ok {
 			if sc.Title = fields["title"]; sc.Title == "" {
 				sc.Title = fields["name"]
@@ -155,63 +157,111 @@ func Needs(
 		need[sel.Key()] = map[CaseRef]bool{}
 	}
 	notes = map[CaseRef]string{}
-	flags := opts.New || opts.Failed
+	flags := opts.New || opts.Failed || opts.Modified
 	for _, sc := range cat {
 		if opts.SkillFilter != "" && sc.Skill != opts.SkillFilter {
 			continue
 		}
 		var file *results.File
+		// Content fingerprints are needed only for --modified; computed once per
+		// skill, identical across every model and case in the skill.
+		var triggerContent, evalContent string
 		if flags {
 			file, _ = results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
+			triggerContent, evalContent = needContentHashes(opts, sc, def)
 		}
 		if def.Triggers {
-			for _, t := range sc.Triggers {
-				cr := CaseRef{Skill: sc.Skill, Kind: KindTriggers, Case: t.Query}
-				var perModel []SelectReason
-				for _, sel := range sels {
-					if t.SkipsProvider(sel.Provider.Name()) {
-						continue
-					}
-					reason := ReasonNone
-					if flags {
-						r, ok := lookupTrigger(file, sel.Key(), t.Query)
-						reason = triggerCaseReason(r, ok, t, triggerExecutes(opts, sel), opts.New, opts.Failed)
-					}
-					perModel = append(perModel, reason)
-					need[sel.Key()][cr] = !flags || reason != ReasonNone
-				}
-				if note := aggregateReasons(perModel); note != "" {
-					notes[cr] = note
-				}
-			}
+			needTriggers(opts, sc, sels, flags, file, triggerContent, need, notes)
 		}
 		if def.Evals {
-			for _, c := range sc.Evals {
-				if evalFilter != "" && c.ID != evalFilter {
-					continue
-				}
-				cr := CaseRef{Skill: sc.Skill, Kind: KindEvals, Case: c.ID}
-				var perModel []SelectReason
-				for _, sel := range sels {
-					if c.SkipsProvider(sel.Provider.Name()) {
-						continue
-					}
-					reason := ReasonNone
-					if flags {
-						r, ok := lookupEval(file, sel.Key(), c.ID)
-						execute, reportsUsage, priced := evalCapabilities(opts, sel)
-						reason = evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed)
-					}
-					perModel = append(perModel, reason)
-					need[sel.Key()][cr] = !flags || reason != ReasonNone
-				}
-				if note := aggregateReasons(perModel); note != "" {
-					notes[cr] = note
-				}
-			}
+			needEvals(opts, sc, sels, flags, file, evalContent, evalFilter, need, notes)
 		}
 	}
 	return need, notes
+}
+
+// needContentHashes computes a skill's per-tier content fingerprints for the
+// --modified preview, or empty strings when --modified is off (the only flag
+// that consults them). Empty on any read/walk error: a missing fingerprint is
+// treated as "no baseline", never a spurious modification.
+func needContentHashes(opts Options, sc SkillCatalog, def Tiers) (triggerContent, evalContent string) {
+	if !opts.Modified {
+		return "", ""
+	}
+	if def.Triggers {
+		if md, err := os.ReadFile(filepath.Join(sc.SkillDir, "SKILL.md")); err == nil {
+			triggerContent = triggerContentHash(md)
+		}
+	}
+	if def.Evals {
+		evalContent, _ = skillContentHash(sc.SkillDir)
+	}
+	return triggerContent, evalContent
+}
+
+// needTriggers records, for each of a skill's triggers, whether each model would
+// run it and the aggregate preselect note — the same predicate the engine uses.
+func needTriggers(opts Options, sc SkillCatalog, sels []provider.Selection, flags bool,
+	file *results.File, content string, need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
+
+	for _, t := range sc.Triggers {
+		cr := CaseRef{Skill: sc.Skill, Kind: KindTriggers, Case: t.Query}
+		var freshSpec string
+		if opts.Modified {
+			freshSpec = specHash(t)
+		}
+		var perModel []SelectReason
+		for _, sel := range sels {
+			if t.SkipsProvider(sel.Provider.Name()) {
+				continue
+			}
+			reason := ReasonNone
+			if flags {
+				r, storedContent, ok := lookupTrigger(file, sel.Key(), t.Query)
+				fp := fingerprints{storedContent: storedContent, freshContent: content, freshSpec: freshSpec}
+				reason = triggerCaseReason(r, ok, triggerExecutes(opts, sel), opts.New, opts.Failed, opts.Modified, fp)
+			}
+			perModel = append(perModel, reason)
+			need[sel.Key()][cr] = !flags || reason != ReasonNone
+		}
+		if note := aggregateReasons(perModel); note != "" {
+			notes[cr] = note
+		}
+	}
+}
+
+// needEvals is needTriggers for the eval tier, honoring evalFilter.
+func needEvals(opts Options, sc SkillCatalog, sels []provider.Selection, flags bool,
+	file *results.File, content, evalFilter string, need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
+
+	for _, c := range sc.Evals {
+		if evalFilter != "" && c.ID != evalFilter {
+			continue
+		}
+		cr := CaseRef{Skill: sc.Skill, Kind: KindEvals, Case: c.ID}
+		var freshSpec string
+		if opts.Modified {
+			freshSpec = specHash(c)
+		}
+		var perModel []SelectReason
+		for _, sel := range sels {
+			if c.SkipsProvider(sel.Provider.Name()) {
+				continue
+			}
+			reason := ReasonNone
+			if flags {
+				r, storedContent, ok := lookupEval(file, sel.Key(), c.ID)
+				execute, reportsUsage, priced := evalCapabilities(opts, sel)
+				fp := fingerprints{storedContent: storedContent, freshContent: content, freshSpec: freshSpec}
+				reason = evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed, opts.Modified, fp)
+			}
+			perModel = append(perModel, reason)
+			need[sel.Key()][cr] = !flags || reason != ReasonNone
+		}
+		if note := aggregateReasons(perModel); note != "" {
+			notes[cr] = note
+		}
+	}
 }
 
 // triggerExecutes reports whether a trigger sweep would run agents for sel (vs

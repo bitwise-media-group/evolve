@@ -56,6 +56,25 @@ func Frontmatter(path string) (fields map[string]string, ok bool, err error) {
 	return nil, false, nil // unterminated block counts as none
 }
 
+// FrontmatterBlock returns the raw bytes of a SKILL.md's leading `---` block —
+// the lines strictly between the opening and closing fences, joined with \n —
+// from already-read file content. Unlike Frontmatter it parses no fields, so it
+// preserves nested keys and multiline YAML verbatim; callers fingerprint the
+// result. ok is false when there is no terminated `---` block (matching
+// Frontmatter's contract).
+func FrontmatterBlock(data []byte) (block []byte, ok bool) {
+	lines := SplitLines(string(data))
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return nil, false
+	}
+	for i, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return []byte(strings.Join(lines[1:1+i], "\n")), true
+		}
+	}
+	return nil, false // unterminated block counts as none
+}
+
 // SplitLines splits on \n, \r\n, and \r without producing a trailing empty
 // line, mirroring Python's str.splitlines used by the original harness.
 func SplitLines(s string) []string {

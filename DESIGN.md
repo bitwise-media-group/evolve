@@ -137,10 +137,11 @@ model, constructs the dashboard, and `tea.Batch`es dispatching the request with 
 `formModel` (`form.go`) is a three-pane, lazygit-style screen: a providers/models tree on the left, and triggers and
 evals trees stacked on the right. All three are the generic collapsible checkbox `tree` (`tree.go`) whose leaves carry a
 tri-state (`nodeOff` / `nodePartial` / `nodeOn`). The initial selection is _derived_, not blank: `run.Needs` returns the
-per-model run matrix the non-TUI path would execute (honouring `--new`, `--skill`, `--eval`), and `deriveStates` turns
-it into the leaf states — so the form opens already matching flag-only mode, with `--new`'s partial units shown as
-partial. `request()` walks the final selection into a `tui.RunRequest` carrying a _per-model_ `run.Filter`, letting each
-model run a different set of cases (needed so `--new` reruns only the stale units while a peer runs everything).
+per-model run matrix the non-TUI path would execute (honouring `--new`/`--failed`/`--modified`, `--skill`, `--eval`),
+and `deriveStates` turns it into the leaf states — so the form opens already matching flag-only mode, with `--new`'s
+partial units shown as partial. `request()` walks the final selection into a `tui.RunRequest` carrying a _per-model_
+`run.Filter`, letting each model run a different set of cases (needed so `--new` reruns only the stale units while a
+peer runs everything).
 
 ### Live dashboard
 

@@ -40,7 +40,14 @@ type Options struct {
 	// result graded as failing, or an eval that errored). It composes with New:
 	// with both set, a unit reruns when any case is missing data OR previously
 	// failed. Like New, selection is per unit (skill/model/tier).
-	Failed         bool
+	Failed bool
+	// Modified selects cases whose authored content changed since their stored
+	// results: a trigger when its SKILL.md frontmatter or its JSON definition
+	// changed, an eval when the skill directory contents or its JSON definition
+	// changed (detected via fingerprints persisted in the results). It composes
+	// with New/Failed by OR, and only fires when a stored result with a baseline
+	// fingerprint exists — a brand-new case is New's concern, not Modified's.
+	Modified       bool
 	KeepWorkspaces bool
 	// HostSandboxed reports that Runner wraps each agent in evolve's own OS
 	// sandbox, so providers must disable the agent CLI's own sandbox to avoid

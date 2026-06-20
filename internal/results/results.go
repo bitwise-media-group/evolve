@@ -39,12 +39,19 @@ type File struct {
 
 // Header is the run metadata common to both entry kinds.
 type Header struct {
-	Provider       string   `json:"provider"`
-	Model          string   `json:"model"`
-	Display        string   `json:"display"`
-	ToolVersion    string   `json:"tool_version"`
-	RanAt          string   `json:"ran_at"` // RFC3339 UTC, second precision
-	Executed       bool     `json:"executed"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	Display     string `json:"display"`
+	ToolVersion string `json:"tool_version"`
+	RanAt       string `json:"ran_at"` // RFC3339 UTC, second precision
+	Executed    bool   `json:"executed"`
+	// ContentHash fingerprints the skill content this entry's tier depends on,
+	// recorded when the entry was written: a trigger entry hashes the SKILL.md
+	// frontmatter, an eval entry the whole skill directory. --modified reruns a
+	// case when this differs from the current content (see the run package).
+	// Empty on entries written before fingerprinting; --modified treats an empty
+	// hash as "no baseline" and does not select on it.
+	ContentHash    string   `json:"content_hash,omitempty"`
 	RunsPerQuery   int      `json:"runs_per_query,omitempty"` // triggers only
 	TimeoutSeconds int      `json:"timeout_seconds"`
 	Pricing        *Pricing `json:"pricing"` // explicit null when unpriced
@@ -109,6 +116,10 @@ type TriggerResult struct {
 	Passed        *bool     `json:"passed,omitempty"`
 	AvgRunSeconds *float64  `json:"avg_run_seconds,omitempty"`
 	Estimate      *Estimate `json:"estimate,omitempty"`
+	// SpecHash fingerprints this trigger's authored JSON definition when the
+	// result was written; --modified reruns the query when it differs from the
+	// current spec. Empty on pre-fingerprinting results (no baseline).
+	SpecHash string `json:"spec_hash,omitempty"`
 }
 
 // TriggerSummary aggregates a trigger entry.
@@ -198,6 +209,10 @@ type EvalResult struct {
 	Summary          *GradeSummary     `json:"summary,omitempty"`
 	ExecutionMetrics *ExecutionMetrics `json:"execution_metrics,omitempty"`
 	Timing           *Timing           `json:"timing,omitempty"`
+	// SpecHash fingerprints this eval's authored JSON definition when the result
+	// was written; --modified reruns the eval when it differs from the current
+	// spec. Empty on pre-fingerprinting results (no baseline).
+	SpecHash string `json:"spec_hash,omitempty"`
 }
 
 // EvalSummary aggregates an eval entry. Errored counts evals whose agent run

@@ -65,6 +65,9 @@ func TestCatalogLoadsSpecsAndMetadata(t *testing.T) {
 	if sc.ResultsDir == "" {
 		t.Error("ResultsDir not set")
 	}
+	if sc.SkillDir == "" {
+		t.Error("SkillDir not set")
+	}
 }
 
 func TestPlanEnumeratesUnits(t *testing.T) {
@@ -216,6 +219,67 @@ func TestNeedsNewSkipsComplete(t *testing.T) {
 	}
 	if n, _ := Needs(withNew, cat, sels, Tiers{Triggers: true}, ""); n[key][tc] {
 		t.Errorf("--new should not rerun completed triggers: %+v", n[key])
+	}
+}
+
+func TestNeedsModifiedSelectsChangedContent(t *testing.T) {
+	repo := planRepoFixture(t)
+	p := &countingTriggerProvider{fakeTriggerProvider{priced: true}}
+	topts := triggerOptions(t, repo, p)
+	topts.Stdout = io.Discard
+	topts.Stderr = io.Discard
+
+	withMod := topts.Options
+	withMod.Modified = true
+	sels := topts.Selected
+	key := sels[0].Key()
+	q1 := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "q1"}
+
+	// Establish a baseline of stored fingerprints, then --modified selects nothing.
+	if _, err := Triggers(context.Background(), topts); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := Catalog(topts.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := Needs(withMod, cat, sels, Tiers{Triggers: true}, ""); n[key][q1] {
+		t.Errorf("--modified should not select an unchanged trigger: %+v", n[key])
+	}
+
+	// Flip q1's should_trigger (same query key, changed definition): --modified
+	// reselects it with reason "modified".
+	tpath := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
+	os.WriteFile(tpath, []byte(`{"triggers": [
+		{"query": "q1", "should_trigger": false},
+		{"query": "q2", "should_trigger": false}
+	]}`), 0o644)
+	cat, err = Catalog(topts.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, notes := Needs(withMod, cat, sels, Tiers{Triggers: true}, "")
+	if !n[key][q1] {
+		t.Errorf("--modified should select a trigger whose definition changed: %+v", n[key])
+	}
+	if notes[q1] != ReasonModified.String() {
+		t.Errorf("note = %q, want %q", notes[q1], ReasonModified)
+	}
+
+	// Restore the spec and instead edit the SKILL.md frontmatter: --modified
+	// reselects on the content-hash change even though the spec is unchanged.
+	os.WriteFile(tpath, []byte(`{"triggers": [
+		{"query": "q1", "should_trigger": true},
+		{"query": "q2", "should_trigger": false}
+	]}`), 0o644)
+	os.WriteFile(filepath.Join(repo.Root, "skills", "solo-skill", "SKILL.md"),
+		[]byte("---\ntitle: Solo Skill\ndescription: Does a DIFFERENT thing.\n---\nbody\n"), 0o644)
+	cat, err = Catalog(topts.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := Needs(withMod, cat, sels, Tiers{Triggers: true}, ""); !n[key][q1] {
+		t.Errorf("--modified should select triggers when SKILL.md frontmatter changed: %+v", n[key])
 	}
 }
 

@@ -50,6 +50,10 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
 
 .PP
+\fB--modified\fP[=false]
+	only run evals whose authored skill content or case definition changed since their stored results
+
+.PP
 \fB--new\fP[=false]
 	only run evals whose stored results are missing values a rerun could fill
 

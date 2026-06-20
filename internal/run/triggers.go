@@ -55,6 +55,9 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
+	// A trigger eval depends on the skill's frontmatter (what makes it trigger),
+	// so that is the content fingerprint persisted for --modified detection.
+	contentHash := triggerContentHash(skillMD)
 	rep := opts.reporter()
 	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
 	if reset {
@@ -80,7 +83,7 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 	}
 
 	for _, sel := range opts.Selected {
-		unitFailed, err := runTriggerUnit(ctx, opts, set, sel, file, skillMD, triggers, ws)
+		unitFailed, err := runTriggerUnit(ctx, opts, set, sel, file, skillMD, contentHash, triggers, ws)
 		failed = failed || unitFailed
 		if err != nil {
 			return failed, err
@@ -95,7 +98,8 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 // stored ones; otherwise it runs every selected query. A unit with no applicable
 // queries reports nothing and returns cleanly.
 func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet, sel provider.Selection,
-	file *results.File, skillMD []byte, triggers []evalspec.Trigger, ws string) (failed bool, err error) {
+	file *results.File, skillMD []byte, contentHash string, triggers []evalspec.Trigger, ws string,
+) (failed bool, err error) {
 
 	rep := opts.reporter()
 	provName := sel.Provider.Name()
@@ -111,15 +115,16 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	cli, cliFound := provider.ResolveCLI(sel.Provider)
 	execute := !opts.CountOnly && cliFound
 
-	// Per-case run-set: under --new/--failed keep only the queries with a gap.
-	// reason != ReasonNone is the same predicate the TUI form preselects on, so
-	// CLI and TUI run the identical set.
+	// Per-case run-set: under --new/--failed/--modified keep only the queries
+	// with a gap. reason != ReasonNone is the same predicate the TUI form
+	// preselects on, so CLI and TUI run the identical set.
 	runSet := applicable
-	if opts.New || opts.Failed {
+	if opts.New || opts.Failed || opts.Modified {
 		runSet = nil
 		for _, t := range applicable {
-			r, ok := lookupTrigger(file, sel.Key(), t.Query)
-			if triggerCaseReason(r, ok, t, execute, opts.New, opts.Failed) != ReasonNone {
+			r, storedContent, ok := lookupTrigger(file, sel.Key(), t.Query)
+			fp := fingerprints{storedContent: storedContent, freshContent: contentHash, freshSpec: specHash(t)}
+			if triggerCaseReason(r, ok, execute, opts.New, opts.Failed, opts.Modified, fp) != ReasonNone {
 				runSet = append(runSet, t)
 			}
 		}
@@ -148,6 +153,7 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 			Query:         t.Query,
 			ShouldTrigger: t.ShouldTrigger,
 			Estimate:      results.NewEstimate(tokens, sel.Model.InputUSD),
+			SpecHash:      specHash(t),
 		}
 	}
 	if execute {
@@ -159,7 +165,7 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	}
 
 	merged := mergeTriggerResults(file.Triggers[sel.Key()], entryResults, modelApplicable)
-	entry := buildTriggerEntry(opts, sel, execute, merged)
+	entry := buildTriggerEntry(opts, sel, execute, contentHash, merged)
 	file.SetTrigger(sel.Key(), entry)
 	saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
 	if err != nil {
@@ -286,9 +292,11 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 }
 
 func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed bool,
-	entryResults []results.TriggerResult) *results.TriggerEntry {
+	contentHash string, entryResults []results.TriggerResult) *results.TriggerEntry {
+	header := opts.header(sel, executed)
+	header.ContentHash = contentHash
 	entry := &results.TriggerEntry{
-		Header:  opts.header(sel, executed),
+		Header:  header,
 		Results: entryResults,
 		Summary: results.TriggerSummary{Total: len(entryResults)},
 	}

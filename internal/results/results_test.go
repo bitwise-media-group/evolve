@@ -22,6 +22,7 @@ func sample() *File {
 		Header: Header{
 			Provider: "anthropic", Model: "claude-fable-5", Display: "Claude Fable 5",
 			ToolVersion: "0.1.0", RanAt: "2026-06-11T14:02:09Z", Executed: true,
+			ContentHash:  "frontmatterhash",
 			RunsPerQuery: 3, TimeoutSeconds: 120,
 			Pricing: &Pricing{InputPerMTok: &price, OutputPerMTok: &out},
 		},
@@ -29,6 +30,7 @@ func sample() *File {
 			Query: "Write tests", ShouldTrigger: true,
 			Hits: &hits, Runs: &runs, Passed: &passed, AvgRunSeconds: &avg,
 			Estimate: &Estimate{InputTokens: 1385, InputCostUSD: ptr(0.01385)},
+			SpecHash: "triggerspechash",
 		}},
 		Summary: TriggerSummary{Passed: &npassed, Total: 1, AvgRunSeconds: &avg,
 			Estimate: &Estimate{InputTokens: 1385, InputCostUSD: ptr(0.01385)}},
@@ -71,6 +73,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 			entry := loaded.Triggers["anthropic/claude-fable-5"]
 			if entry == nil || !entry.Executed || *entry.Summary.Passed != 1 {
 				t.Fatalf("loaded entry = %+v", entry)
+			}
+			if entry.ContentHash != "frontmatterhash" || entry.Results[0].SpecHash != "triggerspechash" {
+				t.Errorf("fingerprints lost: content=%q spec=%q", entry.ContentHash, entry.Results[0].SpecHash)
 			}
 			if entry.Pricing == nil || *entry.Pricing.InputPerMTok != 10.0 {
 				t.Errorf("pricing = %+v", entry.Pricing)

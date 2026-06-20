@@ -55,6 +55,10 @@
         "tool_version": { "type": "string" },
         "ran_at": { "type": "string", "format": "date-time" },
         "executed": { "type": "boolean" },
+        "content_hash": {
+          "description": "Fingerprint of the skill content this entry's tier depends on (trigger entries hash the SKILL.md frontmatter; eval entries the whole skill directory), recorded when the entry was written. `evolve run --modified` reruns a case when it differs from the current content. Absent on entries written before fingerprinting.",
+          "type": "string"
+        },
         "runs_per_query": { "type": "integer", "minimum": 1 },
         "timeout_seconds": { "type": "integer", "minimum": 0 },
         "pricing": { "$ref": "#/$defs/pricing" }

@@ -62,6 +62,12 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
+	// A behavioral eval depends on the whole skill the agent sees, so the entire
+	// skill directory is the content fingerprint persisted for --modified.
+	contentHash, err := skillContentHash(set.SkillDir)
+	if err != nil {
+		return false, fmt.Errorf("fingerprinting skill under test: %w", err)
+	}
 	rep := opts.reporter()
 	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
 	if reset {
@@ -70,7 +76,7 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 	}
 
 	for _, sel := range opts.Selected {
-		unitFailed, err := runEvalUnit(ctx, opts, set, sel, file, skillMD, allEvals)
+		unitFailed, err := runEvalUnit(ctx, opts, set, sel, file, skillMD, contentHash, allEvals)
 		failed = failed || unitFailed
 		if err != nil {
 			return failed, err
@@ -84,7 +90,7 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 // per-provider skips and the selection filter are applied here. A unit with no
 // applicable evals reports nothing and returns cleanly.
 func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
-	file *results.File, skillMD []byte, allEvals []evalspec.Eval,
+	file *results.File, skillMD []byte, contentHash string, allEvals []evalspec.Eval,
 ) (failed bool, err error) {
 	rep := opts.reporter()
 	provName := sel.Provider.Name()
@@ -104,14 +110,16 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	}
 	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindEvals}
 
-	// Per-case run-set: under --new/--failed keep only the evals with a gap — the
-	// same predicate the TUI form preselects on, so CLI and TUI run an identical set.
+	// Per-case run-set: under --new/--failed/--modified keep only the evals with a
+	// gap — the same predicate the TUI form preselects on, so CLI and TUI run an
+	// identical set.
 	runSet := evals
-	if opts.New || opts.Failed {
+	if opts.New || opts.Failed || opts.Modified {
 		runSet = nil
 		for _, c := range evals {
-			r, ok := lookupEval(file, sel.Key(), c.ID)
-			if evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed) != ReasonNone {
+			r, storedContent, ok := lookupEval(file, sel.Key(), c.ID)
+			fp := fingerprints{storedContent: storedContent, freshContent: contentHash, freshSpec: specHash(c)}
+			if evalCaseReason(r, ok, execute, reportsUsage, priced, opts.New, opts.Failed, opts.Modified, fp) != ReasonNone {
 				runSet = append(runSet, c)
 			}
 		}
@@ -138,6 +146,7 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 		entryResults[i] = results.EvalResult{
 			ID:       c.ID,
 			Estimate: results.NewEstimate(tokens, sel.Model.InputUSD),
+			SpecHash: specHash(c),
 		}
 	}
 	if execute {
@@ -149,7 +158,7 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	}
 
 	merged := mergeEvalResults(file.Evals[sel.Key()], entryResults, modelApplicable)
-	entry := buildEvalEntry(opts, sel, execute, merged)
+	entry := buildEvalEntry(opts, sel, execute, contentHash, merged)
 	file.SetEval(sel.Key(), entry)
 	saved, err := file.SaveDir(set.ResultsDir, opts.ResultsFormat)
 	if err != nil {
@@ -192,6 +201,7 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel pro
 				return err
 			}
 			result.Estimate = entryResults[i].Estimate // counting happened up front
+			result.SpecHash = entryResults[i].SpecHash // fingerprint computed up front
 			entryResults[i] = result
 			outcomes[i] = outcome
 			return nil
@@ -460,10 +470,12 @@ func measured(model provider.Model, usage *provider.Usage) *results.Measured {
 }
 
 func buildEvalEntry(opts EvalOptions, sel provider.Selection, executed bool,
-	entryResults []results.EvalResult,
+	contentHash string, entryResults []results.EvalResult,
 ) *results.EvalEntry {
+	header := opts.header(sel, executed)
+	header.ContentHash = contentHash
 	entry := &results.EvalEntry{
-		Header:  opts.header(sel, executed),
+		Header:  header,
 		Results: entryResults,
 		Summary: results.EvalSummary{Total: len(entryResults)},
 	}

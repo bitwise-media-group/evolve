@@ -44,7 +44,11 @@
         "runs": { "type": "integer", "minimum": 1 },
         "passed": { "type": ["boolean", "null"] },
         "avg_run_seconds": { "type": "number", "minimum": 0 },
-        "estimate": { "$ref": "common.schema.json#/$defs/estimate" }
+        "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
+        "spec_hash": {
+          "description": "Fingerprint of this trigger's authored JSON definition when the result was written; `evolve run --modified` reruns the query when it differs. Absent on results written before fingerprinting.",
+          "type": "string"
+        }
       },
       "additionalProperties": true
     },
@@ -96,7 +100,11 @@
           "items": { "$ref": "grading.schema.json#/$defs/claim" }
         },
         "user_notes_summary": { "$ref": "grading.schema.json#/$defs/userNotesSummary" },
-        "eval_feedback": { "$ref": "grading.schema.json#/$defs/evalFeedback" }
+        "eval_feedback": { "$ref": "grading.schema.json#/$defs/evalFeedback" },
+        "spec_hash": {
+          "description": "Fingerprint of this eval's authored JSON definition when the result was written; `evolve run --modified` reruns the eval when it differs. Absent on results written before fingerprinting.",
+          "type": "string"
+        }
       },
       "additionalProperties": true
     },
