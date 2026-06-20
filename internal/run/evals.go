@@ -101,10 +101,10 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 		return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt)) != nil
 	}
 	_, countCapable := sel.Provider.(provider.TokenCounter)
-	if opts.New {
+	if opts.New || opts.Failed {
 		reportsUsage := isEvalRunner && evalRunner.ReportsUsage()
 		if reason := evalSkipReason(
-			file.Evals[sel.Key()], evals, sel.Model, execute, reportsUsage, countCapable, probe,
+			file.Evals[sel.Key()], evals, sel.Model, execute, reportsUsage, countCapable, opts.New, opts.Failed, probe,
 		); reason != "" {
 			rep.UnitSkipped(ref, reason)
 			return false, nil
@@ -551,13 +551,45 @@ func sumMeasured(entryResults []results.EvalResult) *results.Measured {
 	return sum
 }
 
-// evalSkipReason is why --new may skip this skill/model, or "" when a (re)run
-// is needed. Fields a run could never fill are exempt: costs for unpriced
-// models, execution fields when no runner is available or this invocation is
-// count-only, measured usage for providers that never report it (cursor),
-// and token counts the counting API cannot produce.
+// evalNewIncomplete reports whether a stored eval result is missing data a
+// --new re-run could fill: an absent result, or — when this run executes — a
+// prior runtime error or absent pass/timing/usage/cost fields the runner would
+// produce. Fields a run could never fill stay exempt (handled by the caller).
+func evalNewIncomplete(r results.EvalResult, ok, execute, reportsUsage, priced bool) bool {
+	if !ok {
+		return true
+	}
+	if !execute {
+		return false
+	}
+	if r.RuntimeError != "" {
+		return true // a prior runtime error is not a completed result
+	}
+	if r.Passed == nil || r.Timing == nil || r.Timing.ExecutorDurationSeconds == nil {
+		return true
+	}
+	if reportsUsage {
+		if r.Measured == nil || r.Measured.InputTokens == nil || r.Measured.OutputTokens == nil {
+			return true
+		}
+		if priced && r.Measured.CostUSD == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// evalSkipReason is why a --new/--failed sweep may skip this skill/model, or ""
+// when a (re)run is needed. wantNew selects units with data a rerun could fill
+// (a missing eval, a prior runtime error, incomplete execution/usage fields, or
+// a token count the API can produce); wantFailed selects units holding a
+// complete eval that errored or failed its assertions. With both, the
+// conditions union. Fields a run could never fill are exempt regardless: costs
+// for unpriced models, execution fields when no runner is available or this
+// invocation is count-only, measured usage for providers that never report it
+// (cursor), and token counts the counting API cannot produce.
 func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provider.Model,
-	execute, reportsUsage, countCapable bool, probe func(evalspec.Eval) bool,
+	execute, reportsUsage, countCapable, wantNew, wantFailed bool, probe func(evalspec.Eval) bool,
 ) string {
 	stored := map[string]results.EvalResult{}
 	if entry != nil {
@@ -569,27 +601,15 @@ func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provi
 	var uncounted *evalspec.Eval
 	for _, c := range evals {
 		r, ok := stored[c.ID]
-		if !ok {
+		if wantNew && evalNewIncomplete(r, ok, execute, reportsUsage, priced) {
 			return ""
 		}
-		if execute && r.RuntimeError != "" {
-			return "" // a prior runtime error is not a completed result; re-run it
+		if wantFailed && execute && ok && (r.RuntimeError != "" || (r.Passed != nil && !*r.Passed)) {
+			return "" // a prior run errored or failed its assertions; rerun it
 		}
-		if execute {
-			if r.Passed == nil || r.Timing == nil || r.Timing.ExecutorDurationSeconds == nil {
-				return ""
-			}
-			if reportsUsage {
-				if r.Measured == nil || r.Measured.InputTokens == nil || r.Measured.OutputTokens == nil {
-					return ""
-				}
-				if priced && r.Measured.CostUSD == nil {
-					return ""
-				}
-			}
-		}
-		// Estimates a provider can never produce (no counting API) are exempt.
-		missingCount := countCapable && (r.Estimate == nil ||
+		// Estimates a provider can never produce (no counting API) are exempt;
+		// only --new fills counts, so it gates this probe.
+		missingCount := wantNew && countCapable && (r.Estimate == nil ||
 			(model.InputUSD != nil && r.Estimate.InputCostUSD == nil))
 		if uncounted == nil && missingCount {
 			uncounted = &c

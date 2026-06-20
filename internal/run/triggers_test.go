@@ -268,6 +268,77 @@ func TestTriggersNewRerunsAfterEvalChange(t *testing.T) {
 	}
 }
 
+func TestTriggersFailedRerunsFailingUnit(t *testing.T) {
+	repo := triggerRepoFixture(t)
+	// A query the fake never triggers though it should: the unit fails.
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
+	os.WriteFile(path, []byte(`{"triggers": [{"query": "never fires", "should_trigger": true}]}`), 0o644)
+
+	opts := triggerOptions(t, repo, &countingTriggerProvider{fakeTriggerProvider{priced: true}})
+	opts.Stdout = io.Discard
+	if failed, err := Triggers(context.Background(), opts); err != nil || !failed {
+		t.Fatalf("first run failed=%v err=%v, want a failing unit", failed, err)
+	}
+
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	opts.Failed = true
+	if _, err := Triggers(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "skip:") {
+		t.Errorf("--failed skipped a unit with a failing query:\n%s", stdout.String())
+	}
+}
+
+func TestTriggersFailedSkipsPassingIgnoresMissing(t *testing.T) {
+	repo := triggerRepoFixture(t) // default fixture: every applicable query passes
+	opts := triggerOptions(t, repo, &countingTriggerProvider{fakeTriggerProvider{priced: true}})
+	opts.Stdout = io.Discard
+	if failed, err := Triggers(context.Background(), opts); err != nil || failed {
+		t.Fatalf("first run failed=%v err=%v, want all passing", failed, err)
+	}
+
+	// --failed alone skips an all-passing unit.
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	opts.Failed = true
+	if _, err := Triggers(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "skip: results complete") {
+		t.Errorf("--failed did not skip an all-passing unit:\n%s", stdout.String())
+	}
+
+	// Add a never-run query: --failed alone still skips (missing is not a failure);
+	// --new --failed reruns the unit to fill it.
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
+	data, _ := os.ReadFile(path)
+	var spec map[string]any
+	json.Unmarshal(data, &spec)
+	spec["triggers"] = append(spec["triggers"].([]any),
+		map[string]any{"query": "unrelated and new", "should_trigger": false})
+	updated, _ := json.Marshal(spec)
+	os.WriteFile(path, updated, 0o644)
+
+	stdout.Reset()
+	if _, err := Triggers(context.Background(), opts); err != nil { // --failed only
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "skip: results complete") {
+		t.Errorf("--failed alone must ignore merely-missing data:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	opts.New = true // --new --failed
+	if _, err := Triggers(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "skip:") {
+		t.Errorf("--new --failed must rerun a unit with missing data:\n%s", stdout.String())
+	}
+}
+
 func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 	repo := triggerRepoFixture(t)
 	p := &failCountProvider{} // counting-capable, unpriced, but counting fails

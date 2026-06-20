@@ -26,16 +26,21 @@ type Runner interface {
 // Options holds the sweep configuration the trigger and eval engines share;
 // TriggerOptions and EvalOptions embed it and add their engine's knobs.
 type Options struct {
-	Repo           *layout.Repo
-	Selected       []provider.Selection
-	Counter        *tokencount.Counter
-	Runner         Runner
-	SkillFilter    string
-	Timeout        time.Duration
-	Jobs           int
-	MaxTurns       int // agent-turn ceiling per eval; 0 = provider.DefaultMaxTurns. A per-eval max_turns overrides it.
-	CountOnly      bool
-	New            bool
+	Repo        *layout.Repo
+	Selected    []provider.Selection
+	Counter     *tokencount.Counter
+	Runner      Runner
+	SkillFilter string
+	Timeout     time.Duration
+	Jobs        int
+	MaxTurns    int // agent-turn ceiling per eval; 0 = provider.DefaultMaxTurns. A per-eval max_turns overrides it.
+	CountOnly   bool
+	New         bool
+	// Failed selects units that did not pass on a previous run (a complete
+	// result graded as failing, or an eval that errored). It composes with New:
+	// with both set, a unit reruns when any case is missing data OR previously
+	// failed. Like New, selection is per unit (skill/model/tier).
+	Failed         bool
 	KeepWorkspaces bool
 	// HostSandboxed reports that Runner wraps each agent in evolve's own OS
 	// sandbox, so providers must disable the agent CLI's own sandbox to avoid

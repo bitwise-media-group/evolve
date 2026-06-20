@@ -109,9 +109,9 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 		return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, t.Query)) != nil
 	}
 	_, countCapable := sel.Provider.(provider.TokenCounter)
-	if opts.New {
+	if opts.New || opts.Failed {
 		if reason := triggerSkipReason(
-			file.Triggers[sel.Key()], applicable, sel.Model, execute, countCapable, probe,
+			file.Triggers[sel.Key()], applicable, sel.Model, execute, countCapable, opts.New, opts.Failed, probe,
 		); reason != "" {
 			rep.UnitSkipped(ref, reason)
 			return false, nil
@@ -317,13 +317,16 @@ func buildTriggerEntry(opts TriggerOptions, sel provider.Selection, executed boo
 	return entry
 }
 
-// triggerSkipReason is why --new may skip this skill/model, or "" when a
-// (re)run is needed. Fields a run could never fill are exempt: cost for
-// models without published pricing, execution fields when the runner is
-// unavailable or this invocation is count-only, and token counts the counting
-// API cannot produce (probe reports that).
+// triggerSkipReason is why a --new/--failed sweep may skip this skill/model, or
+// "" when a (re)run is needed. wantNew selects units with data a rerun could
+// fill (a missing/changed query, incomplete execution fields, or a token count
+// the API can produce); wantFailed selects units holding a complete-but-failing
+// query. With both, the conditions union. Fields a run could never fill are
+// exempt regardless: cost for models without published pricing, execution
+// fields when the runner is unavailable or this invocation is count-only, and
+// token counts the counting API cannot produce (probe reports that).
 func triggerSkipReason(entry *results.TriggerEntry, triggers []evalspec.Trigger, model provider.Model,
-	execute, countCapable bool, probe func(evalspec.Trigger) bool) string {
+	execute, countCapable, wantNew, wantFailed bool, probe func(evalspec.Trigger) bool) string {
 
 	stored := map[string]results.TriggerResult{}
 	if entry != nil {
@@ -334,14 +337,20 @@ func triggerSkipReason(entry *results.TriggerEntry, triggers []evalspec.Trigger,
 	var uncounted *evalspec.Trigger
 	for _, t := range triggers {
 		r, ok := stored[t.Query]
-		if !ok || r.ShouldTrigger != t.ShouldTrigger {
-			return ""
+		if wantNew {
+			if !ok || r.ShouldTrigger != t.ShouldTrigger {
+				return ""
+			}
+			if execute && (r.Hits == nil || r.Runs == nil || r.Passed == nil || r.AvgRunSeconds == nil) {
+				return ""
+			}
 		}
-		if execute && (r.Hits == nil || r.Runs == nil || r.Passed == nil || r.AvgRunSeconds == nil) {
-			return ""
+		if wantFailed && execute && ok && r.Passed != nil && !*r.Passed {
+			return "" // a prior run did not pass; rerun it
 		}
-		// Estimates a provider can never produce (no counting API) are exempt.
-		missingCount := countCapable && (r.Estimate == nil ||
+		// Estimates a provider can never produce (no counting API) are exempt;
+		// only --new fills counts, so it gates this probe.
+		missingCount := wantNew && countCapable && (r.Estimate == nil ||
 			(model.InputUSD != nil && r.Estimate.InputCostUSD == nil))
 		if uncounted == nil && missingCount {
 			uncounted = &t

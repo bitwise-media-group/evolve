@@ -136,15 +136,15 @@ type Target struct {
 }
 
 // Needs reports, per resolved selection (keyed by Selection.Key()) and per
-// in-play target, whether the engine would run that unit. With --new only
-// incomplete units are true; otherwise every applicable unit is true. Only
-// targets honored by def (the command's default tiers), SkillFilter, and
-// evalFilter, and with applicable cases for the model, appear. The TUI derives
-// the form's initial tri-state selection from this so it matches non-TUI mode
-// exactly. The --new check reuses the engine's own skip logic with a
-// counts-unfillable probe (see countsUnfillableTrigger), so it needs no
-// token-counting round trip and never pre-selects a unit whose only gap is a
-// count or price a re-run could not produce.
+// in-play target, whether the engine would run that unit. With --new and/or
+// --failed only the units those flags select are true; otherwise every
+// applicable unit is true. Only targets honored by def (the command's default
+// tiers), SkillFilter, and evalFilter, and with applicable cases for the model,
+// appear. The TUI derives the form's initial tri-state selection from this so
+// it matches non-TUI mode exactly. The --new/--failed check reuses the engine's
+// own skip logic with a counts-unfillable probe (see countsUnfillableTrigger),
+// so it needs no token-counting round trip and never pre-selects a unit whose
+// only gap is a count or price a re-run could not produce.
 func Needs(
 	opts Options, cat []SkillCatalog, sels []provider.Selection, def Tiers, evalFilter string,
 ) map[string]map[Target]bool {
@@ -157,7 +157,7 @@ func Needs(
 			continue
 		}
 		var file *results.File
-		if opts.New {
+		if opts.New || opts.Failed {
 			file, _ = results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 		}
 		for _, sel := range sels {
@@ -197,7 +197,7 @@ func countsUnfillableEval(evalspec.Eval) bool       { return false }
 
 // triggerUnitNeeds reports whether the (model, skill, triggers) unit would run.
 func triggerUnitNeeds(opts Options, file *results.File, sel provider.Selection, app []evalspec.Trigger) bool {
-	if !opts.New {
+	if !opts.New && !opts.Failed {
 		return true
 	}
 	_, cliFound := provider.ResolveCLI(sel.Provider)
@@ -207,12 +207,13 @@ func triggerUnitNeeds(opts Options, file *results.File, sel provider.Selection, 
 	if file != nil {
 		entry = file.Triggers[sel.Key()]
 	}
-	return triggerSkipReason(entry, app, sel.Model, execute, countCapable, countsUnfillableTrigger) == ""
+	return triggerSkipReason(entry, app, sel.Model, execute, countCapable,
+		opts.New, opts.Failed, countsUnfillableTrigger) == ""
 }
 
 // evalUnitNeeds reports whether the (model, skill, evals) unit would run.
 func evalUnitNeeds(opts Options, file *results.File, sel provider.Selection, app []evalspec.Eval) bool {
-	if !opts.New {
+	if !opts.New && !opts.Failed {
 		return true
 	}
 	evalRunner, isEvalRunner := sel.Provider.(provider.EvalRunner)
@@ -224,5 +225,6 @@ func evalUnitNeeds(opts Options, file *results.File, sel provider.Selection, app
 	if file != nil {
 		entry = file.Evals[sel.Key()]
 	}
-	return evalSkipReason(entry, app, sel.Model, execute, reportsUsage, countCapable, countsUnfillableEval) == ""
+	return evalSkipReason(entry, app, sel.Model, execute, reportsUsage, countCapable,
+		opts.New, opts.Failed, countsUnfillableEval) == ""
 }

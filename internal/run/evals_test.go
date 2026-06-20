@@ -422,6 +422,77 @@ func TestEvalsRuntimeErrorRerunUnderNew(t *testing.T) {
 	}
 }
 
+func TestEvalsFailedRerunsFailingUnit(t *testing.T) {
+	repo := evalRepoFixture(t)
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "evals.json")
+	os.WriteFile(path, []byte(`{"evals": [{
+		"id": "fails",
+		"prompt": "create the file",
+		"assertions": [{"type": "file_exists", "path": "never-created.txt"}]
+	}]}`), 0o644)
+
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	var first bytes.Buffer
+	opts.Stdout, opts.Stderr = &first, &first
+	if failed, err := Evals(context.Background(), opts); err != nil || !failed {
+		t.Fatalf("first run failed=%v err=%v, want a failing eval", failed, err)
+	}
+
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	opts.Failed = true
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "skip:") {
+		t.Errorf("--failed skipped an eval that failed its assertions:\n%s", stdout.String())
+	}
+}
+
+func TestEvalsFailedSkipsPassingEntry(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	var first bytes.Buffer
+	opts.Stdout, opts.Stderr = &first, &first
+	if failed, err := Evals(context.Background(), opts); err != nil || failed {
+		t.Fatalf("first run failed=%v err=%v, want a pass", failed, err)
+	}
+
+	// --failed must skip a unit whose evals all passed.
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	opts.Failed = true
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "skip: results complete") {
+		t.Errorf("--failed did not skip a passing entry:\n%s", stdout.String())
+	}
+}
+
+func TestEvalsFailedRerunsRuntimeError(t *testing.T) {
+	repo := evalRepoFixture(t)
+	opts := evalOptions(t, repo, &countingEvalProvider{fakeEvalProvider{reportsUsage: true, priced: true}})
+	opts.Runner = &fakeEvalRunner{agentFails: true}
+	var first bytes.Buffer
+	opts.Stdout, opts.Stderr = &first, &first
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+
+	// A prior runtime error is not a successful run, so --failed re-runs it.
+	var stdout, stderr bytes.Buffer
+	opts.Stdout, opts.Stderr = &stdout, &stderr
+	opts.Failed = true
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "skip:") || !strings.Contains(stderr.String(), "[ERROR]") {
+		t.Errorf("--failed skipped a prior runtime error instead of re-running:\nstdout:\n%s\nstderr:\n%s",
+			stdout.String(), stderr.String())
+	}
+}
+
 func TestEvalFilter(t *testing.T) {
 	repo := evalRepoFixture(t)
 	opts := evalOptions(t, repo, &countingEvalProvider{})

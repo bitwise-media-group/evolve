@@ -212,3 +212,43 @@ func TestNeedsNewSkipsComplete(t *testing.T) {
 		t.Errorf("--new should not rerun completed triggers: %+v", n[key])
 	}
 }
+
+func TestNeedsFailedSelectsFailures(t *testing.T) {
+	repo := triggerRepoFixture(t) // every applicable query passes
+	p := &countingTriggerProvider{fakeTriggerProvider{priced: true}}
+	topts := triggerOptions(t, repo, p)
+	topts.Stdout = io.Discard
+	topts.Stderr = io.Discard
+
+	withFailed := topts.Options
+	withFailed.Failed = true
+	sels := topts.Selected
+	key := sels[0].Key()
+	tt := Target{Skill: "solo-skill", Kind: KindTriggers}
+
+	// After a passing run, --failed must not select the unit.
+	if _, err := Triggers(context.Background(), topts); err != nil {
+		t.Fatal(err)
+	}
+	cat, err := Catalog(topts.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := Needs(withFailed, cat, sels, Tiers{Triggers: true}, ""); n[key][tt] {
+		t.Errorf("--failed should skip an all-passing unit: %+v", n[key])
+	}
+
+	// Rewrite the spec so the unit fails, re-run, then --failed must select it.
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "triggers.json")
+	os.WriteFile(path, []byte(`{"triggers": [{"query": "never fires", "should_trigger": true}]}`), 0o644)
+	if _, err := Triggers(context.Background(), topts); err != nil {
+		t.Fatal(err)
+	}
+	cat, err = Catalog(topts.Options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := Needs(withFailed, cat, sels, Tiers{Triggers: true}, ""); !n[key][tt] {
+		t.Errorf("--failed should select a unit with a failing query: %+v", n[key])
+	}
+}
