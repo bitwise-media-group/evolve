@@ -18,6 +18,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 	skip agent runs; only compute token usage per model
 
 .PP
+\fB--failed\fP[=false]
+	only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)
+
+.PP
 \fB-h\fP, \fB--help\fP[=false]
 	help for triggers
 
@@ -28,6 +32,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 .PP
 \fB--keep-workspaces\fP[=false]
 	keep throwaway workspaces for debugging
+
+.PP
+\fB--max-turns\fP=20
+	max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)
 
 .PP
 \fB--models\fP=""
@@ -46,6 +54,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 	only run evals for this skill
 
 .PP
+\fB--stale-results\fP=""
+	keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)
+
+.PP
 \fB--timeout\fP=120
 	seconds per agent run
 
@@ -57,6 +69,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 .PP
 \fB--layout\fP="auto"
 	repository layout: auto, marketplace, multi, or single
+
+.PP
+\fB--no-sandbox\fP[=false]
+	disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
 
 .PP
 \fB--results-format\fP=""

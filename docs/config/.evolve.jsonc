@@ -18,6 +18,27 @@
   // jsonc, or yaml.
   "results_format": "json",
 
+  // Default maximum agent turns per behavioral eval; --max-turns and a
+  // per-eval max_turns override it.
+  "max_turns": 20,
+
+  // How run/report treat stored results for models outside default_models:
+  // keep or drop. --stale-results overrides.
+  // Default: unset — prompt on a terminal, otherwise keep.
+  // "stale_results": "keep",
+
+  "sandbox": {
+    // Confine agent writes with an OS sandbox (sandbox-exec on macOS,
+    // bubblewrap on Linux); --no-sandbox overrides for one run.
+    "enabled": true
+
+    // Directories kept read-only to agent runs so an escaping agent cannot
+    // modify other source repositories; the workspace stays writable. Reads,
+    // the network, and tool caches outside these roots are unaffected.
+    // Default: unset — the parent directory of the repository under test.
+    // "protected_roots": ["~/Repos"],
+  },
+
   "checks": {
     // License every SKILL.md must declare; when unset, skills must not declare
     // one.

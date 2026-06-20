@@ -22,6 +22,10 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	only run the eval with this id
 
 .PP
+\fB--failed\fP[=false]
+	only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)
+
+.PP
 \fB-h\fP, \fB--help\fP[=false]
 	help for evals
 
@@ -38,6 +42,10 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	keep throwaway workspaces for debugging
 
 .PP
+\fB--max-turns\fP=20
+	max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)
+
+.PP
 \fB--models\fP=""
 	comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
 
@@ -48,6 +56,10 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 .PP
 \fB--skill\fP=""
 	only run evals for this skill
+
+.PP
+\fB--stale-results\fP=""
+	keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)
 
 .PP
 \fB--timeout\fP=600
@@ -61,6 +73,10 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 .PP
 \fB--layout\fP="auto"
 	repository layout: auto, marketplace, multi, or single
+
+.PP
+\fB--no-sandbox\fP[=false]
+	disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
 
 .PP
 \fB--results-format\fP=""

@@ -9,16 +9,19 @@ evolve run evals [flags]
 ### Options
 
 ```
-      --count-only           skip agent runs; only compute token usage per model
-      --eval string          only run the eval with this id
-  -h, --help                 help for evals
-      --jobs int             concurrent agent runs (default: ceil(cpus/2)) (default 4)
-      --judge-model string   claude model that grades llm assertions (default "claude-sonnet-4-6")
-      --keep-workspaces      keep throwaway workspaces for debugging
-      --models string        comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
-      --new                  only run evals whose stored results are missing values a rerun could fill
-      --skill string         only run evals for this skill
-      --timeout int          seconds per agent run (default 600)
+      --count-only             skip agent runs; only compute token usage per model
+      --eval string            only run the eval with this id
+      --failed                 only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)
+  -h, --help                   help for evals
+      --jobs int               concurrent agent runs (default: ceil(cpus/2)) (default 4)
+      --judge-model string     claude model that grades llm assertions (default "claude-sonnet-4-6")
+      --keep-workspaces        keep throwaway workspaces for debugging
+      --max-turns int          max agent turns per eval (config: max_turns; a per-eval max_turns overrides both) (default 20)
+      --models string          comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
+      --new                    only run evals whose stored results are missing values a rerun could fill
+      --skill string           only run evals for this skill
+      --stale-results string   keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)
+      --timeout int            seconds per agent run (default 600)
 ```
 
 ### Options inherited from parent commands
@@ -26,6 +29,7 @@ evolve run evals [flags]
 ```
       --json                    emit machine-readable JSONL progress on stdout
       --layout string           repository layout: auto, marketplace, multi, or single (default "auto")
+      --no-sandbox              disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
       --results-format string   format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)
       --root string             repository root to operate on (default: walk up from the current directory)
       --strict                  exit 1 when checks or evals fail (default: warn and exit 0)

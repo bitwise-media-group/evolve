@@ -18,6 +18,10 @@ Run the eval tiers: static checks, trigger accuracy, behavioral evals
 	help for run
 
 .PP
+\fB--no-sandbox\fP[=false]
+	disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
+
+.PP
 \fB--strict\fP[=false]
 	exit 1 when checks or evals fail (default: warn and exit 0)
 

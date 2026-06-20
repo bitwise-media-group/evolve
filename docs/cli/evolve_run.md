@@ -5,8 +5,9 @@ Run the eval tiers: static checks, trigger accuracy, behavioral evals
 ### Options
 
 ```
-  -h, --help     help for run
-      --strict   exit 1 when checks or evals fail (default: warn and exit 0)
+  -h, --help         help for run
+      --no-sandbox   disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
+      --strict       exit 1 when checks or evals fail (default: warn and exit 0)
 ```
 
 ### Options inherited from parent commands
