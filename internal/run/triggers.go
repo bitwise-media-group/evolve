@@ -55,9 +55,10 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
+	rep := opts.reporter()
 	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
 	if reset {
-		fmt.Fprintf(opts.Stderr, "  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
+		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
 	}
 
@@ -68,14 +69,15 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 	}
 	defer cleanup()
 	if opts.KeepWorkspaces {
-		fmt.Fprintf(opts.Stderr, "  workspace kept: %s\n", ws)
+		rep.Warn("  workspace kept: %s\n", ws)
 	}
 
 	for _, sel := range opts.Selected {
-		applicable := applicableTriggers(triggers, sel.Provider.Name())
+		applicable := applicableTriggers(triggers, sel.Provider.Name(), set.Skill, opts.Filter)
 		if len(applicable) == 0 {
 			continue
 		}
+		ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindTriggers}
 		cli, cliFound := provider.ResolveCLI(sel.Provider)
 		execute := !opts.CountOnly && cliFound
 
@@ -87,21 +89,20 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 			if reason := triggerSkipReason(
 				file.Triggers[sel.Key()], applicable, sel.Model, execute, countCapable, probe,
 			); reason != "" {
-				fmt.Fprintf(opts.Stdout, "\n=== %s / %s (skip: %s) ===\n", set.Skill, sel.Key(), reason)
+				rep.UnitSkipped(ref, reason)
 				continue
 			}
 		}
 		if !execute && !opts.CountOnly {
-			fmt.Fprintf(opts.Stderr, "  warn: `%s` CLI not found; %s gets token counts only\n",
+			rep.Warn("  warn: `%s` CLI not found; %s gets token counts only\n",
 				sel.Provider.CLI()[0], sel.Key())
 		}
 
-		mode := "count-only"
+		mode := ModeCountOnly
 		if execute {
-			mode = "run"
+			mode = ModeRun
 		}
-		fmt.Fprintf(opts.Stdout, "\n=== %s / %s (%d queries x %d runs, %s) ===\n",
-			set.Skill, sel.Key(), len(applicable), opts.Runs, mode)
+		rep.UnitStarted(ref, len(applicable), opts.Runs, mode)
 
 		// Token counting stays on this goroutine (cache-cheap); only agent
 		// runs go parallel.
@@ -115,7 +116,7 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 			}
 		}
 		if execute {
-			batchFailed, err := runQueries(ctx, opts, sel, cli, ws, set.Skill, applicable, entryResults)
+			batchFailed, err := runQueries(ctx, opts, sel, cli, ws, ref, applicable, entryResults)
 			failed = failed || batchFailed
 			if err != nil {
 				return failed, err
@@ -128,11 +129,12 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 		if err != nil {
 			return failed, err
 		}
+		sum := UnitSummary{Executed: entry.Executed, Total: entry.Summary.Total}
 		if entry.Executed {
-			fmt.Fprintf(opts.Stdout, "  %d/%d queries passed%s\n",
-				*entry.Summary.Passed, entry.Summary.Total, avgSuffix(entry.Summary.AvgRunSeconds))
+			sum.Passed = *entry.Summary.Passed
+			sum.AvgRunSeconds = entry.Summary.AvgRunSeconds
 		}
-		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(saved))
+		rep.UnitFinished(ref, sum, opts.Repo.Rel(saved))
 	}
 	return failed, nil
 }
@@ -140,9 +142,11 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 // runQueries executes every query's runs concurrently (jobs at a time) and
 // fills hits/runs/passed/avg into entryResults as queries complete. Sharing
 // the workspace is safe: trigger sessions are read-only.
-func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection, cli, ws, skill string,
+func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection, cli, ws string, ref UnitRef,
 	triggers []evalspec.Trigger, entryResults []results.TriggerResult) (bool, error) {
 
+	rep := opts.reporter()
+	skill := ref.Skill
 	type outcome struct {
 		index   int
 		hit     bool
@@ -183,15 +187,20 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 			entryResults[i].Passed = &passed
 			entryResults[i].AvgRunSeconds = &avg
 
-			marker, expect := "PASS", "no"
+			status, expect := StatusPass, "no"
 			if !passed {
-				marker = "FAIL"
+				status = StatusFail
 			}
 			if expected {
 				expect = "yes"
 			}
-			fmt.Fprintf(opts.Stdout, "  [%s] rate=%.2f avg=%.1fs expect=%s %s\n",
-				marker, rate, avg, expect, truncate(triggers[i].Query, 70))
+			rep.ItemDone(ref, ItemResult{
+				Index:  i,
+				Label:  triggers[i].Query,
+				Status: status,
+				Detail: fmt.Sprintf("rate=%.2f avg=%.1fs expect=%s %s",
+					rate, avg, expect, truncate(triggers[i].Query, 70)),
+			})
 		}
 		collectorDone <- failed
 	}()
@@ -206,7 +215,7 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 				onLine := func(line []byte) bool {
 					hit, note := sel.Provider.ScanLine(line, skill)
 					if note != "" {
-						fmt.Fprintf(opts.Stderr, "  warn: %s\n", note)
+						rep.Warn("  warn: %s\n", note)
 					}
 					return hit
 				}
@@ -219,7 +228,7 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 					if res.StderrTail != "" {
 						detail = "; stderr tail: " + tail(res.StderrTail, 300)
 					}
-					fmt.Fprintf(opts.Stderr, "  warn: runner timed out; counted as no-trigger%s\n", detail)
+					rep.Warn("  warn: runner timed out; counted as no-trigger%s\n", detail)
 				}
 				outcomes <- outcome{index: i, hit: res.Hit, seconds: res.Elapsed.Seconds()}
 				return nil
@@ -315,12 +324,19 @@ func triggerSkipReason(entry *results.TriggerEntry, triggers []evalspec.Trigger,
 	return "token counts unavailable"
 }
 
-func applicableTriggers(triggers []evalspec.Trigger, providerName string) []evalspec.Trigger {
+func applicableTriggers(triggers []evalspec.Trigger, providerName, skill string, f *Filter) []evalspec.Trigger {
+	if !f.skillIncluded(skill) {
+		return nil
+	}
 	var out []evalspec.Trigger
 	for _, t := range triggers {
-		if !t.SkipsProvider(providerName) {
-			out = append(out, t)
+		if t.SkipsProvider(providerName) {
+			continue
 		}
+		if !f.triggerIncluded(skill, t.Query) {
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

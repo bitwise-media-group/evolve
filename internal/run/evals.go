@@ -70,9 +70,10 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 	if err != nil {
 		return false, fmt.Errorf("reading skill under test: %w", err)
 	}
+	rep := opts.reporter()
 	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
 	if reset {
-		fmt.Fprintf(opts.Stderr, "  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
+		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
 	}
 
@@ -81,10 +82,11 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 		cli, cliFound := provider.ResolveCLI(sel.Provider)
 		execute := isEvalRunner && cliFound && !opts.CountOnly
 
-		evals := applicableEvals(allEvals, sel.Provider.Name())
+		evals := applicableEvals(allEvals, sel.Provider.Name(), set.Skill, opts.Filter)
 		if len(evals) == 0 {
 			continue
 		}
+		ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindEvals}
 
 		probe := func(c evalspec.Eval) bool {
 			return opts.Counter.Count(ctx, sel.Provider, sel.Model.ID, payload(skillMD, c.Prompt)) != nil
@@ -95,19 +97,19 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 			if reason := evalSkipReason(
 				file.Evals[sel.Key()], evals, sel.Model, execute, reportsUsage, countCapable, probe,
 			); reason != "" {
-				fmt.Fprintf(opts.Stdout, "\n=== %s / %s (skip: %s) ===\n", set.Skill, sel.Key(), reason)
+				rep.UnitSkipped(ref, reason)
 				continue
 			}
 		}
 		if !execute && !opts.CountOnly {
-			fmt.Fprintf(opts.Stderr, "  warn: no behavioral runner for %s; token counts only\n", sel.Key())
+			rep.Warn("  warn: no behavioral runner for %s; token counts only\n", sel.Key())
 		}
 
-		mode := "count-only"
+		mode := ModeCountOnly
 		if execute {
-			mode = "run"
+			mode = ModeRun
 		}
-		fmt.Fprintf(opts.Stdout, "\n=== %s / %s (%s) ===\n", set.Skill, sel.Key(), mode)
+		rep.UnitStarted(ref, len(evals), 0, mode)
 
 		// Token counting stays on this goroutine; only eval runs go parallel,
 		// each in its own workspace.
@@ -120,7 +122,7 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 			}
 		}
 		if execute {
-			batchFailed, err := runEvals(ctx, opts, set, sel, evalRunner, cli, evals, entryResults)
+			batchFailed, err := runEvals(ctx, opts, set, sel, ref, evalRunner, cli, evals, entryResults)
 			failed = failed || batchFailed
 			if err != nil {
 				return failed, err
@@ -133,15 +135,15 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 		if err != nil {
 			return failed, err
 		}
+		sum := UnitSummary{Executed: entry.Executed, Total: entry.Summary.Total}
 		if entry.Executed {
-			errored := ""
+			sum.Passed = *entry.Summary.Passed
+			sum.AvgRunSeconds = entry.Summary.AvgRunSeconds
 			if entry.Summary.Errored != nil {
-				errored = fmt.Sprintf(", %d errored", *entry.Summary.Errored)
+				sum.Errored = *entry.Summary.Errored
 			}
-			fmt.Fprintf(opts.Stdout, "  %d/%d evals passed%s%s\n",
-				*entry.Summary.Passed, entry.Summary.Total, errored, avgSuffix(entry.Summary.AvgRunSeconds))
 		}
-		fmt.Fprintf(opts.Stdout, "  -> %s\n", opts.Repo.Rel(saved))
+		rep.UnitFinished(ref, sum, opts.Repo.Rel(saved))
 	}
 	return failed, nil
 }
@@ -157,7 +159,7 @@ const (
 	outcomeError
 )
 
-func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
+func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection, ref UnitRef,
 	evalRunner provider.EvalRunner, cli string, evals []evalspec.Eval, entryResults []results.EvalResult) (bool, error) {
 
 	var failedAny bool
@@ -166,7 +168,7 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel pro
 	outcomes := make([]evalOutcome, len(evals))
 	for i, c := range evals {
 		g.Go(func() error {
-			outcome, result, err := runEval(runCtx, opts, set, sel, evalRunner, cli, c)
+			outcome, result, err := runEval(runCtx, opts, set, sel, ref, evalRunner, cli, c, i)
 			if err != nil {
 				return err
 			}
@@ -190,12 +192,13 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel pro
 	return failedAny, nil
 }
 
-func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection,
-	evalRunner provider.EvalRunner, cli string, c evalspec.Eval) (evalOutcome, results.EvalResult, error) {
+func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection, ref UnitRef,
+	evalRunner provider.EvalRunner, cli string, c evalspec.Eval, index int) (evalOutcome, results.EvalResult, error) {
 
+	rep := opts.reporter()
 	copies := make(map[string]string, len(c.Files))
-	for _, ref := range c.Files {
-		copies[ref.Dest] = ref.Source
+	for _, f := range c.Files {
+		copies[f.Dest] = f.Source
 	}
 	ws, cleanup, err := workspace.New("evals.", set.Plugin.SkillsDir,
 		unionSkillDirs(opts.Selected), copies, opts.KeepWorkspaces)
@@ -204,7 +207,7 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 	}
 	defer cleanup()
 	if opts.KeepWorkspaces {
-		fmt.Fprintf(opts.Stderr, "  workspace kept (%s): %s\n", c.ID, ws)
+		rep.Warn("  workspace kept (%s): %s\n", c.ID, ws)
 	}
 
 	timeout := opts.Timeout
@@ -223,7 +226,7 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 		return outcomeError, results.EvalResult{}, err
 	}
 	if res.TimedOut {
-		fmt.Fprintf(opts.Stderr, "  warn: %s timed out after %s; grading partial output\n", cli, timeout)
+		rep.Warn("  warn: %s timed out after %s; grading partial output\n", cli, timeout)
 	}
 
 	// A run that produced no usable output (auth blocked, crash) is a runtime
@@ -231,8 +234,13 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 	// output into a silent FAIL.
 	runSeconds := results.Round1(res.Elapsed.Seconds()) // agent run only; grading excluded
 	if reason := evalRunner.RuntimeError(res.Stdout, res.ExitCode, res.TimedOut); reason != "" {
-		fmt.Fprintf(opts.Stdout, "  [ERROR] %s: %s runtime failure (exit %d): %s\n",
-			c.ID, cli, res.ExitCode, tailStderr(res.StderrTail))
+		rep.ItemDone(ref, ItemResult{
+			Index:  index,
+			Label:  c.ID,
+			Status: StatusError,
+			Detail: fmt.Sprintf("  [ERROR] %s: %s runtime failure (exit %d): %s\n",
+				c.ID, cli, res.ExitCode, tailStderr(res.StderrTail)),
+		})
 		return outcomeError, results.EvalResult{
 			ID:           c.ID,
 			Name:         c.Name,
@@ -271,16 +279,20 @@ func runEval(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel prov
 		if passed != nil && !*passed {
 			evalPassed = false
 		}
-		marker := "SKIP"
+		mark := "SKIP"
 		if passed != nil {
-			marker = "FAIL"
+			mark = "FAIL"
 			if *passed {
-				marker = "PASS"
+				mark = "PASS"
 			}
 		}
-		lines += fmt.Sprintf("  [%s] %s: %s\n", marker, c.ID, graded[i].Text)
+		lines += fmt.Sprintf("  [%s] %s: %s\n", mark, c.ID, graded[i].Text)
 	}
-	fmt.Fprint(opts.Stdout, lines)
+	status := StatusFail
+	if evalPassed {
+		status = StatusPass
+	}
+	rep.ItemDone(ref, ItemResult{Index: index, Label: c.ID, Status: status, Detail: lines})
 
 	result := results.EvalResult{
 		ID:           c.ID,
@@ -479,12 +491,19 @@ func evalSkipReason(entry *results.EvalEntry, evals []evalspec.Eval, model provi
 	return "token counts unavailable"
 }
 
-func applicableEvals(evals []evalspec.Eval, providerName string) []evalspec.Eval {
+func applicableEvals(evals []evalspec.Eval, providerName, skill string, f *Filter) []evalspec.Eval {
+	if !f.skillIncluded(skill) {
+		return nil
+	}
 	var out []evalspec.Eval
 	for _, c := range evals {
-		if !c.SkipsProvider(providerName) {
-			out = append(out, c)
+		if c.SkipsProvider(providerName) {
+			continue
 		}
+		if !f.evalIncluded(skill, c.ID) {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out
 }
