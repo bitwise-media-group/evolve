@@ -205,7 +205,7 @@ func (a *Anthropic) CountTokens(ctx context.Context, modelID, text string) (int,
 		InputTokens *int `json:"input_tokens"`
 	}
 	if err := postJSON(ctx, a.Client, a.CountURL, headers, body, &resp); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("anthropic count tokens: %w", err)
 	}
 	if resp.InputTokens == nil {
 		return 0, fmt.Errorf("count_tokens response missing input_tokens")

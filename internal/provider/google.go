@@ -104,7 +104,7 @@ func (g *Google) CountTokens(ctx context.Context, modelID, text string) (int, er
 		TotalTokens *int `json:"totalTokens"`
 	}
 	if err := postJSON(ctx, g.Client, g.CountURLBase+modelID+":countTokens", headers, body, &resp); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("google count tokens: %w", err)
 	}
 	if resp.TotalTokens == nil {
 		return 0, fmt.Errorf("countTokens response missing totalTokens")

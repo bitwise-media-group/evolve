@@ -19,11 +19,11 @@ var fieldRE = regexp.MustCompile(`^([A-Za-z][0-9A-Za-z_-]*):\s*(.*)$`)
 func ReadJSON(path string) (any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
-		return nil, fmt.Errorf("invalid JSON (%w)", err)
+		return nil, fmt.Errorf("invalid JSON: %w", err)
 	}
 	return v, nil
 }
@@ -34,7 +34,7 @@ func ReadJSON(path string) (any, error) {
 func Frontmatter(path string) (fields map[string]string, ok bool, err error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
 	}
 	lines := SplitLines(string(data))
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {

@@ -169,7 +169,7 @@ func (o *OpenAI) CountTokens(ctx context.Context, modelID, text string) (int, er
 		InputTokens *int `json:"input_tokens"`
 	}
 	if err := postJSON(ctx, o.Client, o.CountURL, headers, body, &resp); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("openai count tokens: %w", err)
 	}
 	if resp.InputTokens == nil {
 		return 0, fmt.Errorf("input_tokens response missing input_tokens")

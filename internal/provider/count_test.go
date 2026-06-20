@@ -7,10 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestCountTokensAnthropic(t *testing.T) {
 	t.Setenv("EVOLVE_ANTHROPIC_API_KEY", "")
@@ -172,6 +179,69 @@ func TestCountTokensHTTPError(t *testing.T) {
 	o.Client = srv.Client()
 	if _, err := o.CountTokens(context.Background(), "gpt-5.5", "x"); err == nil {
 		t.Error("want error on HTTP 429, got nil")
+	}
+}
+
+func TestCountTokensWrapsTransportError(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T) TokenCounter
+		model string
+	}{
+		{
+			name: "anthropic",
+			setup: func(t *testing.T) TokenCounter {
+				t.Setenv("ANTHROPIC_API_KEY", "a-key")
+				a := NewAnthropic()
+				a.CountURL = "http://example.invalid"
+				a.Client = &http.Client{
+					Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+						return nil, net.ErrClosed
+					}),
+				}
+				return a
+			},
+			model: "claude-fable-5",
+		},
+		{
+			name: "google",
+			setup: func(t *testing.T) TokenCounter {
+				t.Setenv("GEMINI_API_KEY", "g-key")
+				g := NewGoogle()
+				g.CountURLBase = "http://example.invalid/models/"
+				g.Client = &http.Client{
+					Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+						return nil, net.ErrClosed
+					}),
+				}
+				return g
+			},
+			model: "gemini-3.5-flash",
+		},
+		{
+			name: "openai",
+			setup: func(t *testing.T) TokenCounter {
+				t.Setenv("OPENAI_API_KEY", "o-key")
+				o := NewOpenAI()
+				o.CountURL = "http://example.invalid"
+				o.Client = &http.Client{
+					Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+						return nil, net.ErrClosed
+					}),
+				}
+				return o
+			},
+			model: "gpt-5.5",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			counter := tc.setup(t)
+			if _, err := counter.CountTokens(context.Background(), tc.model, "x"); !errors.Is(err, net.ErrClosed) {
+				t.Fatalf("errors.Is(err, net.ErrClosed) = false; err = %v", err)
+			}
+		})
 	}
 }
 
