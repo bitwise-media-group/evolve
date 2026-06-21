@@ -18,6 +18,14 @@
   // jsonc, or yaml.
   "results_format": "json",
 
+  "telemetry": {
+    // Directory for the OpenTelemetry JSON exporter (traces.json,
+    // metrics.json, logs.json); the --telemetry-dir flag overrides it and both
+    // win over OTEL_* env vars.
+    // Default: unset — telemetry disabled.
+    // "dir": "./telemetry",
+  },
+
   // Default maximum agent turns per behavioral eval; --max-turns and a
   // per-eval max_turns override it.
   "max_turns": 20,

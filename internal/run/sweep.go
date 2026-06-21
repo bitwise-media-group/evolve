@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/provider"
@@ -44,6 +47,16 @@ type SweepOptions struct {
 // failed reports whether any executed case failed; err reports interruption or
 // setup problems.
 func Sweep(ctx context.Context, opts SweepOptions) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.sweep", trace.WithAttributes(
+		attribute.String("command", "sweep"),
+		attribute.Bool("triggers", opts.Tiers.Triggers),
+		attribute.Bool("evals", opts.Tiers.Evals),
+		attribute.Bool("count_only", opts.CountOnly),
+		attribute.Int("jobs", opts.Jobs),
+		attribute.Int("model_count", len(opts.Selected)),
+	))
+	defer func() { endSpan(span, err) }()
+
 	sets, err := opts.Repo.EvalSets()
 	if err != nil {
 		return false, err
@@ -64,6 +77,12 @@ func Sweep(ctx context.Context, opts SweepOptions) (failed bool, err error) {
 // runSweepSet runs every selected model's triggers then evals for one skill,
 // sharing a single results file, skill payload, and read-only trigger workspace.
 func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.skill_set", trace.WithAttributes(
+		attribute.String("plugin", set.Plugin.Name),
+		attribute.String("skill", set.Skill),
+	))
+	defer func() { endSpan(span, err) }()
+
 	runTriggers := opts.Tiers.Triggers && set.TriggersPath != ""
 	runEvalsTier := opts.Tiers.Evals && set.EvalsPath != ""
 	if !runTriggers && !runEvalsTier {

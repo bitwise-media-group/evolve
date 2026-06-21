@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
@@ -27,6 +29,14 @@ type TriggerOptions struct {
 // Triggers executes the sweep. failed reports whether any executed query
 // failed; err reports interruption or setup problems.
 func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.sweep", trace.WithAttributes(
+		attribute.String("command", "triggers"),
+		attribute.Bool("count_only", opts.CountOnly),
+		attribute.Int("jobs", opts.Jobs),
+		attribute.Int("model_count", len(opts.Selected)),
+	))
+	defer func() { endSpan(span, err) }()
+
 	sets, err := opts.Repo.EvalSets()
 	if err != nil {
 		return false, err
@@ -45,6 +55,12 @@ func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error)
 }
 
 func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.skill_set", trace.WithAttributes(
+		attribute.String("plugin", set.Plugin.Name),
+		attribute.String("skill", set.Skill),
+	))
+	defer func() { endSpan(span, err) }()
+
 	spec, err := evalspec.LoadTriggers(set.TriggersPath)
 	if err != nil {
 		return false, err
@@ -112,6 +128,9 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 		return false, nil
 	}
 	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindTriggers}
+	ctx, span := tracer().Start(ctx, "evolve.unit", trace.WithAttributes(unitSpanAttrs(ref)...))
+	defer func() { endSpan(span, err) }()
+
 	cli, cliFound := provider.ResolveCLI(sel.Provider)
 	execute := !opts.CountOnly && cliFound
 
@@ -182,6 +201,11 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 		sum.Passed = *entry.Summary.Passed
 		sum.AvgRunSeconds = entry.Summary.AvgRunSeconds
 	}
+	span.SetAttributes(
+		attribute.Bool("executed", sum.Executed),
+		attribute.Int("passed", sum.Passed),
+		attribute.Int("total", sum.Total),
+	)
 	rep.UnitFinished(ref, sum, opts.Repo.Rel(saved))
 	return failed, nil
 }

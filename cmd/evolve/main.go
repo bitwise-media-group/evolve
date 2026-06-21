@@ -12,11 +12,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/telemetry"
+	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
 // RootFlags holds the global flags that live outside cli.Options; the rest of
@@ -40,6 +43,10 @@ var (
 	// opts carries the resolved global state every subcommand consumes.
 	opts = &cli.Options{Log: logger, Viper: viper.New()}
 
+	// telemetryShutdown flushes the OTEL providers; main calls it after the
+	// command returns. Init sets it in PersistentPreRunE.
+	telemetryShutdown telemetry.ShutdownFunc
+
 	rootCmd = &cobra.Command{
 		Use:           "evolve",
 		Short:         "Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals, reports",
@@ -49,7 +56,26 @@ var (
 			if rootFlags.Verbose {
 				logLevel.Set(slog.LevelDebug)
 			}
-			return opts.LoadConfig(cmd)
+			if err := opts.LoadConfig(cmd); err != nil {
+				return err
+			}
+			// Telemetry resolves after config so --telemetry-dir / telemetry.dir /
+			// EVOLVE_TELEMETRY_DIR are all in play. Init never fails the run: a
+			// setup error leaves telemetry disabled and is logged, not returned.
+			prov, shutdown, err := telemetry.Init(cmd.Context(), telemetry.Config{
+				Dir:            opts.TelemetryDir,
+				Level:          logLevel,
+				ServiceName:    "evolve",
+				ServiceVersion: version.Version,
+				Stderr:         os.Stderr,
+			})
+			telemetryShutdown = shutdown
+			opts.Log = prov.Logger
+			if err != nil {
+				prov.Logger.LogAttrs(cmd.Context(), slog.LevelWarn, "telemetry disabled",
+					slog.Any("error", err))
+			}
+			return nil
 		},
 	}
 )
@@ -64,6 +90,8 @@ func init() {
 	pf.StringVar(&opts.ResultsFormat, "results-format", "",
 		"format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)")
 	pf.BoolVarP(&rootFlags.Verbose, "verbose", "v", false, "enable debug logging")
+	pf.StringVar(&opts.TelemetryDir, "telemetry-dir", "",
+		"write OpenTelemetry traces/metrics/logs as JSON to this directory (default: off; overrides OTEL_* env vars)")
 }
 
 func main() {
@@ -71,12 +99,28 @@ func main() {
 	defer stop()
 
 	err := rootCmd.ExecuteContext(ctx)
+
+	exitCode := 0
 	switch {
 	case err == nil:
 	case errors.Is(err, cli.ErrFailures):
-		os.Exit(1)
+		exitCode = 1
 	default:
-		logger.LogAttrs(ctx, slog.LevelError, "fatal", slog.Any("error", err))
-		os.Exit(2)
+		// Logged before shutdown so file-mode telemetry captures the fatal.
+		opts.Log.LogAttrs(ctx, slog.LevelError, "fatal", slog.Any("error", err))
+		exitCode = 2
+	}
+
+	// PersistentPostRunE is skipped when RunE errors and os.Exit skips defers, so
+	// the flush runs here for success and failure alike, on a fresh context the
+	// interrupt signal cannot have already cancelled.
+	if telemetryShutdown != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = telemetryShutdown(shutdownCtx)
+		cancel()
+	}
+
+	if exitCode != 0 {
+		os.Exit(exitCode)
 	}
 }

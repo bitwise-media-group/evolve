@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
@@ -32,6 +34,14 @@ type EvalOptions struct {
 
 // Evals executes the sweep. failed reports whether any executed eval failed.
 func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.sweep", trace.WithAttributes(
+		attribute.String("command", "evals"),
+		attribute.Bool("count_only", opts.CountOnly),
+		attribute.Int("jobs", opts.Jobs),
+		attribute.Int("model_count", len(opts.Selected)),
+	))
+	defer func() { endSpan(span, err) }()
+
 	sets, err := opts.Repo.EvalSets()
 	if err != nil {
 		return false, err
@@ -50,6 +60,12 @@ func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
 }
 
 func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (failed bool, err error) {
+	ctx, span := tracer().Start(ctx, "evolve.skill_set", trace.WithAttributes(
+		attribute.String("plugin", set.Plugin.Name),
+		attribute.String("skill", set.Skill),
+	))
+	defer func() { endSpan(span, err) }()
+
 	spec, err := evalspec.LoadEvals(set.EvalsPath)
 	if err != nil {
 		return false, err
@@ -108,6 +124,8 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 		return false, nil
 	}
 	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindEvals}
+	ctx, span := tracer().Start(ctx, "evolve.unit", trace.WithAttributes(unitSpanAttrs(ref)...))
+	defer func() { endSpan(span, err) }()
 
 	// Per-case run-set: under --new/--failed/--modified keep only the evals with a
 	// gap — the same predicate the TUI form preselects on, so CLI and TUI run an
@@ -179,7 +197,14 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	if err != nil {
 		return failed, err
 	}
-	rep.UnitFinished(ref, evalUnitSummary(entry), opts.Repo.Rel(saved))
+	sum := evalUnitSummary(entry)
+	span.SetAttributes(
+		attribute.Bool("executed", sum.Executed),
+		attribute.Int("passed", sum.Passed),
+		attribute.Int("errored", sum.Errored),
+		attribute.Int("total", sum.Total),
+	)
+	rep.UnitFinished(ref, sum, opts.Repo.Rel(saved))
 	return failed, nil
 }
 
@@ -359,6 +384,14 @@ func mergeBaseline(old *results.EvalSnapshot, fresh map[string]results.EvalCaseM
 func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref UnitRef,
 	evalRunner provider.EvalRunner, cli string, c evalspec.Eval, index int, skills []string, baseline bool,
 ) (evalOutcome, results.EvalResult, error) {
+	ctx, span := tracer().Start(ctx, "evolve.case", trace.WithAttributes(
+		attribute.String("skill", ref.Skill),
+		attribute.String("kind", "evals"),
+		attribute.String("label", c.ID),
+		attribute.Bool("baseline", baseline),
+	))
+	defer span.End()
+
 	rep := opts.reporter()
 	// A baseline run is not a tree case (it measures the skill's absence), but it
 	// runs interleaved right before the eval's own run, so it announces a start —
@@ -385,6 +418,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref 
 	ws, cleanup, err := workspace.New(parent, prefix, skills,
 		unionSkillDirs(opts.Selected), copies, keep)
 	if err != nil {
+		recordSpanErr(span, err)
 		return outcomeError, results.EvalResult{}, err
 	}
 	defer cleanup()
@@ -412,6 +446,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref 
 
 	res, err := opts.Runner.Run(ctx, spec, timeout, nil)
 	if err != nil {
+		recordSpanErr(span, err)
 		return outcomeError, results.EvalResult{}, err
 	}
 	if res.TimedOut {

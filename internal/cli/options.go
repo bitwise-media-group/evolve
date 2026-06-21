@@ -39,6 +39,7 @@ type Options struct {
 	Layout        string // --layout: auto|marketplace|multi|single
 	JSON          bool   // --json: machine-readable JSONL progress on stdout
 	ResultsFormat string // --results-format: json|jsonc|yaml for results + EVALUATION rollup
+	TelemetryDir  string // --telemetry-dir: directory for the OTEL JSON exporter ("" = telemetry disabled)
 }
 
 // LoadConfig reads the optional .evolve.<ext> config file from the resolved
@@ -48,6 +49,9 @@ type Options struct {
 func (o *Options) LoadConfig(cmd *cobra.Command) error {
 	v := o.Viper
 	v.SetEnvPrefix("EVOLVE")
+	// Dotted keys (telemetry.dir) bind to underscore env vars (EVOLVE_TELEMETRY_DIR);
+	// flat keys are unaffected since they hold no dots.
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	dir := o.Root
@@ -66,6 +70,11 @@ func (o *Options) LoadConfig(cmd *cobra.Command) error {
 	if !cmd.Flags().Changed("results-format") {
 		if f := v.GetString("results_format"); f != "" {
 			o.ResultsFormat = f
+		}
+	}
+	if !cmd.Flags().Changed("telemetry-dir") {
+		if d := v.GetString("telemetry.dir"); d != "" {
+			o.TelemetryDir = d
 		}
 	}
 	o.ResultsFormat = encfmt.Canonical(o.ResultsFormat)

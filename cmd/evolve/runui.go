@@ -17,6 +17,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/telemetry"
 	"github.com/bitwise-media-group/evolve/internal/tui"
 )
 
@@ -192,7 +193,9 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
 	engine := func(ctx context.Context, req tui.RunRequest, rep run.Reporter) (bool, error) {
 		counterOut.set(forward(rep))
 		base := common
-		base.Reporter = rep
+		// Wrap the live TUI reporter so telemetry records metrics and structured
+		// logs from the same events; a no-op when telemetry is disabled.
+		base.Reporter = telemetry.WrapReporter(rep)
 		base.Selected = req.Models
 		// The per-model filters already encode the plugin/skill narrowing.
 		base.PluginFilter = nil

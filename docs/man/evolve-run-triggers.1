@@ -103,6 +103,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 	exit 1 when checks or evals fail (default: warn and exit 0)
 
 .PP
+\fB--telemetry-dir\fP=""
+	write OpenTelemetry traces/metrics/logs as JSON to this directory (default: off; overrides OTEL_* env vars)
+
+.PP
 \fB-v\fP, \fB--verbose\fP[=false]
 	enable debug logging
 

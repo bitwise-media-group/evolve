@@ -58,6 +58,10 @@ Generated/build outputs not to edit by hand: `docs/` (run `make docs`), `dist/` 
 - `tokencount` — caches provider-reported input-token counts (from official counting APIs, never a local tokenizer).
 - `encfmt` — reads/writes JSON, JSONC, YAML behind one data model.
 - `configdoc` — renders the configuration reference and annotated example configs.
+- `telemetry` — OpenTelemetry setup: picks the exporter (JSON files when `--telemetry-dir`/`telemetry.dir` is set, else
+  `autoexport` from `OTEL_*`, else disabled), builds the slog→OTEL fanout handler, decorates the `run.Reporter` to turn
+  engine events into metrics/logs, and owns provider shutdown. The engines reach the global tracer/meter directly, so
+  only this package imports `internal/run` (no cycle). Off by default.
 - `version` — build/version info.
 
 ## Build, test, run

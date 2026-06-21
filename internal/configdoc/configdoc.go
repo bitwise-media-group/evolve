@@ -47,6 +47,12 @@ func Schema() []Option {
 			Doc: "Format for committed results files and the EVALUATION rollup: json, jsonc, or yaml.",
 		},
 		{
+			Key: "telemetry.dir", Type: "string", Example: "./telemetry",
+			Fallback: "telemetry disabled",
+			Doc: "Directory for the OpenTelemetry JSON exporter (traces.json, metrics.json, logs.json); " +
+				"the --telemetry-dir flag overrides it and both win over OTEL_* env vars.",
+		},
+		{
 			Key: "max_turns", Type: "int", Value: provider.DefaultMaxTurns,
 			Doc: "Default maximum agent turns per behavioral eval; --max-turns and a per-eval max_turns override it.",
 		},

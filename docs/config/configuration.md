@@ -13,6 +13,7 @@ defaults, the config file, `EVOLVE_*` environment variables, then explicit flags
 | `default_models` | list of strings | `["anthropic"]` | Model spec used when --models is omitted: provider names, model ids, provider-qualified ids (cursor/composer-2.5), or all. |
 | `cache_dir` | string | unset — the OS user cache dir | Directory holding the token-count cache. |
 | `results_format` | string | `"json"` | Format for committed results files and the EVALUATION rollup: json, jsonc, or yaml. |
+| `telemetry.dir` | string | unset — telemetry disabled | Directory for the OpenTelemetry JSON exporter (traces.json, metrics.json, logs.json); the --telemetry-dir flag overrides it and both win over OTEL_* env vars. |
 | `max_turns` | int | `20` | Default maximum agent turns per behavioral eval; --max-turns and a per-eval max_turns override it. |
 | `baseline` | bool | `true` | Benchmark each eval without the skill (the skill's lift over no skill), recomputed only when the eval or its fixtures change. --baseline overrides for one run. |
 | `stale_results` | string | unset — prompt on a terminal, otherwise keep | How run/report treat stored results for models outside default_models: keep or drop. --stale-results overrides. |

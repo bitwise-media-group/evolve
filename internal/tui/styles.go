@@ -14,18 +14,23 @@ import (
 // colour profile and downsample truecolor natively, so the styles can stay hex
 // and still degrade gracefully on 256/16-colour terminals.
 var (
+	colWhite  = lipgloss.Color("#FFFFFF")
 	colGreen  = lipgloss.Color("#5eff6b") // pass
 	colRed    = lipgloss.Color("#ff6e5e") // fail
+	colPink   = lipgloss.Color("#ff5ea0")
 	colYellow = lipgloss.Color("#f1ff5e") // error / warning
 	colGrey   = lipgloss.Color("#7b8496") // pending / muted
 	colBlue   = lipgloss.Color("#5ea1ff") // focus / accent
-	colFaint  = lipgloss.Color("#3c4048") // borders, separators
+	colTeal   = lipgloss.Color("#5ef1ff")
+	colOrange = lipgloss.Color("#ffbd5e") // details
+
+	colFaint = lipgloss.Color("#3c4048") // borders, separators
 
 	// Accents for the dashboard's panel borders, one per pane.
-	accentExec    = lipgloss.Color("#ff5ea0") // execution (left, never focusable)
-	accentRollup  = lipgloss.Color("#5eff6b") // rollup
-	accentRuns    = lipgloss.Color("#5ef1ff") // runs
-	accentDetails = lipgloss.Color("#ffbd5e") // details
+	accentExec    = colPink   // execution (left, never focusable)
+	accentRollup  = colGreen  // rollup
+	accentRuns    = colTeal   // runs
+	accentDetails = colOrange // details
 )
 
 // dim darkens a pane colour to 40% brightness for an inactive panel's border;
@@ -65,6 +70,6 @@ var (
 
 	buttonStyle = lipgloss.NewStyle().Padding(0, 2).Foreground(colGrey).
 			Border(lipgloss.RoundedBorder()).BorderForeground(colFaint)
-	buttonActive = lipgloss.NewStyle().Padding(0, 2).Bold(true).Foreground(lipgloss.Color("#ffffff")).
+	buttonActive = lipgloss.NewStyle().Padding(0, 2).Bold(true).Foreground(colWhite).
 			Background(colBlue).Border(lipgloss.RoundedBorder()).BorderForeground(colBlue)
 )

@@ -15,6 +15,7 @@ linters:
     - nakedret
     - prealloc
     - revive
+    - sloglint
     - staticcheck
     - unconvert
     - unparam
@@ -39,6 +40,11 @@ linters:
         - name: struct-tag
           arguments:
             - "json,inline"
+    sloglint:
+      # Attributes only — no loose key/value pairs — and require the *Context
+      # variants whenever a context is in scope, so log records carry trace ids.
+      attr-only: true
+      context: scope
   exclusions:
     generated: lax
     rules:

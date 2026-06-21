@@ -44,6 +44,19 @@
       ],
       "default": "json"
     },
+    "telemetry": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "dir": {
+          "description": "Directory for the OpenTelemetry JSON exporter (traces.json, metrics.json, logs.json); the --telemetry-dir flag overrides it and both win over OTEL_* env vars.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "max_turns": {
       "description": "Default maximum agent turns per behavioral eval; --max-turns and a per-eval max_turns override it.",
       "type": "integer",

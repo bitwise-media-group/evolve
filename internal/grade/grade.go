@@ -7,16 +7,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/runner"
 )
+
+// scopeName is this package's OpenTelemetry instrumentation scope.
+const scopeName = "github.com/bitwise-media-group/evolve/internal/grade"
+
+func tracer() trace.Tracer { return otel.Tracer(scopeName) }
 
 const judgePrompt = `You are grading an AI coding agent's work. Assertion to verify:
 
@@ -52,6 +62,19 @@ type Options struct {
 // Assertion grades one assertion. passed is tri-state: nil means skipped
 // (e.g. a required binary is not installed).
 func Assertion(ctx context.Context, a evalspec.Assertion, opts Options) (passed *bool, evidence string) {
+	// Only the command and llm branches shell out (an agent.exec child span and
+	// real latency); the deterministic file/regex checks are too cheap to span.
+	if a.Type == "command" || a.Type == "llm" {
+		var span trace.Span
+		ctx, span = tracer().Start(ctx, "evolve.grade.assertion",
+			trace.WithAttributes(attribute.String("assertion_type", a.Type)))
+		defer func() {
+			if passed != nil {
+				span.SetAttributes(attribute.Bool("passed", *passed))
+			}
+			span.End()
+		}()
+	}
 	switch a.Type {
 	case "file_exists", "file_absent":
 		_, err := os.Stat(filepath.Join(opts.Workspace, a.Path))
@@ -108,6 +131,9 @@ func Assertion(ctx context.Context, a evalspec.Assertion, opts Options) (passed 
 			Dir:  cwd,
 		}, opts.Timeout, nil)
 		if err != nil {
+			slog.DebugContext(ctx, "grade command error",
+				slog.String("run", a.Run),
+				slog.Any("error", err))
 			f := false
 			return &f, fmt.Sprintf("command error: %v", err)
 		}
@@ -150,9 +176,13 @@ func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
 		Dir: opts.Workspace,
 	}, opts.Timeout, nil)
 	if err != nil {
+		slog.DebugContext(ctx, "judge error",
+			slog.String("model", model),
+			slog.Any("error", err))
 		return false, fmt.Sprintf("judge error: %v", err)
 	}
 	if res.TimedOut {
+		slog.DebugContext(ctx, "judge timed out", slog.String("model", model))
 		return false, "judge error: timed out"
 	}
 

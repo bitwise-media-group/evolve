@@ -11,12 +11,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bitwise-media-group/evolve/internal/provider"
 )
+
+// scopeName is this package's OpenTelemetry instrumentation scope.
+const scopeName = "github.com/bitwise-media-group/evolve/internal/tokencount"
+
+func tracer() trace.Tracer { return otel.Tracer(scopeName) }
 
 // Counter wraps the providers' counting APIs with a persistent cache and
 // warn-once diagnostics. It is safe for concurrent use.
@@ -63,30 +74,53 @@ func (c *Counter) Count(ctx context.Context, p provider.Provider, modelID, text 
 		return nil // capability absent (e.g. cursor) — expected, no warning
 	}
 
+	ctx, span := tracer().Start(ctx, "evolve.tokencount", trace.WithAttributes(
+		attribute.String("provider", p.Name()),
+		attribute.String("model", modelID),
+	))
+	defer span.End()
+
 	digest := sha256.Sum256([]byte(p.Name() + "\x00" + modelID + "\x00" + text))
 	key := hex.EncodeToString(digest[:])
 	c.mu.Lock()
 	cached, hit := c.cache[key]
 	c.mu.Unlock()
 	if hit {
+		span.SetAttributes(attribute.Bool("cache_hit", true), attribute.Int("token_count", cached))
 		return &cached
 	}
+	span.SetAttributes(attribute.Bool("cache_hit", false))
 
 	tokens, err := tc.CountTokens(ctx, modelID, text)
 	switch {
 	case errors.Is(err, provider.ErrNoCredential):
+		slog.DebugContext(ctx, "token count skipped: no credential",
+			slog.String("provider", p.Name()),
+			slog.String("model", modelID))
 		c.warn(p.Name(), "no API key or OAuth token set; token counts omitted")
 		return nil
 	case err != nil:
+		slog.DebugContext(ctx, "token count failed",
+			slog.String("provider", p.Name()),
+			slog.String("model", modelID),
+			slog.Any("error", err))
+		recordSpanErr(span, err)
 		c.warn(p.Name()+"/"+modelID, fmt.Sprintf("count_tokens failed: %v", err))
 		return nil
 	}
 
+	span.SetAttributes(attribute.Int("token_count", tokens))
 	c.mu.Lock()
 	c.cache[key] = tokens
 	c.dirty = true
 	c.mu.Unlock()
 	return &tokens
+}
+
+// recordSpanErr marks span errored.
+func recordSpanErr(span trace.Span, err error) {
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
 }
 
 func (c *Counter) warn(scope, message string) {

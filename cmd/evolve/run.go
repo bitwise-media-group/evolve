@@ -16,6 +16,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/runner"
+	"github.com/bitwise-media-group/evolve/internal/telemetry"
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 	"github.com/bitwise-media-group/evolve/internal/version"
 )
@@ -148,6 +149,7 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 	if !cmd.Flags().Changed("baseline") && opts.Viper != nil && opts.Viper.IsSet("baseline") {
 		baseline = opts.Viper.GetBool("baseline")
 	}
+	stdout, stderr := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	return run.Options{
 		Repo:           repo,
 		Selected:       selected,
@@ -168,8 +170,13 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 		ResultsFormat:  opts.ResultsFormat,
 		ToolVersion:    version.Version,
 		Now:            time.Now,
-		Stdout:         cmd.OutOrStdout(),
-		Stderr:         cmd.ErrOrStderr(),
+		Stdout:         stdout,
+		Stderr:         stderr,
+		// When telemetry is on, the decorator records metrics and structured logs
+		// from the reporter's events; when off it returns the PlainReporter
+		// unchanged, so plain-mode output is byte-for-byte what it was. The TUI
+		// path overrides Reporter in uiRun with its own wrapped reporter.
+		Reporter: telemetry.WrapReporter(run.PlainReporter{Stdout: stdout, Stderr: stderr}),
 	}, nil
 }
 
