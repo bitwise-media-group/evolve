@@ -49,7 +49,7 @@ func Sweep(ctx context.Context, opts SweepOptions) (failed bool, err error) {
 		return false, err
 	}
 	for _, set := range sets {
-		if opts.SkillFilter != "" && set.Skill != opts.SkillFilter {
+		if !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runSweepSet(ctx, opts, set)

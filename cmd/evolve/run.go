@@ -6,9 +6,11 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/provider"
@@ -51,8 +53,9 @@ func failOrWarn(cmd *cobra.Command, format string, args ...any) error {
 
 // SweepFlags holds the flags `run triggers` and `run evals` share.
 type SweepFlags struct {
-	Skill          string
-	Models         string
+	Plugin         []string
+	Skill          []string
+	Models         []string
 	Timeout        int
 	Jobs           int
 	MaxTurns       int
@@ -65,9 +68,13 @@ type SweepFlags struct {
 }
 
 func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
-	cmd.Flags().StringVar(&f.Skill, "skill", "", "only run evals for this skill")
-	cmd.Flags().StringVar(&f.Models, "models", "",
-		`comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")`)
+	cmd.Flags().StringSliceVar(&f.Plugin, "plugin", nil,
+		"only run evals for these plugins (repeatable / comma-separated; alias: --plugins)")
+	cmd.Flags().StringSliceVar(&f.Skill, "skill", nil,
+		"only run evals for these skills (repeatable / comma-separated; alias: --skills)")
+	cmd.Flags().StringSliceVar(&f.Models, "model", nil,
+		`provider names / model ids, or "all" (repeatable / comma-separated; alias: --models; `+
+			`default: config default_models or "anthropic")`)
 	cmd.Flags().IntVar(&f.Timeout, "timeout", defaultTimeout, "seconds per agent run")
 	cmd.Flags().IntVar(&f.Jobs, "jobs", provider.DefaultJobs(), "concurrent agent runs (default: ceil(cpus/2))")
 	cmd.Flags().IntVar(&f.MaxTurns, "max-turns", provider.DefaultMaxTurns,
@@ -84,6 +91,22 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 		"keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)")
 	cmd.Flags().BoolVar(&f.NoTUI, "no-tui", false,
 		"disable the interactive TUI even on a terminal (also: EVOLVE_NO_TUI=1)")
+	cmd.Flags().SetNormalizeFunc(sweepFlagAliases)
+}
+
+// sweepFlagAliases maps the plural flag aliases to their canonical singular
+// names so --plugins/--skills/--models behave identically to
+// --plugin/--skill/--model (they share the same backing slice).
+func sweepFlagAliases(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+	switch name {
+	case "plugins":
+		name = "plugin"
+	case "skills":
+		name = "skill"
+	case "models":
+		name = "model"
+	}
+	return pflag.NormalizedName(name)
 }
 
 // sweepOptions resolves the global flags and the sweep flags into the engine
@@ -103,7 +126,7 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 	if err != nil {
 		return run.Options{}, err
 	}
-	selected, err := opts.Selections(f.Models)
+	selected, err := opts.Selections(strings.Join(f.Models, ","))
 	if err != nil {
 		return run.Options{}, err
 	}
@@ -122,6 +145,7 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 		Counter:        counter,
 		Runner:         &runner.Exec{Sandbox: sandbox},
 		HostSandboxed:  sandbox.Enabled,
+		PluginFilter:   f.Plugin,
 		SkillFilter:    f.Skill,
 		Timeout:        time.Duration(f.Timeout) * time.Second,
 		Jobs:           f.Jobs,

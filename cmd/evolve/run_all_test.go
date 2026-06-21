@@ -4,6 +4,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -24,12 +25,13 @@ func TestRunAllForwardsFlags(t *testing.T) {
 		}
 	}
 
-	if triggersFlags.Models != "claude-haiku-4-5" || triggersFlags.Jobs != 1 || triggersFlags.Runs != 1 {
-		t.Errorf("triggers flags = %q/%d/%d, want claude-haiku-4-5/1/1",
+	if !slices.Equal(triggersFlags.Models, []string{"claude-haiku-4-5"}) ||
+		triggersFlags.Jobs != 1 || triggersFlags.Runs != 1 {
+		t.Errorf("triggers flags = %q/%d/%d, want [claude-haiku-4-5]/1/1",
 			triggersFlags.Models, triggersFlags.Jobs, triggersFlags.Runs)
 	}
-	if evalsFlags.Models != "claude-haiku-4-5" || evalsFlags.Jobs != 1 {
-		t.Errorf("evals flags = %q/%d, want claude-haiku-4-5/1", evalsFlags.Models, evalsFlags.Jobs)
+	if !slices.Equal(evalsFlags.Models, []string{"claude-haiku-4-5"}) || evalsFlags.Jobs != 1 {
+		t.Errorf("evals flags = %q/%d, want [claude-haiku-4-5]/1", evalsFlags.Models, evalsFlags.Jobs)
 	}
 	if triggersFlags.Timeout != 120 || evalsFlags.Timeout != 600 {
 		t.Errorf("timeouts = %d/%d, want the per-tier defaults 120/600",

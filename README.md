@@ -96,19 +96,21 @@ evolve run checks
 `evolve run triggers` runs each authored trigger prompt several times and records whether the expected skill activated.
 
 ```sh
-evolve run triggers --models anthropic,openai --runs 5
+evolve run triggers --model anthropic,openai --runs 5
 ```
 
 `evolve run evals` runs behavioral cases in temporary workspaces, then grades the outputs with deterministic assertions
 and any configured LLM judge.
 
 ```sh
-evolve run evals --models anthropic,openai --jobs 4 --max-turns 12 --timeout 900
+evolve run evals --model anthropic,openai --jobs 4 --max-turns 12 --timeout 900
 ```
 
 Useful run filters and debug flags:
 
-- `--skill my-skill`: restrict the run to one skill.
+- `--plugin a,b` (alias `--plugins`): restrict the run to one or more plugins. Repeatable, or comma-separated.
+- `--skill x,y` (alias `--skills`): restrict the run to one or more skills. Repeatable, or comma-separated.
+- `--model anthropic,openai` (alias `--models`): pick providers / model ids, or `all`. Repeatable, or comma-separated.
 - `--eval case-id`: restrict `run evals` to one behavioral case.
 - `--new`: run only work with missing or stale stored results.
 - `--modified`: rerun only cases whose authored content changed since their stored results (trigger frontmatter or

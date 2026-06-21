@@ -21,7 +21,7 @@ type Tiers struct {
 }
 
 // Filter narrows a sweep to specific skills and individual triggers/evals, on
-// top of SkillFilter/EvalFilter and per-case SkipProviders. A nil *Filter, or a
+// top of the PluginFilter/SkillFilter/EvalFilter and per-case SkipProviders. A nil *Filter, or a
 // nil sub-map, imposes no restriction at that level — so the flag-only path
 // (Filter == nil) behaves exactly as before. The TUI selection form populates
 // it explicitly: an empty (non-nil) per-skill set means "this skill is included
@@ -75,7 +75,7 @@ type SkillCatalog struct {
 }
 
 // Catalog loads every skill's triggers, evals, and SKILL.md metadata across the
-// repository. It ignores SkillFilter/EvalFilter so the form can show the full
+// repository. It ignores the plugin/skill/eval filters so the form can show the full
 // tree and merely preselect the flag-narrowed subset. A skill whose spec fails
 // to parse is included with whatever loaded (so the UI still lists it).
 func Catalog(opts Options) ([]SkillCatalog, error) {
@@ -146,7 +146,7 @@ type CaseRef struct {
 // runs (and notes is empty); with them, a case runs exactly when its
 // SelectReason is not ReasonNone — the same predicate the engine uses — so the
 // form's initial selection matches non-TUI mode case for case. Only cases under
-// def's tiers, SkillFilter, and evalFilter, and applicable for the model (its
+// def's tiers, the plugin/skill filters, and evalFilter, and applicable for the model (its
 // skip_providers honored), appear. Token-count estimates are deliberately not a
 // reason here nor in the engine, so this needs no token-counting round trip.
 func Needs(
@@ -159,7 +159,7 @@ func Needs(
 	notes = map[CaseRef]string{}
 	flags := opts.New || opts.Failed || opts.Modified
 	for _, sc := range cat {
-		if opts.SkillFilter != "" && sc.Skill != opts.SkillFilter {
+		if !opts.selects(sc.Plugin, sc.Skill) {
 			continue
 		}
 		var file *results.File

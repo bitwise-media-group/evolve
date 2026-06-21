@@ -80,8 +80,20 @@ var runAllCmd = &cobra.Command{
 func forwardFlags(from, to *pflag.FlagSet) error {
 	var err error
 	from.Visit(func(f *pflag.Flag) {
-		if err != nil || to.Lookup(f.Name) == nil {
+		if err != nil {
 			return
+		}
+		dst := to.Lookup(f.Name)
+		if dst == nil {
+			return
+		}
+		// Slice flags must forward their elements, not their bracketed String()
+		// form ("[a,b]"), which Set would re-parse as literal "[a" / "b]" values.
+		if src, ok := f.Value.(pflag.SliceValue); ok {
+			if dv, ok := dst.Value.(pflag.SliceValue); ok {
+				err = dv.Replace(src.GetSlice())
+				return
+			}
 		}
 		err = to.Set(f.Name, f.Value.String())
 	})

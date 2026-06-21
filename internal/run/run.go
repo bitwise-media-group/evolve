@@ -26,16 +26,20 @@ type Runner interface {
 // Options holds the sweep configuration the trigger and eval engines share;
 // TriggerOptions and EvalOptions embed it and add their engine's knobs.
 type Options struct {
-	Repo        *layout.Repo
-	Selected    []provider.Selection
-	Counter     *tokencount.Counter
-	Runner      Runner
-	SkillFilter string
-	Timeout     time.Duration
-	Jobs        int
-	MaxTurns    int // agent-turn ceiling per eval; 0 = provider.DefaultMaxTurns. A per-eval max_turns overrides it.
-	CountOnly   bool
-	New         bool
+	Repo     *layout.Repo
+	Selected []provider.Selection
+	Counter  *tokencount.Counter
+	Runner   Runner
+	// PluginFilter and SkillFilter narrow the sweep to the named plugins and
+	// skills. An empty list imposes no restriction; a non-empty one keeps only
+	// eval sets whose plugin (resp. skill) is listed. The two compose with AND.
+	PluginFilter []string
+	SkillFilter  []string
+	Timeout      time.Duration
+	Jobs         int
+	MaxTurns     int // agent-turn ceiling per eval; 0 = provider.DefaultMaxTurns. A per-eval max_turns overrides it.
+	CountOnly    bool
+	New          bool
 	// Failed selects units that did not pass on a previous run (a complete
 	// result graded as failing, or an eval that errored). It composes with New:
 	// with both set, a unit reruns when any case is missing data OR previously
@@ -61,9 +65,9 @@ type Options struct {
 	Stderr        io.Writer
 
 	// Filter narrows the sweep to specific skills and individual
-	// triggers/evals on top of SkillFilter/EvalFilter and SkipProviders. Nil
-	// means no extra narrowing. The TUI selection form builds it; the plain
-	// flag path leaves it nil.
+	// triggers/evals on top of the PluginFilter/SkillFilter/EvalFilter and
+	// SkipProviders. Nil means no extra narrowing. The TUI selection form
+	// builds it; the plain flag path leaves it nil.
 	Filter *Filter
 
 	// Reporter receives progress events. When nil the engine uses a
@@ -90,6 +94,27 @@ func (o Options) ClearSelectionFlags() Options {
 	o.Failed = false
 	o.Modified = false
 	return o
+}
+
+// selects reports whether an eval set's plugin and skill pass the CLI-level
+// --plugin/--skill filters. An empty filter list matches every value; a
+// non-empty one requires membership. The two compose with AND.
+func (o Options) selects(plugin, skill string) bool {
+	return inFilter(o.PluginFilter, plugin) && inFilter(o.SkillFilter, skill)
+}
+
+// inFilter reports whether v passes a filter list: an empty list imposes no
+// restriction, otherwise v must appear in it.
+func inFilter(list []string, v string) bool {
+	if len(list) == 0 {
+		return true
+	}
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // retain reports the parent directory new workspaces are created under and

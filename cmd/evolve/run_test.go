@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,5 +40,56 @@ func TestFailOrWarn(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("strict: stderr = %q, want empty", stderr.String())
+	}
+}
+
+// TestSweepFlagsMultiValue covers --plugin/--skill/--model: each accepts a
+// comma-separated list, repeats to append, and resolves its plural alias
+// (--plugins/--skills/--models) to the same backing slice.
+func TestSweepFlagsMultiValue(t *testing.T) {
+	tests := []struct {
+		name                  string
+		args                  []string
+		plugin, skill, models []string
+	}{
+		{
+			name:   "comma-separated",
+			args:   []string{"--plugin", "a,b", "--skill", "x,y", "--model", "m1,m2"},
+			plugin: []string{"a", "b"}, skill: []string{"x", "y"}, models: []string{"m1", "m2"},
+		},
+		{
+			name:   "repeated flags append",
+			args:   []string{"--plugin", "a", "--plugin", "b", "--skill", "x", "--skill", "y"},
+			plugin: []string{"a", "b"}, skill: []string{"x", "y"},
+		},
+		{
+			name:   "plural aliases",
+			args:   []string{"--plugins", "a,b", "--skills", "x", "--models", "m1"},
+			plugin: []string{"a", "b"}, skill: []string{"x"}, models: []string{"m1"},
+		},
+		{
+			name:   "comma and repeat mixed",
+			args:   []string{"--model", "m1,m2", "--model", "m3"},
+			models: []string{"m1", "m2", "m3"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var f SweepFlags
+			cmd := &cobra.Command{Use: "x", RunE: func(*cobra.Command, []string) error { return nil }}
+			f.register(cmd, 120)
+			if err := cmd.Flags().Parse(tc.args); err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if !slices.Equal(f.Plugin, tc.plugin) {
+				t.Errorf("Plugin = %q, want %q", f.Plugin, tc.plugin)
+			}
+			if !slices.Equal(f.Skill, tc.skill) {
+				t.Errorf("Skill = %q, want %q", f.Skill, tc.skill)
+			}
+			if !slices.Equal(f.Models, tc.models) {
+				t.Errorf("Models = %q, want %q", f.Models, tc.models)
+			}
+		})
 	}
 }

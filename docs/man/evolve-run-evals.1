@@ -46,8 +46,8 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)
 
 .PP
-\fB--models\fP=""
-	comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
+\fB--model\fP=[]
+	provider names / model ids, or "all" (repeatable / comma-separated; alias: --models; default: config default_models or "anthropic")
 
 .PP
 \fB--modified\fP[=false]
@@ -62,8 +62,12 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	disable the interactive TUI even on a terminal (also: EVOLVE_NO_TUI=1)
 
 .PP
-\fB--skill\fP=""
-	only run evals for this skill
+\fB--plugin\fP=[]
+	only run evals for these plugins (repeatable / comma-separated; alias: --plugins)
+
+.PP
+\fB--skill\fP=[]
+	only run evals for these skills (repeatable / comma-separated; alias: --skills)
 
 .PP
 \fB--stale-results\fP=""

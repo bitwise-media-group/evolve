@@ -135,7 +135,7 @@ func runSub(cmd, sub *cobra.Command, failures *bool) error {
 
 // uiRun is the single interactive path shared by `run triggers`, `run evals`,
 // and `run all`. The form always spans both tiers; def decides which tier is
-// checked by default, and the config/CLI filters (--skill/--eval/--new/--failed)
+// checked by default, and the config/CLI filters (--plugin/--skill/--eval/--new/--failed)
 // refine the initial selection. withChecksReport adds `run all`'s static-checks step
 // before and report step after.
 func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
@@ -189,7 +189,9 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
 		base := common
 		base.Reporter = rep
 		base.Selected = req.Models
-		base.SkillFilter = "" // the per-model filters already encode skill narrowing
+		// The per-model filters already encode the plugin/skill narrowing.
+		base.PluginFilter = nil
+		base.SkillFilter = nil
 		// The form's per-model Filters already encode --new/--failed/--modified,
 		// so clear those flags or the engine would re-filter the user's selection.
 		base = base.ClearSelectionFlags()

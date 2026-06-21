@@ -177,10 +177,24 @@ func TestNeedsDefaultsAndFlags(t *testing.T) {
 
 	// --skill excludes other skills: matrix is empty.
 	withSkill := base
-	withSkill.SkillFilter = "nope"
+	withSkill.SkillFilter = []string{"nope"}
 	n, _ = Needs(withSkill, cat, sels, Tiers{Triggers: true, Evals: true}, "")
 	if len(n[key]) != 0 {
 		t.Errorf("skill filter should exclude solo-skill: %+v", n[key])
+	}
+
+	// --plugin excludes non-matching plugins, and keeps the matrix populated for
+	// the fixture's own plugin ("solo").
+	withPlugin := base
+	withPlugin.PluginFilter = []string{"nope"}
+	n, _ = Needs(withPlugin, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	if len(n[key]) != 0 {
+		t.Errorf("plugin filter should exclude the solo plugin: %+v", n[key])
+	}
+	withPlugin.PluginFilter = []string{"solo"}
+	n, _ = Needs(withPlugin, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	if !n[key][tc] {
+		t.Errorf("matching plugin filter should include solo-skill: %+v", n[key])
 	}
 }
 

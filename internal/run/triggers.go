@@ -32,7 +32,7 @@ func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error)
 		return false, err
 	}
 	for _, set := range sets {
-		if set.TriggersPath == "" || (opts.SkillFilter != "" && set.Skill != opts.SkillFilter) {
+		if set.TriggersPath == "" || !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runTriggerSet(ctx, opts, set)

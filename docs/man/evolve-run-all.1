@@ -38,8 +38,8 @@ Run everything: checks, triggers, evals, then regenerate reports
 	max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)
 
 .PP
-\fB--models\fP=""
-	comma-separated provider names / model ids, or "all" (default: config default_models or "anthropic")
+\fB--model\fP=[]
+	provider names / model ids, or "all" (repeatable / comma-separated; alias: --models; default: config default_models or "anthropic")
 
 .PP
 \fB--modified\fP[=false]
@@ -54,12 +54,16 @@ Run everything: checks, triggers, evals, then regenerate reports
 	disable the interactive TUI even on a terminal (also: EVOLVE_NO_TUI=1)
 
 .PP
+\fB--plugin\fP=[]
+	only run evals for these plugins (repeatable / comma-separated; alias: --plugins)
+
+.PP
 \fB--runs\fP=3
 	runs per query (triggers tier)
 
 .PP
-\fB--skill\fP=""
-	only run evals for this skill
+\fB--skill\fP=[]
+	only run evals for these skills (repeatable / comma-separated; alias: --skills)
 
 .PP
 \fB--stale-results\fP=""

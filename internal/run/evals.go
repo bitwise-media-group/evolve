@@ -36,7 +36,7 @@ func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
 		return false, err
 	}
 	for _, set := range sets {
-		if set.EvalsPath == "" || (opts.SkillFilter != "" && set.Skill != opts.SkillFilter) {
+		if set.EvalsPath == "" || !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runEvalSet(ctx, opts, set)
