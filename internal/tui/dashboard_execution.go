@@ -37,36 +37,94 @@ type nodeRef struct {
 	collapsed        bool
 }
 
-// liveFocus is the row the left pane pins to: the live (executing) case so the
-// pane auto-follows execution. The left pane takes no user cursor — navigation
-// lives in the Executing pane.
-func (d dashboardModel) liveFocus(nodes []nodeRef) int {
-	if i := d.liveNode(nodes); i >= 0 {
+// nodeKey identifies a collapsible group (plugin/skill/model) independent of its
+// position in any particular node slice, so a user's browse-mode expansion
+// survives the re-renders that live status triggers around it.
+type nodeKey struct {
+	kind       nodeKind
+	pi, si, mi int
+}
+
+func keyOf(n nodeRef) nodeKey {
+	return nodeKey{kind: n.kind, pi: n.pi, si: n.si, mi: n.mi}
+}
+
+// followHighlight is the row the left pane pins to while unfocused: the case of
+// the shared selection (execLog[runSel]), so the Execution, Runs, and Details
+// panes always agree on what is selected. Falls back to the top row when the
+// selection is not currently visible in the tree.
+func (d dashboardModel) followHighlight(nodes []nodeRef) int {
+	if i := d.selectedNode(nodes); i >= 0 {
 		return i
 	}
 	return 0
 }
 
-// liveNode is the node index of the most recent in-flight case, or -1.
-func (d dashboardModel) liveNode(nodes []nodeRef) int {
-	if !d.hasLast {
+// selectedNode is the node index of the case the shared selection points at, or
+// -1 when nothing is selected or that case isn't currently visible in the tree.
+func (d dashboardModel) selectedNode(nodes []nodeRef) int {
+	sel := d.currentRun()
+	if sel < 0 {
 		return -1
 	}
-	u := d.unit(d.lastRef)
-	if u == nil {
+	e := d.execLog[sel]
+	ui, ok := d.index[e.ref]
+	if !ok {
 		return -1
 	}
-	ui := d.index[d.lastRef]
 	for i, n := range nodes {
-		if n.kind == nkCase && n.unitIdx == ui && u.cases[n.caseIdx].label == d.lastLabel {
+		if n.kind == nkCase && n.unitIdx == ui && d.units[ui].cases[n.caseIdx].label == e.label {
 			return i
 		}
 	}
 	return -1
 }
 
-func (d dashboardModel) leftCount(nodes []nodeRef) string {
-	if loc, ok := d.activeLoc(nodes, d.liveFocus(nodes)); ok {
+// selLoc is the plugin/skill/model location of the shared selection's case, or
+// ok=false when nothing is selected.
+func (d dashboardModel) selLoc() (loc, bool) {
+	sel := d.currentRun()
+	if sel < 0 {
+		return loc{}, false
+	}
+	ui, ok := d.index[d.execLog[sel].ref]
+	if !ok {
+		return loc{}, false
+	}
+	return d.locOfUnit(ui)
+}
+
+// locOfUnit finds the tree location (plugin/skill/model) of a unit index.
+func (d dashboardModel) locOfUnit(ui int) (loc, bool) {
+	for pi := range d.tree {
+		for si := range d.tree[pi].skills {
+			for mi, mg := range d.tree[pi].skills[si].models {
+				for _, u := range mg.units {
+					if u == ui {
+						return loc{pi, si, mi}, true
+					}
+				}
+			}
+		}
+	}
+	return loc{}, false
+}
+
+// groupContains reports whether loc falls within the plugin/skill/model group k.
+func groupContains(k nodeKey, l loc) bool {
+	switch k.kind {
+	case nkPlugin:
+		return k.pi == l.pi
+	case nkSkill:
+		return k.pi == l.pi && k.si == l.si
+	case nkModel:
+		return k.pi == l.pi && k.si == l.si && k.mi == l.mi
+	}
+	return false
+}
+
+func (d dashboardModel) leftCount(nodes []nodeRef, hl int) string {
+	if loc, ok := d.activeLoc(nodes, hl); ok {
 		mg := d.tree[loc.pi].skills[loc.si].models[loc.mi]
 		done, total := 0, 0
 		for _, ui := range mg.units {
@@ -80,26 +138,68 @@ func (d dashboardModel) leftCount(nodes []nodeRef) string {
 
 // ── rendering the tree ──────────────────────────────────────────────────────
 
+// buildNodeRefs builds the follow-mode tree: groups expand purely from live
+// status (a group is open only while started-and-not-done).
 func (d dashboardModel) buildNodeRefs() []nodeRef {
+	return d.buildNodeRefsWith(d.followExpanded)
+}
+
+// followExpanded is the live-status collapse rule used while the pane is not
+// focused: a group is open while it is started and not yet done. When the user
+// has paused on an explicit selection, the group holding it is opened too so the
+// shared highlight stays visible; while following, completed groups still
+// auto-collapse.
+func (d dashboardModel) followExpanded(k nodeKey) bool {
+	var units []int
+	switch k.kind {
+	case nkPlugin:
+		units = d.pluginUnits(k.pi)
+	case nkSkill:
+		units = d.skillUnits(k.pi, k.si)
+	case nkModel:
+		units = d.tree[k.pi].skills[k.si].models[k.mi].units
+	default:
+		return false
+	}
+	if started, done := d.groupState(units); started && !done {
+		return true
+	}
+	if !d.runFollow {
+		if l, ok := d.selLoc(); ok && groupContains(k, l) {
+			return true
+		}
+	}
+	return false
+}
+
+// browseExpanded reads the user's expand/collapse overrides (browse mode).
+func (d dashboardModel) browseExpanded(k nodeKey) bool { return d.execExpand[k] }
+
+// execNodes is the browse-mode node slice, shared by every Execution key handler
+// so the cursor and the view agree on indices.
+func (d dashboardModel) execNodes() []nodeRef { return d.buildNodeRefsWith(d.browseExpanded) }
+
+// buildNodeRefsWith flattens the plugin→skill→model→case tree into selectable
+// rows, expanding each group according to expanded(key). Collapsed groups are a
+// single row; an expanded model emits its case rows with one ruler between the
+// trigger and eval blocks.
+func (d dashboardModel) buildNodeRefsWith(expanded func(nodeKey) bool) []nodeRef {
 	var nodes []nodeRef
 	for pi := range d.tree {
-		pstarted, pdone := d.groupState(d.pluginUnits(pi))
-		if !pstarted || pdone {
+		if !expanded(nodeKey{kind: nkPlugin, pi: pi}) {
 			nodes = append(nodes, nodeRef{kind: nkPlugin, pi: pi, collapsed: true})
 			continue
 		}
 		nodes = append(nodes, nodeRef{kind: nkPlugin, pi: pi})
 		for si := range d.tree[pi].skills {
-			sstarted, sdone := d.groupState(d.skillUnits(pi, si))
-			if !sstarted || sdone {
+			if !expanded(nodeKey{kind: nkSkill, pi: pi, si: si}) {
 				nodes = append(nodes, nodeRef{kind: nkSkill, pi: pi, si: si, collapsed: true})
 				continue
 			}
 			nodes = append(nodes, nodeRef{kind: nkSkill, pi: pi, si: si})
 			for mi := range d.tree[pi].skills[si].models {
 				mg := d.tree[pi].skills[si].models[mi]
-				mstarted, mdone := d.groupState(mg.units)
-				if !mstarted || mdone {
+				if !expanded(nodeKey{kind: nkModel, pi: pi, si: si, mi: mi}) {
 					nodes = append(nodes, nodeRef{kind: nkModel, pi: pi, si: si, mi: mi, collapsed: true})
 					continue
 				}
@@ -126,7 +226,26 @@ func (d dashboardModel) buildNodeRefs() []nodeRef {
 	return nodes
 }
 
+// leftHeader is the Execution pane's column header, mirroring the Rollup pane's
+// aggHeader so the two read consistently. It labels the right-aligned metric
+// block; the left title spans the tree column.
+func (d dashboardModel) leftHeader(w int) string {
+	right := metricCols("Pass/Tot", "Avg", "↑In", "↓Out", "Cost")
+	tw := max(w-1-ansi.StringWidth(right)-1, 6)
+	title := "Tree" + strings.Repeat(" ", max(tw-4, 0))
+	return headerStyle.Render(clip(title+" "+right, w))
+}
+
+// renderLeft draws the Execution pane: a fixed column header above the scrollable
+// tree body.
 func (d dashboardModel) renderLeft(nodes []nodeRef, hl, w, h int) string {
+	if h < 1 {
+		h = 1
+	}
+	return d.leftHeader(w) + "\n" + d.renderLeftBody(nodes, hl, w, max(h-1, 1))
+}
+
+func (d dashboardModel) renderLeftBody(nodes []nodeRef, hl, w, h int) string {
 	if h < 1 {
 		h = 1
 	}
@@ -137,58 +256,23 @@ func (d dashboardModel) renderLeft(nodes []nodeRef, hl, w, h int) string {
 	if len(lines) <= h {
 		return strings.Join(lines, "\n")
 	}
-
-	// Overflow: pin the active model's plugin/skill/model headers and scroll its
-	// case rows beneath them.
-	loc, ok := d.activeLoc(nodes, hl)
-	if !ok {
-		return strings.Join(window(lines, hl, h), "\n")
-	}
-	pin := d.headerLines(loc, w)
-	var caseIdx []int
-	for i, n := range nodes {
-		if (n.kind == nkCase || n.kind == nkRule) && n.pi == loc.pi && n.si == loc.si && n.mi == loc.mi {
-			caseIdx = append(caseIdx, i)
-		}
-	}
-	avail := max(h-len(pin), 1)
-	focus := 0
-	for j, i := range caseIdx {
-		if i == hl {
-			focus = j
-		}
-	}
-	caseLines := make([]string, len(caseIdx))
-	for j, i := range caseIdx {
-		caseLines[j] = lines[i]
-	}
-	start := scrollStart(len(caseLines), focus, avail)
-	out := append([]string(nil), pin...)
-	shown := 0
-	for j := start; j < len(caseLines) && shown < avail; j++ {
-		line := caseLines[j]
-		if shown == 0 && start > 0 {
-			line = mutedStyle.Render(fmt.Sprintf("  ┄ ▲ %d done above ┄", start))
-		} else if shown == avail-1 && j < len(caseLines)-1 {
-			line = mutedStyle.Render(fmt.Sprintf("  ┄ ▼ %d more below ┄", len(caseLines)-j))
-		}
-		out = append(out, line)
-		shown++
-	}
-	return strings.Join(out, "\n")
+	// Scroll the whole tree to keep the highlight centred and on-screen — the same
+	// in browse and follow modes. Pinning just the active model's subtree (the old
+	// follow-mode path) made every other node vanish when the pane lost focus.
+	return scrollWindow(lines, centerScroll(len(lines), hl, h), h)
 }
 
 // nodeLine renders one tree row.
 func (d dashboardModel) nodeLine(n nodeRef, w int, hot bool) string {
 	switch n.kind {
 	case nkPlugin:
-		return d.pluginLine(n.pi, w, hot)
+		return d.headerRow(d.aggGlyph(d.pluginUnits(n.pi)), 0, d.tree[n.pi].name, d.groupMetric(d.pluginUnits(n.pi)), w, hot)
 	case nkSkill:
 		sg := d.tree[n.pi].skills[n.si]
-		return d.headerRow(d.aggGlyph(d.skillUnits(n.pi, n.si)), 1, sg.title, d.skillTail(n.pi, n.si), w, hot)
+		return d.headerRow(d.aggGlyph(d.skillUnits(n.pi, n.si)), 1, sg.title, d.groupMetric(d.skillUnits(n.pi, n.si)), w, hot)
 	case nkModel:
 		mg := d.tree[n.pi].skills[n.si].models[n.mi]
-		return d.headerRow(d.aggGlyph(mg.units), 2, shortKey(mg.key), d.modelTail(mg), w, hot)
+		return d.headerRow(d.aggGlyph(mg.units), 2, shortKey(mg.key), d.groupMetric(mg.units), w, hot)
 	case nkRule:
 		return ruleLine(w)
 	default:
@@ -203,60 +287,22 @@ func ruleLine(w int) string {
 	return strings.Repeat(" ", indent) + mutedStyle.Render(strings.Repeat("─", max(w-indent, 4)))
 }
 
-// pluginLine renders a plugin row: name, a coloured progress bar, and the total
-// case count. The bar carries the status, so the row has no separate marker.
-func (d dashboardModel) pluginLine(pi int, w int, hot bool) string {
+// headerRow renders a plugin, skill, or model row: marker, label, and a right-aligned
+// rollup metric block in the same columns as the case rows below it.
+func (d dashboardModel) headerRow(glyph string, depth int, label, metric string, w int, hot bool) string {
 	gutter := " "
 	if hot {
 		gutter = selectedStyle.Render("›")
 	}
-	nameW, countW := d.pluginColW()
-	name := d.tree[pi].name
-	pass, fail, runc, total := d.pluginCaseCounts(pi)
-	namePadded := name + strings.Repeat(" ", max(nameW-ansi.StringWidth(name), 0))
+	prefix := gutter + strings.Repeat("  ", depth) + glyph + " "
+	avail := max(w-ansi.StringWidth(prefix)-ansi.StringWidth(metric)-2, 6)
+	label = truncate(label, avail)
+	pad := max(avail-ansi.StringWidth(label), 0)
+	body := label + strings.Repeat(" ", pad) + " " + metric
 	if !hot {
-		namePadded = mutedStyle.Render(namePadded)
+		body = mutedStyle.Render(body)
 	}
-	count := mutedStyle.Render(fmt.Sprintf("%*d", countW, total))
-	// Uniform columns so every bar starts and ends at the same position:
-	// gutter(1) + space(1) + name(nameW) + "  "(2) + bar + space(1) + count(countW).
-	barW := max(w-(5+nameW+countW), 4)
-	bar := progressBar(pass, fail, runc, total, barW)
-	return clip(gutter+" "+namePadded+"  "+bar+" "+count, w)
-}
-
-// pluginColW returns the uniform name and count column widths across all plugins,
-// so every progress bar shares a start column and width regardless of how long
-// the plugin name or total count is.
-func (d dashboardModel) pluginColW() (nameW, countW int) {
-	for pi := range d.tree {
-		if n := ansi.StringWidth(d.tree[pi].name); n > nameW {
-			nameW = n
-		}
-		_, _, _, total := d.pluginCaseCounts(pi)
-		if c := len(fmt.Sprintf("%d", total)); c > countW {
-			countW = c
-		}
-	}
-	return nameW, countW
-}
-
-// headerRow renders a skill or model row: marker, label, and a muted tail.
-func (d dashboardModel) headerRow(glyph string, depth int, label, tail string, w int, hot bool) string {
-	gutter := " "
-	if hot {
-		gutter = selectedStyle.Render("›")
-	}
-	indent := strings.Repeat("  ", depth)
-	labelStyled := label
-	if !hot {
-		labelStyled = mutedStyle.Render(label)
-	}
-	body := labelStyled
-	if tail != "" {
-		body += "  " + mutedStyle.Render(tail)
-	}
-	return clip(gutter+indent+glyph+" "+body, w)
+	return clip(prefix+body, w)
 }
 
 // caseLine renders one trigger/eval row with its live metric columns.
@@ -282,17 +328,55 @@ func (d dashboardModel) caseLine(n nodeRef, w int, hot bool) string {
 	return clip(prefix+body, w)
 }
 
-// caseMetric formats the trailing columns: pass-rate, avg time, tokens, cost.
-// Triggers show input tokens; evals show ↑in/↓out.
+// metricColsFmt is the shared right-aligned metric block — Pass/Tot, Avg time,
+// In tokens, Out tokens, Cost — used by case rows, the skill/model rollup rows,
+// and the column header so every row's columns line up. All cells are single-
+// width runes, so fmt's rune-count padding matches the on-screen width.
+const metricColsFmt = "%8s %6s %6s %6s %7s"
+
+// metricColsWidth is the rendered width of one metricCols block.
+var metricColsWidth = ansi.StringWidth(metricCols("", "", "", "", ""))
+
+func metricCols(passTot, avg, in, out, cost string) string {
+	return fmt.Sprintf(metricColsFmt, passTot, avg, in, out, cost)
+}
+
+// caseMetric formats one case's metric block. Triggers carry no output tokens,
+// so the Out column renders the emptyMetric dash; the layout is identical to
+// evals so the columns stay aligned across both kinds.
 func caseMetric(c *caseState) string {
-	rate := caseRate(c)
-	avg := fmtDurPtr(c.metrics.AvgRunSeconds)
-	cost := fmtCostPtr(c.metrics.CostUSD)
-	if c.kind == run.KindTriggers {
-		return fmt.Sprintf("%5s %6s %6s %8s", rate, avg, fmtTokPtr(c.metrics.InputTokens), cost)
+	return metricCols(
+		caseRate(c),
+		fmtDurPtr(c.metrics.AvgRunSeconds),
+		fmtTokPtr(c.metrics.InputTokens),
+		fmtTokPtr(c.metrics.OutputTokens),
+		fmtCostPtr(c.metrics.CostUSD),
+	)
+}
+
+// groupMetric is the rolled-up metric block for a skill's or model's units,
+// aligned to the same columns as the case rows. A not-yet-started group renders
+// a right-aligned "pending".
+func (d dashboardModel) groupMetric(units []int) string {
+	if started, _ := d.groupState(units); !started {
+		return fmt.Sprintf("%*s", metricColsWidth, "pending")
 	}
-	tok := "↑" + fmtTokPtr(c.metrics.InputTokens) + "/↓" + fmtTokPtr(c.metrics.OutputTokens)
-	return fmt.Sprintf("%5s %6s %13s %8s", rate, avg, tok, cost)
+	r := d.aggUnits(units)
+	avg := emptyMetric
+	if r.durN > 0 {
+		avg = fmtDur(r.durSum / float64(r.durN))
+	}
+	cost := emptyMetric
+	if r.hasCost {
+		cost = fmtCost(r.cost)
+	}
+	return metricCols(
+		fmt.Sprintf("%d/%d", r.passed, r.total),
+		avg,
+		fmtTok(r.in),
+		fmtTok(r.out),
+		cost,
+	)
 }
 
 func caseRate(c *caseState) string {
@@ -300,12 +384,12 @@ func caseRate(c *caseState) string {
 		if c.metrics.Hits != nil && c.metrics.Runs != nil {
 			return fmt.Sprintf("%d/%d", *c.metrics.Hits, *c.metrics.Runs)
 		}
-		return "—"
+		return emptyMetric
 	}
 	if c.metrics.AssertPassed != nil && c.metrics.AssertTotal != nil {
 		return fmt.Sprintf("%d/%d", *c.metrics.AssertPassed, *c.metrics.AssertTotal)
 	}
-	return "—"
+	return emptyMetric
 }
 
 // ── grouping + status helpers ───────────────────────────────────────────────
@@ -379,46 +463,37 @@ func (d dashboardModel) aggStatus(unitIdxs []int) status {
 
 func (d dashboardModel) aggGlyph(unitIdxs []int) string { return d.glyph(d.aggStatus(unitIdxs)) }
 
-func (d dashboardModel) pluginCaseCounts(pi int) (pass, fail, runc, total int) {
-	for _, ui := range d.pluginUnits(pi) {
-		for _, c := range d.units[ui].cases {
+// overallProgress tallies every case across the whole run into the segments of
+// the top-right progress bar — settled-ok (pass, skipped, count-only), failed
+// (fail/error), and running — plus the percent complete (all settled / total).
+func (d dashboardModel) overallProgress() (ok, bad, run, total, pct int) {
+	for _, u := range d.units {
+		for _, c := range u.cases {
 			total++
 			switch c.status {
-			case stPass:
-				pass++
+			case stPass, stSkipped, stCount:
+				ok++
 			case stFail, stError:
-				fail++
+				bad++
 			case stRunning:
-				runc++
+				run++
 			}
 		}
 	}
-	return pass, fail, runc, total
+	if total > 0 {
+		pct = (ok + bad) * 100 / total
+	}
+	return ok, bad, run, total, pct
 }
 
-func (d dashboardModel) skillTail(pi, si int) string {
-	units := d.skillUnits(pi, si)
-	if started, _ := d.groupState(units); !started {
-		return "pending"
-	}
-	ps, tot := 0, 0
-	for _, ui := range units {
-		ps += d.units[ui].passed
-		tot += d.units[ui].total
-	}
-	return fmt.Sprintf("%d/%d", ps, tot)
-}
-
-func (d dashboardModel) modelTail(mg modelGroup) string {
-	if started, _ := d.groupState(mg.units); !started {
-		return "pending"
-	}
-	ps, tot := 0, 0
-	for _, ui := range mg.units {
-		ps += d.units[ui].passed
-		tot += d.units[ui].total
-	}
-	return fmt.Sprintf("%d/%d", ps, tot)
+// overallProgressLine renders the run-wide progress bar shown above the Rollup
+// pane: a full-width coloured bar with the percent-complete right-aligned. w is
+// the rollup panel's outer width, so the bar lines up with the panels beneath it.
+func (d dashboardModel) overallProgressLine(w int) string {
+	ok, bad, run, total, pct := d.overallProgress()
+	pctStr := fmt.Sprintf("%3d%%", pct)
+	barW := max(w-ansi.StringWidth(pctStr)-1, 1)
+	return progressBar(ok, bad, run, total, barW) + " " + mutedStyle.Render(pctStr)
 }
 
 // progressBar renders a width-char bar: green pass, red fail, yellow running,
@@ -440,8 +515,8 @@ func progressBar(pass, fail, runc, total, width int) string {
 		pendStyle.Render(strings.Repeat("░", gpend))
 }
 
-// activeLoc resolves the model whose context the left pane pins: the highlighted
-// case's model, else the first running model.
+// activeLoc resolves the model the Execution pane's count label summarises: the
+// highlighted case's model, else the first running model.
 func (d dashboardModel) activeLoc(nodes []nodeRef, hl int) (loc, bool) {
 	if hl >= 0 && hl < len(nodes) {
 		n := nodes[hl]
@@ -461,12 +536,235 @@ func (d dashboardModel) activeLoc(nodes []nodeRef, hl int) (loc, bool) {
 	return loc{}, false
 }
 
-func (d dashboardModel) headerLines(l loc, w int) []string {
-	sg := d.tree[l.pi].skills[l.si]
-	mg := sg.models[l.mi]
-	return []string{
-		d.pluginLine(l.pi, w, false),
-		d.headerRow(d.aggGlyph(d.skillUnits(l.pi, l.si)), 1, sg.title, d.skillTail(l.pi, l.si), w, false),
-		d.headerRow(d.aggGlyph(mg.units), 2, shortKey(mg.key), d.modelTail(mg), w, false),
+// ── browse-mode navigation ──────────────────────────────────────────────────
+//
+// While the Execution pane is focused, execSel is a cursor into the browse-mode
+// node slice and execExpand records the user's open/closed groups. Every handler
+// rebuilds that slice (it is cheap and rebuilt each render anyway) so the cursor
+// and the view never disagree.
+
+// execKey routes a key while the Execution pane is focused: cursor movement,
+// expand/collapse, and opening a case in Details. Every move mirrors the cursor
+// onto the shared selection so the Runs and Details panes track it; enter opens
+// the case (which sets the selection itself) and changes focus.
+func (d *dashboardModel) execKey(key string) {
+	switch key {
+	case "up", "k":
+		d.moveExec(-1)
+	case "down", "j":
+		d.moveExec(1)
+	case "g", "home":
+		d.execTop()
+	case "G", "end":
+		d.execBottom()
+	case "ctrl+d", "pgdown":
+		d.moveExec(d.execPageStep())
+	case "ctrl+u", "pgup":
+		d.moveExec(-d.execPageStep())
+	case "right":
+		d.execExpandCurrent(true)
+	case "left", "h":
+		d.execExpandCurrent(false)
+	case "enter", " ":
+		d.execActivate()
+		return
 	}
+	d.syncSelFromExec()
+}
+
+// syncSelFromExec mirrors the browse cursor onto the shared selection: when the
+// cursor sits on a case that has started (so it has a Runs-log row), that
+// execution becomes the selection, and the Runs/Details panes follow. The cursor
+// resting on a header or a not-yet-started case leaves the selection where it is.
+func (d *dashboardModel) syncSelFromExec() {
+	nodes := d.execNodes()
+	if d.execSel < 0 || d.execSel >= len(nodes) {
+		return
+	}
+	n := nodes[d.execSel]
+	if n.kind != nkCase {
+		return
+	}
+	c := d.units[n.unitIdx].cases[n.caseIdx]
+	idx := d.execLogIndex(d.units[n.unitIdx].ref, c.label)
+	if idx < 0 {
+		return
+	}
+	if idx != d.runSel {
+		d.detailScroll = 0
+	}
+	d.runSel = idx
+	d.runFollow = idx == d.liveIdx
+}
+
+// syncExecToSel moves the browse cursor onto the shared selection's case,
+// expanding its path so the row is visible. Used when the selection changes from
+// outside the Execution pane (follow / a freshly-started execution) while it is
+// focused.
+func (d *dashboardModel) syncExecToSel() {
+	if d.execExpand == nil {
+		return
+	}
+	if l, ok := d.selLoc(); ok {
+		d.execExpand[nodeKey{kind: nkPlugin, pi: l.pi}] = true
+		d.execExpand[nodeKey{kind: nkSkill, pi: l.pi, si: l.si}] = true
+		d.execExpand[nodeKey{kind: nkModel, pi: l.pi, si: l.si, mi: l.mi}] = true
+	}
+	if i := d.selectedNode(d.execNodes()); i >= 0 {
+		d.execSel = i
+	}
+}
+
+// moveExec moves the cursor by delta over selectable rows, skipping nkRule
+// dividers and clamping to the visible tree.
+func (d *dashboardModel) moveExec(delta int) {
+	nodes := d.execNodes()
+	if len(nodes) == 0 {
+		d.execSel = 0
+		return
+	}
+	d.execSel = clampInt(d.execSel, 0, len(nodes)-1)
+	if delta == 0 {
+		return
+	}
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	i := d.execSel
+	for n := delta; n != 0; n -= step {
+		j := i
+		for {
+			j += step
+			if j < 0 || j >= len(nodes) {
+				j = i // hit an edge: stay put
+				break
+			}
+			if nodes[j].kind != nkRule {
+				break
+			}
+		}
+		i = j
+	}
+	d.execSel = i
+}
+
+func (d *dashboardModel) execTop() {
+	d.execSel = 0
+	d.skipRule(1)
+}
+
+func (d *dashboardModel) execBottom() {
+	d.execSel = max(len(d.execNodes())-1, 0)
+	d.skipRule(-1)
+}
+
+// skipRule nudges the cursor off an nkRule divider in the given direction.
+func (d *dashboardModel) skipRule(step int) {
+	nodes := d.execNodes()
+	for d.execSel >= 0 && d.execSel < len(nodes) && nodes[d.execSel].kind == nkRule {
+		d.execSel += step
+	}
+	d.execSel = clampInt(d.execSel, 0, max(len(nodes)-1, 0))
+}
+
+// execPageStep is roughly the left pane's visible row count, so ctrl+d/ctrl+u
+// page by a screenful.
+func (d dashboardModel) execPageStep() int {
+	bodyH := max(d.h-3, 4)   // panel outer height (matches view(): title bar, blank, footer)
+	inner := max(bodyH-2, 1) // height handed to renderLeft
+	return max(inner-2, 1)   // minus the column header, minus one for context
+}
+
+// execActivate handles enter/space: toggle a group open/closed, or open a
+// completed case in Details.
+func (d *dashboardModel) execActivate() {
+	nodes := d.execNodes()
+	if d.execSel < 0 || d.execSel >= len(nodes) {
+		return
+	}
+	n := nodes[d.execSel]
+	switch n.kind {
+	case nkPlugin, nkSkill, nkModel:
+		k := keyOf(n)
+		d.execExpand[k] = !d.execExpand[k]
+		d.clampExecCursor()
+	case nkCase:
+		d.openCaseInDetails(n)
+	}
+}
+
+// execExpandCurrent expands (right) or collapses (left) the cursor's group. On a
+// case row, left collapses its parent model and moves the cursor onto it.
+func (d *dashboardModel) execExpandCurrent(open bool) {
+	nodes := d.execNodes()
+	if d.execSel < 0 || d.execSel >= len(nodes) {
+		return
+	}
+	n := nodes[d.execSel]
+	switch n.kind {
+	case nkPlugin, nkSkill, nkModel:
+		d.execExpand[keyOf(n)] = open
+		if !open {
+			d.clampExecCursor()
+		}
+	case nkCase:
+		if !open {
+			mk := nodeKey{kind: nkModel, pi: n.pi, si: n.si, mi: n.mi}
+			d.execExpand[mk] = false
+			d.selectKey(mk)
+		}
+	}
+}
+
+// selectKey moves the cursor onto the row identified by k, if it is visible.
+func (d *dashboardModel) selectKey(k nodeKey) {
+	for i, n := range d.execNodes() {
+		if keyOf(n) == k {
+			d.execSel = i
+			return
+		}
+	}
+	d.clampExecCursor()
+}
+
+// clampExecCursor keeps the cursor in range and off an nkRule after the visible
+// node set changes (e.g. a collapse).
+func (d *dashboardModel) clampExecCursor() {
+	nodes := d.execNodes()
+	if len(nodes) == 0 {
+		d.execSel = 0
+		return
+	}
+	d.execSel = clampInt(d.execSel, 0, len(nodes)-1)
+	if nodes[d.execSel].kind == nkRule {
+		d.skipRule(-1)
+	}
+}
+
+// execLogIndex finds the Runs-log row for a (unit, case) pair, newest first.
+func (d dashboardModel) execLogIndex(ref run.UnitRef, label string) int {
+	for i := len(d.execLog) - 1; i >= 0; i-- {
+		if d.execLog[i].ref == ref && d.execLog[i].label == label {
+			return i
+		}
+	}
+	return -1
+}
+
+// openCaseInDetails selects the case's row in the Runs log and shows it in the
+// Details pane, reusing the Runs→Details wiring. A case that has not started yet
+// has no Runs row, so this is a no-op.
+func (d *dashboardModel) openCaseInDetails(n nodeRef) {
+	u := d.units[n.unitIdx]
+	c := u.cases[n.caseIdx]
+	if c.status == stPending {
+		return
+	}
+	idx := d.execLogIndex(u.ref, c.label)
+	if idx < 0 {
+		return
+	}
+	d.setFocus(paneDetails) // exits browse, reverts the tree to follow
+	d.runSel, d.runFollow, d.detailScroll = idx, false, 0
 }

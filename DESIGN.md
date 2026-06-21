@@ -154,11 +154,27 @@ The dashboard is split across two files: `dashboard.go` holds the state, message
 - `apply(msg)` is the reducer: each progress message mutates unit/case status, tallies, metrics, in-flight tracking, and
   the warning ring buffer.
 - Units are execution-ordered and grouped plugin → skill → model for the left "Execution" pane. `buildNodeRefs`
-  collapses settled and not-yet-started groups to a single row and expands only the active one, and the highlight
-  auto-follows the live case until the user moves it (`manual`).
-- The view is a header line, the left execution pane (per-plugin progress bars plus the expanded active branch), a right
-  column split into a tabbed "Rollup" (Summary / Providers / Plugins / Skills) and an "Executing" detail pane (in-flight
-  cases plus the highlighted case's authored spec), and a footer of key hints.
+  collapses settled and not-yet-started groups to a single row and expands the active one (plus, when the user has
+  paused on an older selection, the group holding it).
+- The execution log (`execLog`) is pre-populated with every planned execution in plan order, so the Runs pane lists the
+  pending runs up front rather than growing as each starts; `itemStarted` matches back to those rows by label. Because
+  the list is no longer start-ordered, `liveIdx` tracks the most recently started execution as the follow anchor.
+- The Execution, Runs, and Details panes share one selection — `runSel`, an index into `execLog`. The Runs pane lists
+  it, Details renders it, and the Execution pane highlights its case; moving the selection in any pane moves it in the
+  others (the Execution tree expands the selected group so its highlight stays visible). `runFollow` pins the selection
+  to the live execution (`liveIdx`); `[f]` (re-)engages it from any pane, navigating off the live row releases it, and
+  leaving the Execution pane does **not** silently re-follow. `[g]`/`[G]` jump to the top/bottom of the list; `[enter]`
+  in either the Execution or Runs pane jumps to Details on the selected run. Panel titles stay bright at their pane's
+  accent colour at all times; only the border dims when the pane is unfocused.
+- The view is a title bar (run stats on the left; a run-wide progress bar over the Rollup column on the right, with
+  percent-complete at its end), a blank separator row, then the body and a footer of key hints. The body is the left
+  execution pane (a plugin → skill → model → case tree, every level carrying the same right-aligned rollup columns)
+  beside a right column of a tabbed "Rollup" (Summary / Providers / Plugins / Skills), the Runs log, and an "Executing"
+  detail pane (in-flight cases plus the highlighted case's authored spec). The progress bar rides the title bar rather
+  than taking its own row, so the two panes stay top-aligned. The Execution pane always scrolls the whole tree to keep
+  the highlight on-screen (centred, clamped at the ends) — the same focused or not — so leaving the pane never makes
+  other nodes disappear. Only the expansion differs by mode: live-status collapse while unfocused, the user's overrides
+  while focused.
 - `now func() time.Time` is injected so elapsed-time rendering is deterministic under test.
 
 ### Rendering primitives and tests

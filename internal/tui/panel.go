@@ -40,8 +40,14 @@ func panel(num int, title, count, topRight, body string, focused bool, w, h int,
 	bs, ts := borderBlurStyle, titleBlurStyle
 	switch {
 	case len(accent) > 0 && accent[0] != "":
-		bs = lipgloss.NewStyle().Foreground(accent[0])
+		// Accent panels (the dashboard): the title keeps the pane's bright hue at
+		// all times for readability; only the border dims when the pane is blurred.
 		ts = lipgloss.NewStyle().Bold(true).Foreground(accent[0])
+		border := accent[0]
+		if !focused {
+			border = dim(accent[0])
+		}
+		bs = lipgloss.NewStyle().Foreground(border)
 	case focused:
 		bs, ts = borderFocusStyle, titleFocusStyle
 	}

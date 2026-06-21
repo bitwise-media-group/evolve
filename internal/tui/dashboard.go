@@ -111,11 +111,13 @@ const (
 	tabCount
 )
 
-// the three focusable right-column panes, in Tab-cycle order.
+// the focusable panes, in Tab-cycle order: the left Execution tree first, then
+// the three right-column panes.
 type pane int
 
 const (
-	paneRollup pane = iota
+	paneExecution pane = iota
+	paneRollup
 	paneRuns
 	paneDetails
 	paneN
@@ -153,18 +155,31 @@ type dashboardModel struct {
 	done     bool
 	failed   bool
 
-	tab          tab
-	focus        pane // which right-column pane (Rollup/Runs/Details) has key focus
-	runSel       int  // selected index into execLog (the Runs pane)
-	runFollow    bool // Runs tracks the newest execution as it arrives
+	tab   tab
+	focus pane // which pane (Execution/Rollup/Runs/Details) has key focus
+	// runSel is the shared selection: an index into execLog that the Execution,
+	// Runs, and Details panes all reflect. runFollow keeps it pinned to the newest
+	// execution as new ones arrive.
+	runSel       int
+	runFollow    bool
 	detailScroll int  // scroll offset into the Details result body
 	confirmQuit  bool // the quit-confirmation dialog is showing
 
-	execLog   []execItem
-	inflight  []inflight
-	lastRef   run.UnitRef
-	lastLabel string
-	hasLast   bool
+	// Execution-pane browse state. Only live while paneExecution is focused;
+	// setFocus seeds it on entry and clears it on leave, so the pane otherwise
+	// reflects the shared selection.
+	execBrowse bool             // Execution pane is focused → user-navigable
+	execSel    int              // browse cursor: index into buildNodeRefsWith(browseExpanded)
+	execExpand map[nodeKey]bool // user expand/collapse overrides (browse mode only)
+
+	// execLog is every planned execution, pre-populated in plan order so the Runs
+	// pane shows the pending ones before they start. liveIdx is the index of the
+	// most recently started execution — the anchor runFollow tracks (the list is no
+	// longer start-ordered, so "newest" is not simply the last row). -1 until the
+	// first execution starts.
+	execLog  []execItem
+	inflight []inflight
+	liveIdx  int
 
 	started   bool
 	startWall time.Time
@@ -185,6 +200,7 @@ func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter
 		now:       time.Now,
 		focus:     paneRuns,
 		runFollow: true,
+		liveIdx:   -1,
 	}
 	for i := range cat {
 		d.skillCat[cat[i].Skill] = &cat[i]
@@ -224,6 +240,7 @@ func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter
 		d.units = append(d.units, u)
 	}
 	d.buildTree()
+	d.buildExecLog()
 	return d
 }
 
@@ -284,6 +301,18 @@ func (d *dashboardModel) buildTree() {
 	}
 }
 
+// buildExecLog pre-populates the execution log from every unit's pre-built cases,
+// in plan order, so the Runs pane lists the pending executions up front instead of
+// growing as each one starts. itemStarted matches back to these rows by label
+// (appending only a case the catalog did not predeclare).
+func (d *dashboardModel) buildExecLog() {
+	for _, u := range d.units {
+		for _, c := range u.cases {
+			d.execLog = append(d.execLog, execItem{ref: u.ref, label: c.label})
+		}
+	}
+}
+
 // selectedCase reports whether a case is part of the run. A nil filter includes
 // everything; otherwise membership is the merged per-skill set the dashboard was
 // built with.
@@ -321,6 +350,9 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 		if u := d.unit(m.ref); u != nil {
 			u.status = stSkipped
 			u.reason = m.reason
+			// Settle the pre-populated case rows so a skipped unit's executions show
+			// as skipped in the Runs pane and tree rather than perpetually pending.
+			u.settlePending(stSkipped)
 		}
 	case itemStartedMsg:
 		d.markStarted()
@@ -334,9 +366,15 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 			cr.status = stRunning
 			u.status = stRunning
 			d.inflight = append(d.inflight, inflight{ref: m.ref, label: m.item.Label, start: d.now()})
-			d.execLog = append(d.execLog, execItem{ref: m.ref, label: m.item.Label})
+			// The execution is normally already in the pre-populated log; append only
+			// a case the catalog did not predeclare. Either way it is now the live one.
+			idx := d.execLogIndex(m.ref, m.item.Label)
+			if idx < 0 {
+				d.execLog = append(d.execLog, execItem{ref: m.ref, label: m.item.Label})
+				idx = len(d.execLog) - 1
+			}
+			d.liveIdx = idx
 			d.followAdvance()
-			d.lastRef, d.lastLabel, d.hasLast = m.ref, m.item.Label, true
 		}
 	case itemDoneMsg:
 		if u := d.unit(m.ref); u != nil {
@@ -425,9 +463,10 @@ func (d *dashboardModel) removeInflight(ref run.UnitRef, label string) {
 // ── key handling ───────────────────────────────────────────────────────────
 
 // handleKey processes a key on the dashboard; returns true if it requests quit.
-// Global keys switch focus between the Rollup/Runs/Details panes; the rest route
-// to whichever pane is active. The left Execution pane is never focusable — it
-// only auto-follows the live case.
+// Global keys (1-4, Tab, f, o, l) switch focus, follow, and open paths from any
+// pane; the rest route to whichever pane is active. The Execution pane has two
+// modes: it reflects the shared selection while unfocused and becomes a navigable
+// tree while focused (see enterBrowse/exitBrowse).
 func (d *dashboardModel) handleKey(msg tea.KeyMsg) bool {
 	key := msg.String()
 
@@ -447,10 +486,12 @@ func (d *dashboardModel) handleKey(msg tea.KeyMsg) bool {
 	case "q", "esc", "ctrl+c":
 		d.confirmQuit = true
 	case "1":
-		d.setFocus(paneRollup)
+		d.setFocus(paneExecution)
 	case "2":
-		d.setFocus(paneRuns)
+		d.setFocus(paneRollup)
 	case "3":
+		d.setFocus(paneRuns)
+	case "4":
 		d.setFocus(paneDetails)
 	case "tab":
 		d.setFocus((d.focus + 1) % paneN)
@@ -472,6 +513,8 @@ func (d *dashboardModel) handleKey(msg tea.KeyMsg) bool {
 // selection, Details scrolls the result.
 func (d *dashboardModel) paneKey(key string) {
 	switch d.focus {
+	case paneExecution:
+		d.execKey(key)
 	case paneRollup:
 		switch key {
 		case "left", "h":
@@ -488,11 +531,14 @@ func (d *dashboardModel) paneKey(key string) {
 		case "g", "home":
 			d.runTop()
 		case "G", "end":
-			d.follow()
+			d.runBottom()
 		case "ctrl+d", "pgdown":
 			d.moveRun(d.runPageStep())
 		case "ctrl+u", "pgup":
 			d.moveRun(-d.runPageStep())
+		case "enter", " ":
+			d.detailScroll = 0
+			d.setFocus(paneDetails)
 		}
 	case paneDetails:
 		switch key {
@@ -512,28 +558,67 @@ func (d *dashboardModel) paneKey(key string) {
 	}
 }
 
-// setFocus changes the active pane. Leaving Details resumes Runs' follow (it is
-// paused while Details is active so the result under review stays selected).
+// setFocus changes the active pane. Leaving Details resumes follow (it is paused
+// while Details is active so the result under review stays selected). Entering the
+// Execution pane starts browse mode; leaving it keeps the shared selection put.
 func (d *dashboardModel) setFocus(p pane) {
 	if d.focus == paneDetails && p != paneDetails {
 		d.resumeFollow()
 	}
+	if d.focus == paneExecution && p != paneExecution {
+		d.exitBrowse()
+	}
+	if p == paneExecution && d.focus != paneExecution {
+		d.enterBrowse()
+	}
 	d.focus = p
+}
+
+// enterBrowse switches the Execution pane into user-navigable browse mode. It
+// seeds the expansion set from the current view, then lands the cursor on the
+// shared selection's case (expanding its path so it is visible).
+func (d *dashboardModel) enterBrowse() {
+	d.execBrowse = true
+	d.execExpand = map[nodeKey]bool{}
+	for _, n := range d.buildNodeRefs() {
+		switch n.kind {
+		case nkPlugin, nkSkill, nkModel:
+			if !n.collapsed {
+				d.execExpand[keyOf(n)] = true
+			}
+		}
+	}
+	d.execSel = 0
+	d.syncExecToSel()
+}
+
+// exitBrowse leaves browse mode: it discards the browse cursor and expansion so
+// the pane reverts to reflecting the shared selection. It does not re-follow — the
+// selection the user navigated to stays put (jumping back to the live case with
+// Details left behind is jarring).
+func (d *dashboardModel) exitBrowse() {
+	d.execBrowse = false
+	d.execSel = 0
+	d.execExpand = nil
 }
 
 // ── Runs pane: the execution log ────────────────────────────────────────────
 
-// follow jumps Runs to the newest execution and tracks it from now on (the F
-// key, and what G does inside Runs).
+// follow jumps the shared selection to the live (most recently started) execution
+// and tracks it from now on. It is global (the [f] key), so it works whichever
+// pane is focused; in browse mode it also moves the tree cursor.
 func (d *dashboardModel) follow() {
 	d.runFollow = true
-	if n := len(d.execLog); n > 0 {
-		d.runSel = n - 1
+	if d.liveIdx >= 0 {
+		d.runSel = d.liveIdx
 	}
 	d.detailScroll = 0
+	if d.execBrowse {
+		d.syncExecToSel()
+	}
 }
 
-// followAdvance moves the Runs selection onto a freshly-started execution while
+// followAdvance moves the shared selection onto a freshly-started execution while
 // following — unless Details is active, which pauses following so the result
 // under review stays selected.
 func (d *dashboardModel) followAdvance() {
@@ -542,19 +627,24 @@ func (d *dashboardModel) followAdvance() {
 	}
 }
 
-// resumeFollow snaps Runs back to the newest execution if it was following.
+// resumeFollow snaps the shared selection back to the live execution if it was
+// following, and moves the browse cursor with it when the tree is focused.
 func (d *dashboardModel) resumeFollow() {
-	if d.runFollow {
-		if n := len(d.execLog); n > 0 && d.runSel != n-1 {
-			d.runSel = n - 1
-			d.detailScroll = 0
-		}
+	if !d.runFollow {
+		return
+	}
+	if d.liveIdx >= 0 && d.runSel != d.liveIdx {
+		d.runSel = d.liveIdx
+		d.detailScroll = 0
+	}
+	if d.execBrowse {
+		d.syncExecToSel()
 	}
 }
 
-// moveRun moves the Runs selection by delta, pausing follow unless it lands on
-// the last (newest) row, where it resumes. A changed selection resets the
-// Details scroll so the new execution starts at the top.
+// moveRun moves the Runs selection by delta, following only while it rests on the
+// live execution. A changed selection resets the Details scroll so the new
+// execution starts at the top.
 func (d *dashboardModel) moveRun(delta int) {
 	n := len(d.execLog)
 	if n == 0 || delta == 0 {
@@ -562,18 +652,33 @@ func (d *dashboardModel) moveRun(delta int) {
 	}
 	prev := d.runSel
 	d.runSel = clampInt(d.runSel+delta, 0, n-1)
-	d.runFollow = d.runSel == n-1
+	d.runFollow = d.runSel == d.liveIdx
 	if d.runSel != prev {
 		d.detailScroll = 0
 	}
 }
 
 func (d *dashboardModel) runTop() {
-	d.runFollow = false
 	if d.runSel != 0 {
 		d.detailScroll = 0
 	}
 	d.runSel = 0
+	d.runFollow = d.liveIdx == 0
+}
+
+// runBottom jumps to the last execution in the list (the [G] key). The list is
+// plan-ordered, so the bottom is the last planned execution, not necessarily the
+// live one — following re-engages only if they coincide.
+func (d *dashboardModel) runBottom() {
+	n := len(d.execLog)
+	if n == 0 {
+		return
+	}
+	if d.runSel != n-1 {
+		d.detailScroll = 0
+	}
+	d.runSel = n - 1
+	d.runFollow = d.runSel == d.liveIdx
 }
 
 // runPageStep is the Runs list's visible height, so ctrl+d/ctrl+u page by a

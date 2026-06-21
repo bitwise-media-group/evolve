@@ -69,8 +69,8 @@ func TestRunTransitionAndDashboard(t *testing.T) {
 	if m.dash.focus != paneDetails {
 		t.Errorf("Tab from Runs should focus Details, got %v", m.dash.focus)
 	}
-	// Focus the Rollup pane (1) and switch its tabs with → only while it is active.
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	// Focus the Rollup pane (2) and switch its tabs with → only while it is active.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
 	before := m.dash.tab
 	m = step(m, tea.KeyMsg{Type: tea.KeyRight})
 	if m.dash.tab == before {
@@ -81,6 +81,49 @@ func TestRunTransitionAndDashboard(t *testing.T) {
 	m = step(m, runDoneMsg{failed: false})
 	if !m.dash.done {
 		t.Error("dashboard not marked done")
+	}
+}
+
+// TestTitleBarAlignment locks the layout: the run-wide progress bar rides the
+// title bar (its percentage shows there), a blank row separates it from the
+// panes, and the Execution and Rollup panes start on the same row.
+func TestTitleBarAlignment(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	key := m1.Key()
+	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
+	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
+	filter := &run.Filter{
+		Skills:   map[string]bool{"solo-skill": true},
+		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true}},
+		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true}},
+	}
+	d := newDashboard(cat, []run.UnitRef{tr, ev}, filter)
+	d.w, d.h = 140, 30
+	d.apply(unitStartedMsg{ref: tr, total: 1, mode: run.ModeRun})
+	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q1"}})
+
+	lines := strings.Split(d.view(), "\n")
+	row := func(sub string) int {
+		for i, l := range lines {
+			if strings.Contains(l, sub) {
+				return i
+			}
+		}
+		return -1
+	}
+	exec, rollup := row("[1]─Execution"), row("[2]─Rollup")
+	if exec < 0 || rollup < 0 {
+		t.Fatalf("panes not found: exec=%d rollup=%d", exec, rollup)
+	}
+	if exec != rollup {
+		t.Errorf("Execution (row %d) and Rollup (row %d) should be top-aligned", exec, rollup)
+	}
+	if !strings.Contains(lines[0], "%") {
+		t.Errorf("the progress percentage should ride the title bar (row 0):\n%s", lines[0])
+	}
+	if exec < 2 || strings.TrimSpace(lines[exec-1]) != "" {
+		t.Errorf("a blank separator row should sit between the title bar and the panes (panes at row %d)", exec)
 	}
 }
 

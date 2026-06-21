@@ -36,7 +36,7 @@ func TestExecutingPaneScrolls(t *testing.T) {
 	}})
 
 	// Focus the Details pane so its scroll keys are live.
-	d.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	d.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
 	w, _, _, detailsH := d.rightDims()
 	render := func() string { return d.renderDetails(w, detailsH-2) }
 	if strings.Contains(render(), "VERDICT-MARKER") {

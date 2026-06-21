@@ -56,7 +56,7 @@ func (d dashboardModel) execLine(e execItem, w int, selected bool) string {
 	if c != nil {
 		g = d.glyph(c.status)
 	}
-	dur := "—"
+	dur := emptyMetric
 	if el, ok := d.inflightElapsed(e.ref, e.label); ok {
 		dur = fmtDur(el)
 	} else if c != nil && c.metrics.AvgRunSeconds != nil {

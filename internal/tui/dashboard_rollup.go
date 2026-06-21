@@ -29,38 +29,52 @@ type aggRow struct {
 func (d dashboardModel) agg(title string, include func(*unitState) bool) aggRow {
 	r := aggRow{title: title}
 	for _, u := range d.units {
-		if !include(u) {
-			continue
-		}
-		r.total += u.total
-		for _, c := range u.cases {
-			if c.status == stPass {
-				r.passed++
-			}
-			m := c.metrics
-			if m.AvgRunSeconds != nil {
-				r.durSum += *m.AvgRunSeconds
-				r.durN++
-			}
-			if m.InputTokens != nil {
-				r.in += *m.InputTokens
-			}
-			if m.CacheReadTokens != nil {
-				r.cacheRead += *m.CacheReadTokens
-			}
-			if m.CacheCreationTokens != nil {
-				r.cacheCreation += *m.CacheCreationTokens
-			}
-			if m.OutputTokens != nil {
-				r.out += *m.OutputTokens
-			}
-			if m.CostUSD != nil {
-				r.cost += *m.CostUSD
-				r.hasCost = true
-			}
+		if include(u) {
+			r.addUnit(u)
 		}
 	}
 	return r
+}
+
+// aggUnits rolls up a specific set of units identified by index — the skill and
+// model rows in the Execution pane share this folding with the Rollup tabs.
+func (d dashboardModel) aggUnits(idxs []int) aggRow {
+	var r aggRow
+	for _, i := range idxs {
+		r.addUnit(d.units[i])
+	}
+	return r
+}
+
+// addUnit folds one unit's per-case metrics into the rollup.
+func (r *aggRow) addUnit(u *unitState) {
+	r.total += u.total
+	for _, c := range u.cases {
+		if c.status == stPass {
+			r.passed++
+		}
+		m := c.metrics
+		if m.AvgRunSeconds != nil {
+			r.durSum += *m.AvgRunSeconds
+			r.durN++
+		}
+		if m.InputTokens != nil {
+			r.in += *m.InputTokens
+		}
+		if m.CacheReadTokens != nil {
+			r.cacheRead += *m.CacheReadTokens
+		}
+		if m.CacheCreationTokens != nil {
+			r.cacheCreation += *m.CacheCreationTokens
+		}
+		if m.OutputTokens != nil {
+			r.out += *m.OutputTokens
+		}
+		if m.CostUSD != nil {
+			r.cost += *m.CostUSD
+			r.hasCost = true
+		}
+	}
 }
 
 func (d dashboardModel) aggGroup(key func(*unitState) string) []aggRow {
@@ -142,14 +156,14 @@ func aggHeader(w int) string {
 
 func aggLine(r aggRow, w int) string {
 	pt := fmt.Sprintf("%d/%d", r.passed, r.total)
-	avg := "—"
+	avg := emptyMetric
 	if r.durN > 0 {
 		avg = fmtDur(r.durSum / float64(r.durN))
 	}
 	// In is fresh input; Total folds in cache reads/writes so the headline
 	// still reflects everything consumed — the In↔Total gap is the cache.
 	tok := fmtTok(r.in) + "/" + fmtTok(r.out) + "/" + fmtTok(r.in+r.cacheRead+r.cacheCreation+r.out)
-	cost := "—"
+	cost := emptyMetric
 	if r.hasCost {
 		cost = fmtCost(r.cost)
 	}

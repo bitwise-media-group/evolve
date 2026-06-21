@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── top-level composition ──────────────────────────────────────────────────
@@ -16,38 +17,51 @@ func (d dashboardModel) view() string {
 	if d.confirmQuit {
 		return d.quitDialog()
 	}
-	headerH, footerH := 1, 1
-	bodyH := max(d.h-headerH-footerH, 4)
+	// Chrome rows above/below the panes: the title bar, a blank separator beneath
+	// it, and the footer. The progress bar rides the title bar rather than taking a
+	// row of its own, so the Execution and Rollup panes stay top-aligned.
+	bodyH := max(d.h-3, 4)
 	leftW := max(d.w/2, 28)
 	rightW := max(d.w-leftW, 24)
 	cW := panelContentWidth(rightW)
 
-	nodes := d.buildNodeRefs()
-	live := d.liveFocus(nodes)
+	// The left pane reflects the shared selection while unfocused, and becomes a
+	// user-navigable tree (its own cursor + expansion) while focused.
+	var nodes []nodeRef
+	var hl int
+	if d.execBrowse {
+		nodes = d.buildNodeRefsWith(d.browseExpanded)
+		hl = clampInt(d.execSel, 0, max(len(nodes)-1, 0))
+	} else {
+		nodes = d.buildNodeRefs()
+		hl = d.followHighlight(nodes)
+	}
 
-	// Left Execution pane: untagged (num 0) and never focusable, so always dim.
-	left := panel(0, "Execution", d.leftCount(nodes), "",
-		d.renderLeft(nodes, live, panelContentWidth(leftW), bodyH-2), false, leftW, bodyH, dim(colCyberPink))
+	left := panel(1, "Execution", d.leftCount(nodes, hl), "",
+		d.renderLeft(nodes, hl, panelContentWidth(leftW), bodyH-2), d.focus == paneExecution, leftW, bodyH, paneBaseColor(paneExecution))
 
 	_, rollupH, runsH, detailsH := d.rightDims()
-	rollup := panel(1, "Rollup", "", d.tabStrip(),
-		d.renderTabs(cW, rollupH-2), false, rightW, rollupH, d.paneColor(paneRollup))
-	runs := panel(2, "Runs", d.runsCount(), "",
-		d.renderRuns(cW, runsH-2), false, rightW, runsH, d.paneColor(paneRuns))
-	details := panel(3, "Details", "", "",
-		d.renderDetails(cW, detailsH-2), false, rightW, detailsH, d.paneColor(paneDetails))
+	rollup := panel(2, "Rollup", "", d.tabStrip(),
+		d.renderTabs(cW, rollupH-2), d.focus == paneRollup, rightW, rollupH, paneBaseColor(paneRollup))
+	runs := panel(3, "Runs", d.runsCount(), "",
+		d.renderRuns(cW, runsH-2), d.focus == paneRuns, rightW, runsH, paneBaseColor(paneRuns))
+	details := panel(4, "Details", "", "",
+		d.renderDetails(cW, detailsH-2), d.focus == paneDetails, rightW, detailsH, paneBaseColor(paneDetails))
 	right := lipgloss.JoinVertical(lipgloss.Left, rollup, runs, details)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	footer := footerHint.Render(clip(d.footerHints(), d.w))
-	return lipgloss.JoinVertical(lipgloss.Left, d.headerLine(), body, footer)
+	// "" is the blank separator row between the title bar and the panes.
+	return lipgloss.JoinVertical(lipgloss.Left, d.titleBar(leftW, rightW), "", body, footer)
 }
 
 // rightDims splits the right column into the Rollup, Runs, and Details panes,
 // returning the shared content width and each pane's outer height. Runs is a
-// compact list pane; Rollup takes a share of the rest; Details gets the bulk.
+// compact list pane; Rollup takes a share of the rest; Details gets the bulk. The
+// body height matches the left pane's (d.h minus the title bar, its blank
+// separator, and the footer) so the columns stay aligned.
 func (d dashboardModel) rightDims() (w, rollupH, runsH, detailsH int) {
-	bodyH := max(d.h-2, 4)
+	bodyH := max(d.h-3, 4)
 	leftW := max(d.w/2, 28)
 	rightW := max(d.w-leftW, 24)
 	w = panelContentWidth(rightW)
@@ -69,16 +83,10 @@ func (d dashboardModel) rightDims() (w, rollupH, runsH, detailsH int) {
 	return w, rollupH, runsH, detailsH
 }
 
-// paneColor is a pane's accent: its bright hue when focused, a dim shade when not.
-func (d dashboardModel) paneColor(p pane) lipgloss.Color {
-	if d.focus == p {
-		return paneBaseColor(p)
-	}
-	return dim(paneBaseColor(p))
-}
-
 func paneBaseColor(p pane) lipgloss.Color {
 	switch p {
+	case paneExecution:
+		return colCyberPink
 	case paneRollup:
 		return colCyberGreen
 	case paneRuns:
@@ -92,10 +100,12 @@ func paneBaseColor(p pane) lipgloss.Color {
 func (d dashboardModel) footerHints() string {
 	var keys string
 	switch d.focus {
+	case paneExecution:
+		keys = "[↑↓]/[jk] move · [→] expand · [←]/[h] collapse · [enter] open run · [g]/[G] top/bottom"
 	case paneRollup:
 		keys = "[←→]/[hl] switch tabs"
 	case paneRuns:
-		keys = "[↑↓]/[jk] scroll · [g]/[G] jump to top/bottom · [^d]/[^u] page down/up"
+		keys = "[↑↓]/[jk] scroll · [enter] open run · [g]/[G] top/bottom · [^d]/[^u] page down/up"
 	default:
 		keys = "[↑↓]/[jk] scroll · [g]/[G] jump to top/bottom · [^d]/[^u] page down/up"
 	}
@@ -114,7 +124,22 @@ func (d dashboardModel) quitDialog() string {
 	return lipgloss.Place(max(d.w, 1), max(d.h, 1), lipgloss.Center, lipgloss.Center, box)
 }
 
-func (d dashboardModel) headerLine() string {
+// titleBar is the top row: the run stats on the left and the run-wide progress
+// bar on the right, sitting directly above the Rollup pane. Both ends are inset
+// one column from the screen edges, and view() renders a blank row beneath it for
+// separation. The bar rides this row instead of taking one of its own, so the
+// Execution and Rollup panes start on the same line.
+func (d dashboardModel) titleBar(leftW, rightW int) string {
+	left := " " + clip(d.headerStats(), max(leftW-1, 1))
+	pad := max(leftW-ansi.StringWidth(left), 0)
+	// The bar spans the Rollup pane's columns, inset one column on the right.
+	bar := d.overallProgressLine(max(rightW-1, 1))
+	return clip(left+strings.Repeat(" ", pad)+bar, d.w)
+}
+
+// headerStats is the left side of the title bar: the run's pass/fail/running
+// tallies, state, elapsed clock, and rolled-up cost.
+func (d dashboardModel) headerStats() string {
 	var pass, fail, errc, running, done, total int
 	var cost float64
 	for _, u := range d.units {
@@ -152,12 +177,12 @@ func (d dashboardModel) headerLine() string {
 		mutedStyle.Render(fmt.Sprintf("%d running", running)),
 		mutedStyle.Render("(" + state + ")"),
 	}
-	head := titleStyle.Render("evolve") + "  " + strings.Join(parts, "  ")
+	head := titleStyle.Render("EVOLVE") + "  " + strings.Join(parts, "  ")
 	if d.started {
 		head += "  " + mutedStyle.Render(fmtClock(d.now().Sub(d.startWall)))
 	}
 	if cost > 0 {
 		head += "  " + mutedStyle.Render("~"+fmtCost(cost))
 	}
-	return clip(head, d.w)
+	return head
 }

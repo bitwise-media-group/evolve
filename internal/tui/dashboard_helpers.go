@@ -67,20 +67,6 @@ func shortKey(key string) string { return key }
 
 // ── scrolling + windowing ─────────────────────────────────────────────────────
 
-func scrollStart(n, focus, h int) int {
-	if n <= h || focus < h {
-		return 0
-	}
-	start := focus - h + 1
-	if start+h > n {
-		start = n - h
-	}
-	if start < 0 {
-		start = 0
-	}
-	return start
-}
-
 // centerScroll returns the scroll offset that keeps focus vertically centered in
 // an h-row window over n lines, clamped so the window stays in range. With an odd
 // h the focused line sits dead center, leaving the top and bottom rows free for
@@ -91,12 +77,6 @@ func centerScroll(n, focus, h int) int {
 		return 0
 	}
 	return clampInt(focus-h/2, 0, n-h)
-}
-
-func window(lines []string, focus, h int) []string {
-	start := scrollStart(len(lines), focus, h)
-	end := min(start+h, len(lines))
-	return lines[start:end]
 }
 
 // scrollWindow renders h rows of lines from scroll, replacing the first/last
@@ -123,6 +103,12 @@ func scrollWindow(lines []string, scroll, h int) string {
 
 // ── small formatters ────────────────────────────────────────────────────────
 
+// emptyMetric is the placeholder for an absent metric cell. It is the figure
+// dash (U+2012), which Unicode sizes to a digit's width — unlike the em dash, it
+// right-aligns flush with the numbers it stands in for inside a fixed-width
+// numeric column.
+const emptyMetric = "‒"
+
 func fmtTok(n int) string {
 	switch {
 	case n <= 0:
@@ -138,7 +124,7 @@ func fmtTok(n int) string {
 
 func fmtTokPtr(p *int) string {
 	if p == nil {
-		return "—"
+		return emptyMetric
 	}
 	return fmtTok(*p)
 }
@@ -159,7 +145,7 @@ func fmtCost(f float64) string {
 
 func fmtCostPtr(p *float64) string {
 	if p == nil {
-		return "—"
+		return emptyMetric
 	}
 	return fmtCost(*p)
 }
@@ -173,7 +159,7 @@ func fmtDur(s float64) string {
 
 func fmtDurPtr(p *float64) string {
 	if p == nil {
-		return "—"
+		return emptyMetric
 	}
 	return fmtDur(*p)
 }
