@@ -16,14 +16,33 @@ import (
 
 // ── status ──────────────────────────────────────────────────────────────────
 
-// caseGlyph renders a case row's status glyph, tinting the live spinner yellow
-// while its without-skill baseline runs (ahead of the run under test) and blue
-// otherwise — see glyph for the settled-status glyphs.
+// caseGlyph renders a case row's status glyph. A baseline phase spins yellow and a
+// live run spins blue (see glyph); a case queued to run this session but not yet
+// started shows the pending indicator instead of its prior result's settled glyph,
+// so the rows about to execute stand apart from the read-only prior ones.
 func (d dashboardModel) caseGlyph(c *caseState) string {
 	if c.baselineRunning {
 		return baselineStyle.Render(strings.TrimSpace(d.spin.View()))
 	}
+	if c.queuedPending() {
+		return pendingGlyph(c.status)
+	}
 	return d.glyph(c.status)
+}
+
+// pendingGlyph renders the "queued to run this session" indicator: a hollow dot
+// tinted by the prior result the row will re-run against — green if it passed last
+// time, red if it failed or errored, and the plain foreground when there is no
+// prior result to compare against.
+func pendingGlyph(prior status) string {
+	switch prior {
+	case stPass:
+		return passStyle.Render("◌")
+	case stFail, stError:
+		return failStyle.Render("◌")
+	default:
+		return "◌"
+	}
 }
 
 func (d dashboardModel) glyph(s status) string {

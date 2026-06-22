@@ -82,6 +82,21 @@ type caseState struct {
 	liveDone bool
 }
 
+// active reports whether the case is executing right now — its own run, or the
+// without-skill baseline phase that precedes an eval. Only an active case earns the
+// spinner glyph; a queued-but-not-started case is pending, not running.
+func (c *caseState) active() bool {
+	return c.status == stRunning || c.baselineRunning
+}
+
+// queuedPending reports whether the case is selected to run this session but has
+// neither started nor finished yet — it will execute in the current run. Such a row
+// shows the pending indicator tinted by the prior result it is about to re-run
+// against, rather than that result's settled pass/fail glyph.
+func (c *caseState) queuedPending() bool {
+	return !c.prior && !c.liveDone && !c.active()
+}
+
 // unitState is one (skill, model, tier) execution unit.
 type unitState struct {
 	ref      run.UnitRef
@@ -369,11 +384,12 @@ func boolStatus(passed bool) status {
 	return stFail
 }
 
-// caseAggStatus rolls a unit's case statuses into one settled status, used for a
-// unit with no queued cases (all prior) so its group row shows the stored rollup
-// rather than "pending". Worst outcome wins; all-no-data folds to skipped.
+// caseAggStatus rolls a set of case statuses into one settled status — used both
+// for a unit with no queued cases (all prior, so its group row shows the stored
+// rollup rather than "pending") and for a group's settled glyph. Worst outcome
+// wins; count-only ranks below a real pass and all-no-data folds to skipped.
 func caseAggStatus(cases []*caseState) status {
-	var anyErr, anyFail, anyPass bool
+	var anyErr, anyFail, anyPass, anyCount bool
 	for _, c := range cases {
 		switch c.status {
 		case stError:
@@ -382,6 +398,8 @@ func caseAggStatus(cases []*caseState) status {
 			anyFail = true
 		case stPass:
 			anyPass = true
+		case stCount:
+			anyCount = true
 		}
 	}
 	switch {
@@ -391,6 +409,8 @@ func caseAggStatus(cases []*caseState) status {
 		return stFail
 	case anyPass:
 		return stPass
+	case anyCount:
+		return stCount
 	default:
 		return stSkipped
 	}

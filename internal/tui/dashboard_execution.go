@@ -479,67 +479,94 @@ func (d dashboardModel) skillUnits(pi, si int) []int {
 	return out
 }
 
-// groupState reports whether a group of units has anything to show yet (started)
-// and whether all of its units have settled (done). A unit that has not run but
-// carries prior results still counts as started, so a not-yet-run model shows its
-// prior rollup rather than "pending"; only a group with no data at all stays
-// pending. done stays unit-based, so a group with cases still queued is not done
-// and its rollup tints no delta.
+// groupState reports whether a group has anything to show yet (started) and whether
+// all of its work has settled (done). Both read the group's cases, not its units'
+// lifecycle status: a unit's terminal status can lag behind its last finished case —
+// or never arrive for an empty unit whose every case is skipped for the provider — so
+// reading the cases keeps a finished group from reading as still-running. A group is
+// started once any case carries data (a settled prior or fresh result, or one running
+// now), so a not-yet-run model still shows its prior rollup rather than "pending"; it
+// is done once started and nothing is running or still queued to run this session.
 func (d dashboardModel) groupState(unitIdxs []int) (started, done bool) {
-	done = true
+	var active, pending bool
 	for _, ui := range unitIdxs {
-		u := d.units[ui]
-		if u.status != stPending {
-			started = true
-		}
-		if !u.status.terminal() {
-			done = false
-		}
-		for _, c := range u.cases {
-			if c.status.terminal() {
-				started = true // a prior or freshly-settled case is data to show
+		for _, c := range d.units[ui].cases {
+			if c.active() {
+				active = true
+			}
+			if c.queuedPending() {
+				pending = true
+			}
+			if c.active() || c.status.terminal() {
+				started = true // running now, or a prior/freshly-settled result to show
 			}
 		}
 	}
-	return started, done
+	return started, started && !active && !pending
 }
 
-func (d dashboardModel) aggStatus(unitIdxs []int) status {
-	started, done := d.groupState(unitIdxs)
-	if !started {
-		return stPending
-	}
-	if !done {
-		return stRunning
-	}
-	var anyFail, anyErr, anyPass, anyCount bool
+// groupActive reports whether any case in the group is executing right now — the
+// only condition under which the group earns the running spinner.
+func (d dashboardModel) groupActive(unitIdxs []int) bool {
 	for _, ui := range unitIdxs {
-		switch d.units[ui].status {
-		case stError:
-			anyErr = true
-		case stFail:
-			anyFail = true
-		case stPass:
-			anyPass = true
-		case stCount:
-			anyCount = true
+		for _, c := range d.units[ui].cases {
+			if c.active() {
+				return true
+			}
 		}
 	}
-	switch {
-	case anyErr:
-		return stError
-	case anyFail:
-		return stFail
-	case anyPass:
-		return stPass
-	case anyCount:
-		return stCount
-	default:
-		return stSkipped
-	}
+	return false
 }
 
-func (d dashboardModel) aggGlyph(unitIdxs []int) string { return d.glyph(d.aggStatus(unitIdxs)) }
+// groupQueuedPending reports whether the group has a case selected to run this
+// session that has not executed yet — so its glyph is a pending indicator.
+func (d dashboardModel) groupQueuedPending(unitIdxs []int) bool {
+	for _, ui := range unitIdxs {
+		for _, c := range d.units[ui].cases {
+			if c.queuedPending() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// groupCases gathers every case across a group's units, for the worst-outcome
+// rollup that settles a done group's glyph (or tints a pending one).
+func (d dashboardModel) groupCases(unitIdxs []int) []*caseState {
+	var cs []*caseState
+	for _, ui := range unitIdxs {
+		cs = append(cs, d.units[ui].cases...)
+	}
+	return cs
+}
+
+// aggStatus classifies a group for its rollup glyph. A group with a case executing
+// right now is running; one that has started but is not done (a case still queued or
+// running) is pending; a settled group rolls its cases up to the worst outcome. The
+// settled rollup reads the cases rather than the units' status so it stays correct
+// while a finished unit's terminal status is still in flight.
+func (d dashboardModel) aggStatus(unitIdxs []int) status {
+	if d.groupActive(unitIdxs) {
+		return stRunning
+	}
+	if _, done := d.groupState(unitIdxs); !done {
+		return stPending
+	}
+	return caseAggStatus(d.groupCases(unitIdxs))
+}
+
+// aggGlyph renders a group row's status glyph. A group queued to run this session
+// but not yet started shows the pending indicator tinted by its prior rollup (green
+// if it passed last time, red if it failed), matching the per-case rows beneath it;
+// otherwise it shows the running spinner or its settled outcome.
+func (d dashboardModel) aggGlyph(unitIdxs []int) string {
+	st := d.aggStatus(unitIdxs)
+	if st == stPending && d.groupQueuedPending(unitIdxs) {
+		return pendingGlyph(caseAggStatus(d.groupCases(unitIdxs)))
+	}
+	return d.glyph(st)
+}
 
 // overallProgress tallies every case across the whole run into the segments of
 // the top-right progress bar — settled-ok (pass, skipped, count-only), failed

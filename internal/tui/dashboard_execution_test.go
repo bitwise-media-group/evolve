@@ -189,6 +189,113 @@ func TestExecutionRenderIndependentOfFocus(t *testing.T) {
 	}
 }
 
+// commitAllPass writes a prior run in which every solo-skill case passed, so a
+// freshly built dashboard seeds green prior results for the model's cases.
+func commitAllPass(t *testing.T, cat []run.SkillCatalog, key string) run.PriorMetrics {
+	t.Helper()
+	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
+	f.SetTrigger(key, &results.TriggerEntry{
+		Header: results.Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []results.TriggerResult{
+			{Query: "q1", ShouldTrigger: true, Hits: new(3), Runs: new(3), Passed: new(true), AvgRunSeconds: new(1.5)},
+			{Query: "q2", ShouldTrigger: false, Hits: new(0), Runs: new(3), Passed: new(true), AvgRunSeconds: new(1.5)},
+		},
+		Summary: results.TriggerSummary{Total: 2},
+	})
+	f.SetEval(key, &results.EvalEntry{
+		Header: results.Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []results.EvalResult{
+			{ID: "e1", Passed: new(true), Summary: &results.GradeSummary{Passed: 3, Total: 3, PassRate: new(1.0)}},
+			{ID: "e2", Passed: new(true), Summary: &results.GradeSummary{Passed: 2, Total: 2, PassRate: new(1.0)}},
+		},
+		Summary: results.EvalSummary{Passed: new(2), Total: 2},
+	})
+	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
+		t.Fatal(err)
+	}
+	return run.LoadPriorMetrics(cat)
+}
+
+func soloModelUnits(d dashboardModel) []int { return d.tree[0].skills[0].models[0].units }
+
+// TestCompletedGroupSettlesWithoutSpinner guards the Image #4 bug: once every case
+// in a group has produced a result this run, the group row shows its settled outcome
+// — not a perpetual spinner — even when the engine's per-unit "finished" event is
+// still in flight (so the units' own status has not caught up).
+func TestCompletedGroupSettlesWithoutSpinner(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
+	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
+	d := newDashboard(cat, []run.UnitRef{tr, ev}, nil, run.PriorMetrics{})
+
+	// Run every case to a pass but never deliver unitFinishedMsg, so each unit's
+	// status stays stRunning while all of its cases have settled.
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	for _, q := range []string{"q1", "q2"} {
+		d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: q}})
+		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: run.StatusPass,
+			Metrics: run.ItemMetrics{Hits: new(1), Runs: new(1)}}})
+	}
+	d.apply(unitStartedMsg{ref: ev, total: 2, mode: run.ModeRun})
+	for _, e := range []string{"e1", "e2"} {
+		d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: e}})
+		d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: e, Status: run.StatusPass,
+			Metrics: run.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}}})
+	}
+
+	units := soloModelUnits(d)
+	if d.groupActive(units) {
+		t.Error("a group with no case running must not read as active")
+	}
+	if got, want := d.aggGlyph(units), passStyle.Render("✓"); got != want {
+		t.Errorf("completed group glyph = %q, want the settled check %q (no spinner)", got, want)
+	}
+}
+
+// TestQueuedGroupShowsPendingIndicator guards the Image #3 bug: a group whose cases
+// are queued for this run but have not started yet shows the pending dot tinted by
+// its prior result — never the running spinner — so the about-to-run rows read apart
+// from the read-only prior ones.
+func TestQueuedGroupShowsPendingIndicator(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	prior := commitAllPass(t, cat, m1.Key())
+	d := newDashboard(cat, run.PlanFor(cat, m1, nil, run.Tiers{Triggers: true, Evals: true}), nil, prior)
+
+	units := soloModelUnits(d)
+	if d.groupActive(units) {
+		t.Error("a group with nothing started must not read as active")
+	}
+	if !d.groupQueuedPending(units) {
+		t.Fatal("an all-queued group must report queued-pending cases")
+	}
+	if got, want := d.aggGlyph(units), passStyle.Render("◌"); got != want {
+		t.Errorf("queued group glyph = %q, want the green pending dot %q (no spinner)", got, want)
+	}
+}
+
+// TestRunningGroupShowsSpinner is the positive case: a group with a case executing
+// right now keeps the running spinner.
+func TestRunningGroupShowsSpinner(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
+	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
+	d := newDashboard(cat, []run.UnitRef{tr, ev}, nil, run.PriorMetrics{})
+
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q1"}})
+
+	units := soloModelUnits(d)
+	if !d.groupActive(units) {
+		t.Error("a group with a running case must read as active")
+	}
+	if got, want := d.aggGlyph(units), d.glyph(stRunning); got != want {
+		t.Errorf("running group glyph = %q, want the spinner %q", got, want)
+	}
+}
+
 // TestExecutionBrowseKeepsCursorOnScreen pins the navigation fix: while browsing
 // an overflowing tree the highlight must stay on-screen at the top, middle, and
 // bottom of the list — the old renderer pinned the live model and let the cursor
