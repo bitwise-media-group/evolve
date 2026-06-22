@@ -55,12 +55,28 @@ node_modules: package.json package-lock.json
 	@ npm ci --ignore-scripts --no-fund
 	@ touch node_modules
 
+# Platform build-tag matrix. The host GOOS only compiles its own files, so the
+# linters skip every other platform's build-constrained source (the sandbox_*.go /
+# proc_*.go split in internal/runner). Vetting/linting under each GOOS in turn
+# covers them all: linux and darwin pick up sandbox_{linux,darwin}.go + proc_unix.go,
+# windows picks up proc_windows.go + sandbox_other.go (!linux && !darwin). gofmt
+# itself ignores build tags, so `go fmt` already reaches every file.
+#
+# go vet is part of the go command and analyses the target GOOS while running on the
+# host, so `GOOS=… go vet` just works. `go tool golangci-lint`, though, would
+# cross-*build* golangci-lint for that GOOS and then fail to exec the foreign binary
+# on the host — so build one host binary up front and run it under each GOOS instead.
+LINT_GOOS ?= linux darwin windows
+
 .PHONY: fmt
 fmt: node_modules ## format the go code, prose, and config (gofmt + prettier)
 	@ go tool -modfile=tools/go.mod addlicense -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
 	@ go fmt ./...
 	@ go -C e2e fmt ./...
-	@ go tool -modfile=tools/go.mod golangci-lint run --fix
+	@ bin=$$(mktemp -d "$${TMPDIR:-/tmp}/evolve-fmt.XXXXXX"); ret=0; \
+		go build -modfile=tools/go.mod -o "$$bin/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint; \
+		for goos in $(LINT_GOOS); do GOOS=$$goos "$$bin/golangci-lint" run --fix || { ret=1; break; }; done; \
+		rm -rf "$$bin"; exit $$ret
 	@ npm run format
 	@ npm run lint:fix
 
@@ -70,14 +86,19 @@ tidy: go.mod e2e/go.mod tools/go.mod ## tidy the go module references
 	@ rm -f e2e/go.sum; go -C e2e mod tidy
 
 .PHONY: lint
-lint: node_modules ## lint the go code
-	@ go vet ./...
-	@ go -C e2e vet ./...
-	@ go tool -modfile=tools/go.mod golangci-lint run
+lint: node_modules ## lint the go code (across the LINT_GOOS build-tag matrix)
+	@ go tool -modfile=tools/go.mod addlicense -check -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
+	@ bin=$$(mktemp -d "$${TMPDIR:-/tmp}/evolve-lint.XXXXXX"); ret=0; \
+		go build -modfile=tools/go.mod -o "$$bin/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint; \
+		for goos in $(LINT_GOOS); do \
+			echo "  lint: GOOS=$$goos"; \
+			GOOS=$$goos go vet ./... && GOOS=$$goos "$$bin/golangci-lint" run || { ret=1; break; }; \
+		done; \
+		rm -rf "$$bin"; exit $$ret
 	@ go tool -modfile=tools/go.mod govulncheck ./...
+	@ go -C e2e vet ./...
 	@ npm run lint
 	@ npm run format:check
-	@ go tool -modfile=tools/go.mod addlicense -check -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
 
 # -covermode=atomic is the race-safe counter mode `-race` requires. gocover-cobertura
 # is pinned in tools/go.mod and run via `go tool` — no `go install` of an @latest tool.

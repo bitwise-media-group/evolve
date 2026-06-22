@@ -14,5 +14,6 @@ import (
 // up for this platform, so an enabled sandbox refuses to run rather than
 // silently leaving the agent unconfined.
 func sandboxWrap(_ string, _ []string, _ []string) ([]string, error) {
-	return nil, fmt.Errorf("filesystem sandbox is not supported on %s; set sandbox.enabled=false to run unconfined", runtime.GOOS)
+	return nil, fmt.Errorf(
+		"filesystem sandbox is not supported on %s; set sandbox.enabled=false to run unconfined", runtime.GOOS)
 }

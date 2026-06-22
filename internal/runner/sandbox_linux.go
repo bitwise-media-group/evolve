@@ -19,7 +19,8 @@ import (
 func sandboxWrap(workspace string, roots []string, argv []string) ([]string, error) {
 	launcher, err := exec.LookPath("bwrap")
 	if err != nil {
-		return nil, fmt.Errorf("sandbox enabled but bwrap (bubblewrap) not found; install it or set sandbox.enabled=false: %w", err)
+		return nil, fmt.Errorf(
+			"sandbox enabled but bwrap (bubblewrap) not found; install it or set sandbox.enabled=false: %w", err)
 	}
 	bw := []string{launcher, "--dev-bind", "/", "/", "--share-net", "--die-with-parent"}
 	for _, root := range roots {
