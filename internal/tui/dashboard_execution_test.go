@@ -27,7 +27,7 @@ func TestCaseMetricCellsGatedOnCompletion(t *testing.T) {
 	if _, basis := d.caseMetricCells(ev, running); basis != basisNone {
 		t.Errorf("running case basis = %v, want none (no delta until complete)", basis)
 	}
-	done := &caseState{kind: run.KindEvals, label: "e1", status: stPass, metrics: metrics}
+	done := &caseState{kind: run.KindEvals, label: "e1", status: stPass, liveDone: true, metrics: metrics}
 	if _, basis := d.caseMetricCells(ev, done); basis != basisBaseline {
 		t.Errorf("completed case basis = %v, want baseline", basis)
 	}

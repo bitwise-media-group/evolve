@@ -339,9 +339,12 @@ func (d dashboardModel) caseLine(n nodeRef, w int, hot bool) string {
 	avail := max(w-ansi.StringWidth(prefix)-ansi.StringWidth(metric)-2, 6)
 	label = truncate(label, avail)
 	pad := max(avail-ansi.StringWidth(label), 0)
-	// Prior rows stay muted even when selected, so this-run vs last-run reads at a
-	// glance; the gutter caret still marks the cursor.
-	return clip(prefix+joinRow(label, pad, metric, basis, hot && !c.prior), w)
+	// A row showing stale prior data (queued-but-pending or non-queued) stays muted
+	// even when selected, so this-run vs last-run reads at a glance; an active row
+	// (pending with no prior, running, or freshly settled) brightens. The gutter
+	// caret still marks the cursor either way.
+	active := c.liveDone || c.status == stPending || c.status == stRunning
+	return clip(prefix+joinRow(label, pad, metric, basis, hot && active), w)
 }
 
 // joinRow assembles a tree row's label and metric block. A row carrying delta
@@ -371,9 +374,9 @@ func (d dashboardModel) caseMetricCells(ref run.UnitRef, c *caseState) (string, 
 	in := fmtTokPtr(c.metrics.InputTokens)
 	out := fmtTokPtr(c.metrics.OutputTokens)
 	cost := fmtCostPtr(c.metrics.CostUSD)
-	// Prior rows carry no live basis (nothing this run to compare), so they never
-	// tint a delta — the dim row in caseLine is the only treatment.
-	if c.prior || !c.status.terminal() {
+	// A delta needs a fresh this-run result to compare; a row still showing its
+	// prior result (queued-but-pending or non-queued) tints nothing.
+	if !c.liveDone || !c.status.terminal() {
 		return metricCols(rate, avg, in, out, cost), basisNone
 	}
 	delta, basis := d.caseDelta(ref, c)
@@ -476,15 +479,26 @@ func (d dashboardModel) skillUnits(pi, si int) []int {
 	return out
 }
 
+// groupState reports whether a group of units has anything to show yet (started)
+// and whether all of its units have settled (done). A unit that has not run but
+// carries prior results still counts as started, so a not-yet-run model shows its
+// prior rollup rather than "pending"; only a group with no data at all stays
+// pending. done stays unit-based, so a group with cases still queued is not done
+// and its rollup tints no delta.
 func (d dashboardModel) groupState(unitIdxs []int) (started, done bool) {
 	done = true
 	for _, ui := range unitIdxs {
-		s := d.units[ui].status
-		if s != stPending {
+		u := d.units[ui]
+		if u.status != stPending {
 			started = true
 		}
-		if !s.terminal() {
+		if !u.status.terminal() {
 			done = false
+		}
+		for _, c := range u.cases {
+			if c.status.terminal() {
+				started = true // a prior or freshly-settled case is data to show
+			}
 		}
 	}
 	return started, done
@@ -537,13 +551,16 @@ func (d dashboardModel) overallProgress() (ok, bad, running, total, pct int) {
 				continue // shown from a previous run; not this session's work
 			}
 			total++
-			switch c.status {
-			case stPass, stSkipped, stCount:
-				ok++
-			case stFail, stError:
-				bad++
-			case stRunning:
+			switch {
+			case c.status == stRunning:
 				running++
+			case !c.liveDone:
+				// Queued but not finished this run — it may be showing a prior result,
+				// but it is still pending until its live result lands.
+			case c.status == stPass, c.status == stSkipped, c.status == stCount:
+				ok++
+			case c.status == stFail, c.status == stError:
+				bad++
 			}
 		}
 	}

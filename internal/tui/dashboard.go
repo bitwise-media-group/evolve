@@ -73,9 +73,13 @@ type caseState struct {
 	logPath         string // full output log file (l opens it); empty for triggers
 	// prior marks a row seeded from the last committed run rather than this
 	// session's work: it is not queued, so it shows its stored result (or stNoData
-	// when none exists), is excluded from the run progress, renders dimmed with no
-	// live delta, and has no workspace/log to open (those are cleaned up).
+	// when none exists), is excluded from the run progress, and has no workspace/log
+	// to open (those are cleaned up).
 	prior bool
+	// liveDone marks a queued case that has produced a result this session. Until
+	// then a queued case displays its prior result but counts as pending, and only a
+	// live result tints a delta or brightens the row out of the dimmed prior look.
+	liveDone bool
 }
 
 // unitState is one (skill, model, tier) execution unit.
@@ -288,11 +292,7 @@ func (d *dashboardModel) buildCases(u *unitState, sc *run.SkillCatalog, filter *
 				continue
 			}
 			cr := &caseState{kind: run.KindTriggers, label: t.Query, shouldTrigger: t.ShouldTrigger}
-			if selectedCase(filter, run.KindTriggers, sc.Skill, t.Query) {
-				cr.status = stPending
-			} else {
-				d.seedPriorTrigger(cr, u.ref)
-			}
+			d.seedCase(cr, u.ref, selectedCase(filter, run.KindTriggers, sc.Skill, t.Query))
 			u.cases = append(u.cases, cr)
 			u.byLabel[t.Query] = cr
 		}
@@ -303,50 +303,54 @@ func (d *dashboardModel) buildCases(u *unitState, sc *run.SkillCatalog, filter *
 			continue
 		}
 		cr := &caseState{kind: run.KindEvals, label: e.ID}
-		if selectedCase(filter, run.KindEvals, sc.Skill, e.ID) {
-			cr.status = stPending
-		} else {
-			d.seedPriorEval(cr, u.ref)
-		}
+		d.seedCase(cr, u.ref, selectedCase(filter, run.KindEvals, sc.Skill, e.ID))
 		u.cases = append(u.cases, cr)
 		u.byLabel[e.ID] = cr
 	}
 }
 
-// seedPriorTrigger fills a non-queued trigger row from the last committed run —
-// its stored pass/fail and metrics — and marks it prior. With no stored result it
-// shows stNoData.
-func (d *dashboardModel) seedPriorTrigger(cr *caseState, ref run.UnitRef) {
-	cr.prior = true
-	m, ok := d.prior.TriggerPrevious(ref, cr.label)
-	if !ok || m.Passed == nil {
-		cr.status = stNoData
-		return
-	}
-	cr.status = boolStatus(*m.Passed)
-	cr.metrics = run.ItemMetrics{Hits: m.Hits, Runs: m.Runs, AvgRunSeconds: m.AvgRunSeconds}
-	if m.Estimate != nil {
-		cr.metrics.InputTokens = new(m.Estimate.InputTokens)
-		cr.metrics.CostUSD = m.Estimate.InputCostUSD
+// seedCase fills a case row from the last committed run and classifies it. Every
+// case shows its prior result if it has one; a queued case (selected to run this
+// session) keeps prior=false so it counts toward progress and overwrites the prior
+// display with its live result as it completes (see liveDone). A non-queued case is
+// marked prior (shown read-only) or, with nothing ever recorded, no-data.
+func (d *dashboardModel) seedCase(cr *caseState, ref run.UnitRef, queued bool) {
+	hadPrior := d.seedPrior(cr, ref)
+	cr.prior = !queued
+	if !hadPrior {
+		cr.status = stPending
+		if !queued {
+			cr.status = stNoData
+		}
 	}
 }
 
-// seedPriorEval fills a non-queued eval row from the last committed run. The
-// compact prior metrics carry pass/fail, timing, measured tokens, and cost but not
-// the assertion counts, so the Pass/Tot column stays a dash; the glyph and the
-// rolled-up totals still reflect the stored outcome.
-func (d *dashboardModel) seedPriorEval(cr *caseState, ref run.UnitRef) {
-	cr.prior = true
+// seedPrior fills a row's status and metrics from the last committed run for its
+// tier, returning whether a stored result was found; it leaves the zero (pending)
+// status when there is none.
+func (d *dashboardModel) seedPrior(cr *caseState, ref run.UnitRef) bool {
+	if cr.kind == run.KindTriggers {
+		m, ok := d.prior.TriggerPrevious(ref, cr.label)
+		if !ok || m.Passed == nil {
+			return false
+		}
+		cr.status = boolStatus(*m.Passed)
+		cr.metrics = run.ItemMetrics{Hits: m.Hits, Runs: m.Runs, AvgRunSeconds: m.AvgRunSeconds}
+		if m.Estimate != nil {
+			cr.metrics.InputTokens = new(m.Estimate.InputTokens)
+			cr.metrics.CostUSD = m.Estimate.InputCostUSD
+		}
+		return true
+	}
 	m, ok := d.prior.EvalPrevious(ref, cr.label)
 	if !ok || (m.Passed == nil && !m.Errored) {
-		cr.status = stNoData
-		return
+		return false
 	}
 	cr.status = boolStatus(m.Passed != nil && *m.Passed)
 	if m.Errored {
 		cr.status = stError
 	}
-	cr.metrics = run.ItemMetrics{AvgRunSeconds: m.AvgRunSeconds}
+	cr.metrics = run.ItemMetrics{AvgRunSeconds: m.AvgRunSeconds, AssertPassed: m.AssertPassed, AssertTotal: m.AssertTotal}
 	if m.Measured != nil {
 		cr.metrics.InputTokens = m.Measured.InputTokens
 		cr.metrics.OutputTokens = m.Measured.OutputTokens
@@ -354,6 +358,7 @@ func (d *dashboardModel) seedPriorEval(cr *caseState, ref run.UnitRef) {
 		cr.metrics.CacheCreationTokens = m.Measured.CacheCreationTokens
 		cr.metrics.CostUSD = m.Measured.CostUSD
 	}
+	return true
 }
 
 // boolStatus maps a stored pass/fail bool to its dashboard status.
@@ -476,11 +481,13 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 		}
 	case unitSkippedMsg:
 		if u := d.unit(m.ref); u != nil {
-			u.status = stSkipped
 			u.reason = m.reason
-			// Settle the pre-populated case rows so a skipped unit's executions show
-			// as skipped in the Runs pane and tree rather than perpetually pending.
+			// Settle the queued rows so a skipped unit's executions show as skipped
+			// rather than perpetually pending; a "results complete" skip over preserved
+			// cases keeps their prior outcome, so the unit reflects its cases rather
+			// than always reading "skipped".
 			u.settlePending(stSkipped)
+			u.status = caseAggStatus(u.cases)
 		}
 	case baselineStartedMsg:
 		// An eval's without-skill baseline started, ahead of its own run. Marking
@@ -504,6 +511,7 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 			if cr := u.byLabel[m.item.Label]; cr != nil {
 				cr.status = statusOf(m.item.Status)
 				cr.baselineRunning = false
+				cr.liveDone = true
 				cr.metrics = m.item.Metrics
 				cr.output = m.item.Output
 				cr.verdict = m.item.Detail
@@ -582,11 +590,19 @@ func (d *dashboardModel) startCase(ref run.UnitRef, label string, baseline bool)
 
 // settlePending moves a unit's still-pending cases to s — used when a count-only
 // unit finishes without per-case run results.
+// settlePending settles the unit's queued cases that never produced a live result
+// (a skipped or count-only unit): a still-pending row takes status s, and any row
+// already showing its prior result keeps it. Either way the case stops awaiting a
+// live result. Prior (non-queued) rows are left untouched.
 func (u *unitState) settlePending(s status) {
 	for _, c := range u.cases {
+		if c.prior || c.liveDone {
+			continue
+		}
 		if c.status == stPending {
 			c.status = s
 		}
+		c.liveDone = true
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -116,12 +117,7 @@ func inFilter(list []string, v string) bool {
 	if len(list) == 0 {
 		return true
 	}
-	for _, s := range list {
-		if s == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, v)
 }
 
 // retain reports the parent directory new workspaces are created under and

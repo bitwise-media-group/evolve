@@ -89,8 +89,8 @@ func (fp fingerprints) modified(storedSpec string) bool {
 // them cheaply, so keeping them out keeps CLI and TUI selection identical (the
 // count still refreshes whenever the case runs for another reason).
 func triggerCaseReason(r results.TriggerResult, ok bool,
-	execute, wantNew, wantFailed, wantModified bool, fp fingerprints) SelectReason {
-
+	execute, wantNew, wantFailed, wantModified bool, fp fingerprints,
+) SelectReason {
 	if wantFailed && execute && ok && r.Passed != nil && !*r.Passed {
 		return ReasonNotPassing
 	}
@@ -113,8 +113,8 @@ func triggerCaseReason(r results.TriggerResult, ok bool,
 // token-count estimates; the measured-usage reasons cover the fields a real run
 // produces.
 func evalCaseReason(r results.EvalResult, ok bool,
-	execute, reportsUsage, priced, wantNew, wantFailed, wantModified bool, fp fingerprints) SelectReason {
-
+	execute, reportsUsage, priced, wantNew, wantFailed, wantModified bool, fp fingerprints,
+) SelectReason {
 	if wantFailed && execute && ok {
 		if r.RuntimeError != "" {
 			return ReasonErrored

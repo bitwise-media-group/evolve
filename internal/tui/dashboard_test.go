@@ -30,7 +30,7 @@ func TestDashboardSeedsPriorAndQueuedCases(t *testing.T) {
 	})
 	f.SetEval(m1.Key(), &results.EvalEntry{
 		Header:  results.Header{Provider: "fake", Model: "m1", Executed: true},
-		Results: []results.EvalResult{{ID: "e1", Passed: new(true), Summary: &results.GradeSummary{PassRate: new(1.0)}}},
+		Results: []results.EvalResult{{ID: "e1", Passed: new(true), Summary: &results.GradeSummary{Passed: 2, Total: 3, PassRate: new(1.0)}}},
 		Summary: results.EvalSummary{Passed: new(1), Total: 1},
 	})
 	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
@@ -59,6 +59,8 @@ func TestDashboardSeedsPriorAndQueuedCases(t *testing.T) {
 	}
 	if c := evCases["e1"]; c == nil || c.status != stPass || !c.prior {
 		t.Errorf("e1 = %+v, want prior pass", c)
+	} else if intOr0(c.metrics.AssertPassed) != 2 || intOr0(c.metrics.AssertTotal) != 3 {
+		t.Errorf("e1 assertion counts = %v/%v, want 2/3 (from the stored grade summary)", c.metrics.AssertPassed, c.metrics.AssertTotal)
 	}
 	if c := evCases["e2"]; c == nil || c.status != stNoData || !c.prior {
 		t.Errorf("e2 = %+v, want prior no-data", c)
@@ -83,6 +85,49 @@ func TestDashboardSeedsPriorAndQueuedCases(t *testing.T) {
 		if !strings.Contains(tree, want) {
 			t.Errorf("execution tree missing %q:\n%s", want, tree)
 		}
+	}
+}
+
+// TestQueuedCaseShowsPriorUntilLive pins request: a queued case displays its prior
+// result and counts as pending until its live result lands, then updates.
+func TestQueuedCaseShowsPriorUntilLive(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
+	f.SetTrigger(m1.Key(), &results.TriggerEntry{
+		Header:  results.Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []results.TriggerResult{{Query: "q1", ShouldTrigger: true, Hits: new(3), Runs: new(3), Passed: new(true), AvgRunSeconds: new(1.5)}},
+		Summary: results.TriggerSummary{Total: 1},
+	})
+	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
+		t.Fatal(err)
+	}
+	prior := run.LoadPriorMetrics(cat)
+
+	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
+	filter := &run.Filter{ // q1 is queued AND has a prior pass
+		Skills:   map[string]bool{"solo-skill": true},
+		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true}},
+	}
+	d := newDashboard(cat, run.PlanFor(cat, m1, nil, run.Tiers{Triggers: true, Evals: true}), filter, prior)
+
+	q1 := d.unit(tr).byLabel["q1"]
+	if q1.status != stPass || q1.prior || q1.liveDone {
+		t.Fatalf("q1 = %+v, want prior pass shown, queued (not prior), not yet live", q1)
+	}
+	if ok, _, _, total, _ := d.overallProgress(); ok != 0 || total != 1 {
+		t.Errorf("queued case showing a prior pass must count as pending: ok=%d total=%d, want 0/1", ok, total)
+	}
+
+	// Its live result overwrites the prior display and settles progress.
+	d.apply(unitStartedMsg{ref: tr, total: 1, mode: run.ModeRun})
+	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Index: 0, Label: "q1"}})
+	d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Index: 0, Label: "q1", Status: run.StatusFail}})
+	if !q1.liveDone || q1.status != stFail {
+		t.Errorf("after live result q1 = %+v, want fresh fail + liveDone", q1)
+	}
+	if _, bad, _, _, _ := d.overallProgress(); bad != 1 {
+		t.Errorf("after live fail, bad=%d, want 1", bad)
 	}
 }
 
