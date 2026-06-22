@@ -79,16 +79,14 @@ lint: node_modules ## lint the go code
 	@ npm run format:check
 	@ go tool -modfile=tools/go.mod addlicense -check -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
 
-.PHONY: test
-test: ## run the unit tests (+ fuzz seed corpora)
-	go test ./...
-
 # -covermode=atomic is the race-safe counter mode `-race` requires. gocover-cobertura
 # is pinned in tools/go.mod and run via `go tool` — no `go install` of an @latest tool.
-.PHONY: test-coverage
-test-coverage: ## run unit tests under -race and write cobertura-coverage.xml
-	@ go test -race -covermode=atomic -coverprofile=coverage.out ./...
-	@ go tool -modfile=tools/go.mod gocover-cobertura <coverage.out >cobertura-coverage.xml
+# Coverage lands in coverage/ where the reusable CI workflow uploads it to Codecov.
+.PHONY: test
+test: ## run the unit tests (+ fuzz seed corpora)
+	@ mkdir -p coverage
+	@ go test -race -covermode=atomic -coverprofile=coverage/coverage.out ./...
+	@ go tool -modfile=tools/go.mod gocover-cobertura <coverage/coverage.out >coverage/cobertura-coverage.xml
 
 .PHONY: fuzz
 fuzz: ## fuzz one target (FUZZ=FuzzParse FUZZTIME=20s FUZZ_PKG=./internal/evalspec)
