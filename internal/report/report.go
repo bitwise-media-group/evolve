@@ -270,7 +270,7 @@ func filterActive(loaded []pluginFiles, active map[string]bool) {
 	}
 }
 
-// excludedProvider is one provider's models that default_models excludes.
+// excludedProvider is one provider's models that the `models` restriction excludes.
 type excludedProvider struct {
 	display string
 	all     bool     // every one of the provider's models is excluded

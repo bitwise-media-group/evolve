@@ -14,11 +14,11 @@ import (
 )
 
 // reconcileStaleResults runs at the start of the run and report commands. When
-// default_models is configured and results files hold models outside it, it
-// keeps or drops that data per --stale-results / the stale_results config,
+// the `models` restriction is configured and results files hold models outside
+// it, it keeps or drops that data per --stale-results / the stale_results config,
 // prompting on an interactive terminal and defaulting to keep (with a warning)
-// when it cannot prompt. It is a no-op when default_models is unset or no stale
-// data exists.
+// when it cannot prompt. It is a no-op when no restriction is configured or no
+// stale data exists.
 func reconcileStaleResults(cmd *cobra.Command, interactive bool) error {
 	active, configured, err := opts.ActiveModelKeys()
 	if err != nil {
@@ -57,11 +57,11 @@ func reconcileStaleResults(cmd *cobra.Command, interactive bool) error {
 		if err := opts.DropStaleResults(stale); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "stale-results: dropped %d model(s) outside default_models: %s\n",
+		fmt.Fprintf(out, "stale-results: dropped %d model(s) outside the configured models: %s\n",
 			len(models), strings.Join(models, ", "))
 		return nil
 	}
-	fmt.Fprintf(out, "stale-results: kept %d model(s) outside default_models on disk "+
+	fmt.Fprintf(out, "stale-results: kept %d model(s) outside the configured models on disk "+
 		"(excluded from reports); pass --stale-results=drop to prune: %s\n",
 		len(models), strings.Join(models, ", "))
 	return nil
@@ -70,7 +70,7 @@ func reconcileStaleResults(cmd *cobra.Command, interactive bool) error {
 // promptStaleResults asks the user whether to keep or drop stale results.
 func promptStaleResults(cmd *cobra.Command, models []string) string {
 	out := cmd.ErrOrStderr()
-	fmt.Fprintf(out, "stale-results: results files hold %d model(s) outside default_models:\n  %s\n",
+	fmt.Fprintf(out, "stale-results: results files hold %d model(s) outside the configured models:\n  %s\n",
 		len(models), strings.Join(models, ", "))
 	fmt.Fprint(out, "Keep them on disk or drop them? [keep/drop] (default keep): ")
 	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')

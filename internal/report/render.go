@@ -15,15 +15,16 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/results"
 )
 
-// renderExcluded renders the note listing models default_models excludes, or ""
-// when nothing is excluded (no filtering, or every catalog model is active).
+// renderExcluded renders the note listing models the `models` restriction
+// excludes, or "" when nothing is excluded (no restriction, or every catalog
+// model is active).
 func renderExcluded(excluded []excludedProvider) string {
 	if len(excluded) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("\n## Excluded models\n\n")
-	b.WriteString("Only models in `default_models` appear below; these are excluded from this report:\n\n")
+	b.WriteString("Only the configured `models` appear below; these are excluded from this report:\n\n")
 	b.WriteString("| Provider | Excluded models |\n")
 	b.WriteString("| --- | --- |\n")
 	for _, e := range excluded {

@@ -13,7 +13,7 @@ evolve report [flags]
   -h, --help                           help for report
       --min-evals-pass-rate float      minimum eval pass rate (0..1) for --check
       --min-triggers-pass-rate float   minimum trigger pass rate (0..1) for --check
-      --stale-results string           keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)
+      --stale-results string           keep|drop stored results for models outside the models restriction (default: prompt on a terminal, else keep)
 ```
 
 ### Options inherited from parent commands

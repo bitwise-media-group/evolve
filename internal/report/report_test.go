@@ -212,8 +212,8 @@ func TestGenerateGolden(t *testing.T) {
 	}
 }
 
-// TestGenerateFiltersToActive checks that a configured default_models filters
-// the report to the active models and lists the rest in the excluded note.
+// TestGenerateFiltersToActive checks that a configured `models` restriction
+// filters the report to the active models and lists the rest in the excluded note.
 func TestGenerateFiltersToActive(t *testing.T) {
 	repo := fixtureRepo(t)
 	active := map[string]bool{

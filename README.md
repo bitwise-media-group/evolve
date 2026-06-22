@@ -117,10 +117,10 @@ Useful run filters and debug flags:
   definition; eval skill files or definition), fingerprinted alongside the results.
 - `--keep-workspaces`: leave temporary workspaces behind for debugging.
 - `--count-only`: compute token usage without running agents.
-- `--stale-results keep|drop`: decide what to do with stored results outside `default_models`.
+- `--stale-results keep|drop`: decide what to do with stored results outside the `models` restriction.
 
-On an interactive terminal, `run triggers`, `run evals`, and `run all` open a TUI for selecting providers, models,
-skills, and cases before showing live progress. Use `--no-tui` or `EVOLVE_NO_TUI=1` for plain output.
+On an interactive terminal, `run triggers`, `run evals`, and `run all` open a TUI for toggling filters, harnesses,
+models, and cases before showing live progress. Use `--no-tui` or `EVOLVE_NO_TUI=1` for plain output.
 
 ## Reports
 
@@ -186,7 +186,8 @@ Settings are layered in this order:
 Common settings:
 
 - `layout`
-- `default_models`
+- `models`
+- `harnesses`
 - `cache_dir`
 - `results_format`
 - `max_turns`

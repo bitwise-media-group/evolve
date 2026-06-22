@@ -90,6 +90,6 @@ func init() {
 	reportCmd.Flags().Float64Var(&reportFlags.MinEvalsPassRate, "min-evals-pass-rate", 0,
 		"minimum eval pass rate (0..1) for --check")
 	reportCmd.Flags().String("stale-results", "",
-		"keep|drop stored results for models outside default_models (default: prompt on a terminal, else keep)")
+		"keep|drop stored results for models outside the models restriction (default: prompt on a terminal, else keep)")
 	rootCmd.AddCommand(reportCmd)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // StaleEntry is one skill's results file that holds models outside the
-// configured default_models.
+// configured `models` restriction.
 type StaleEntry struct {
 	dir  string
 	file *results.File
@@ -37,8 +37,8 @@ func StaleModels(entries []StaleEntry) []string {
 
 // FindStaleResults loads every results file in the repo and reports those
 // holding models whose key is absent from active. active must come from a
-// configured default_models (see ActiveModelKeys); callers skip this entirely
-// when default_models is unset.
+// configured restriction (see ActiveModelKeys); callers skip this entirely
+// when no restriction is configured.
 func (o *Options) FindStaleResults(active map[string]bool) ([]StaleEntry, error) {
 	repo, err := o.Repo()
 	if err != nil {
@@ -93,9 +93,10 @@ func (o *Options) DropStaleResults(entries []StaleEntry) error {
 	return nil
 }
 
-// StaleResultsMode resolves how to treat results for models outside
-// default_models: the --stale-results flag wins, then the stale_results config
-// key, else "" (the caller prompts on a terminal or defaults to keep).
+// StaleResultsMode resolves how to treat results for models outside the
+// configured `models` restriction: the --stale-results flag wins, then the
+// stale_results config key, else "" (the caller prompts on a terminal or
+// defaults to keep).
 func (o *Options) StaleResultsMode(cmd *cobra.Command) string {
 	if f := cmd.Flags().Lookup("stale-results"); f != nil && f.Changed {
 		return f.Value.String()
