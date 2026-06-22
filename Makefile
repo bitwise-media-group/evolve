@@ -25,6 +25,8 @@ FUZZTIME ?= 20s
 BENCH     ?= .
 BENCH_PKG ?= ./...
 
+TOOLS_BIN := $(CURDIR)/.bin
+
 # Go developer CLIs (addlicense, goreleaser) are pinned in tools/go.mod — a
 # separate module so their dependency graphs never touch the application's go.mod —
 # and invoked with `go tool -modfile=tools/go.mod <name>`: compiled into the build
@@ -44,7 +46,7 @@ help: ## list available targets
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: pr
-pr: tidy fmt lint test fuzz build docs snapshot smoke commit ## full local gate, then run any pending ./commit.sh
+pr: tidy fmt lint test fuzz bench build docs snapshot smoke commit ## full local gate, then run any pending ./commit.sh
 
 .PHONY: ci
 ci: lint test fuzz build docs snapshot ## continuous integration gate
@@ -58,6 +60,11 @@ commit: ## run ./commit.sh (agent-prepared commit batch) if present
 node_modules: package.json package-lock.json
 	@ npm ci --ignore-scripts --no-fund
 	@ touch node_modules
+
+# build the golangci-linter to allow GOOS arguments for linting multiple platforms
+go_tools: tools/go.mod tools/go.sum
+	@ mkdir -p "$(TOOLS_BIN)"
+	@ go build -modfile=tools/go.mod -o "$(TOOLS_BIN)/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 # Platform build-tag matrix. The host GOOS only compiles its own files, so the
 # linters skip every other platform's build-constrained source (the sandbox_*.go /
@@ -73,14 +80,15 @@ node_modules: package.json package-lock.json
 LINT_GOOS ?= linux darwin windows
 
 .PHONY: fmt
-fmt: node_modules ## format the go code, prose, and config (gofmt + prettier)
+fmt: node_modules go_tools ## format the go code, prose, and config (gofmt + prettier)
 	@ go tool -modfile=tools/go.mod addlicense -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
-	@ go fmt ./...
-	@ go -C e2e fmt ./...
-	@ bin=$$(mktemp -d "$${TMPDIR:-/tmp}/evolve-fmt.XXXXXX"); ret=0; \
-		go build -modfile=tools/go.mod -o "$$bin/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint; \
-		for goos in $(LINT_GOOS); do GOOS=$$goos "$$bin/golangci-lint" run --fix || { ret=1; break; }; done; \
-		rm -rf "$$bin"; exit $$ret
+	@	ret=0; \
+		for goos in $(LINT_GOOS); do \
+			echo "fmt: GOOS=$$goos"; \
+			GOOS=$$goos "$(TOOLS_BIN)/golangci-lint" run --fix || { ret=1; break; }; \
+		done; \
+		exit $$ret
+	@ cd e2e; echo "fmt: e2e"; "$(TOOLS_BIN)/golangci-lint" run
 	@ npm run format
 	@ npm run lint:fix
 
@@ -92,15 +100,14 @@ tidy: go.mod e2e/go.mod tools/go.mod ## tidy the go module references
 .PHONY: lint
 lint: node_modules ## lint the go code (across the LINT_GOOS build-tag matrix)
 	@ go tool -modfile=tools/go.mod addlicense -check -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
-	@ bin=$$(mktemp -d "$${TMPDIR:-/tmp}/evolve-lint.XXXXXX"); ret=0; \
-		go build -modfile=tools/go.mod -o "$$bin/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint; \
+	@	ret=0; \
 		for goos in $(LINT_GOOS); do \
-			echo "  lint: GOOS=$$goos"; \
-			GOOS=$$goos go vet ./... && GOOS=$$goos "$$bin/golangci-lint" run || { ret=1; break; }; \
+			echo "lint: GOOS=$$goos"; \
+			GOOS=$$goos "$(TOOLS_BIN)/golangci-lint" run || { ret=1; break; }; \
 		done; \
-		rm -rf "$$bin"; exit $$ret
+		exit $$ret
+	@ cd e2e; echo "lint: e2e"; "$(TOOLS_BIN)/golangci-lint" run
 	@ go tool -modfile=tools/go.mod govulncheck ./...
-	@ go -C e2e vet ./...
 	@ npm run lint
 	@ npm run format:check
 

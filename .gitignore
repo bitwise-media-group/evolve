@@ -1,6 +1,7 @@
 # local builds
 /evolve
 /dist/
+/.bin/
 
 # coverage (make test)
 /coverage/
@@ -10,3 +11,4 @@
 
 # claude
 /.claude/plans/
+*.local.*
