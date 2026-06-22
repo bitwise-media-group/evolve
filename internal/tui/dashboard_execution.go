@@ -339,7 +339,9 @@ func (d dashboardModel) caseLine(n nodeRef, w int, hot bool) string {
 	avail := max(w-ansi.StringWidth(prefix)-ansi.StringWidth(metric)-2, 6)
 	label = truncate(label, avail)
 	pad := max(avail-ansi.StringWidth(label), 0)
-	return clip(prefix+joinRow(label, pad, metric, basis, hot), w)
+	// Prior rows stay muted even when selected, so this-run vs last-run reads at a
+	// glance; the gutter caret still marks the cursor.
+	return clip(prefix+joinRow(label, pad, metric, basis, hot && !c.prior), w)
 }
 
 // joinRow assembles a tree row's label and metric block. A row carrying delta
@@ -369,7 +371,9 @@ func (d dashboardModel) caseMetricCells(ref run.UnitRef, c *caseState) (string, 
 	in := fmtTokPtr(c.metrics.InputTokens)
 	out := fmtTokPtr(c.metrics.OutputTokens)
 	cost := fmtCostPtr(c.metrics.CostUSD)
-	if !c.status.terminal() {
+	// Prior rows carry no live basis (nothing this run to compare), so they never
+	// tint a delta — the dim row in caseLine is the only treatment.
+	if c.prior || !c.status.terminal() {
 		return metricCols(rate, avg, in, out, cost), basisNone
 	}
 	delta, basis := d.caseDelta(ref, c)
@@ -529,6 +533,9 @@ func (d dashboardModel) aggGlyph(unitIdxs []int) string { return d.glyph(d.aggSt
 func (d dashboardModel) overallProgress() (ok, bad, running, total, pct int) {
 	for _, u := range d.units {
 		for _, c := range u.cases {
+			if c.prior {
+				continue // shown from a previous run; not this session's work
+			}
 			total++
 			switch c.status {
 			case stPass, stSkipped, stCount:

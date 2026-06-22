@@ -27,7 +27,8 @@ const (
 	stFail
 	stError
 	stSkipped
-	stCount // count-only: token estimates, no pass/fail
+	stCount  // count-only: token estimates, no pass/fail
+	stNoData // exists on disk but has no prior result and is not queued this run
 )
 
 // terminal reports whether a status is a settled outcome (no longer pending or
@@ -70,6 +71,11 @@ type caseState struct {
 	verdict         string
 	workdir         string // retained workspace dir (o opens it); empty until retained
 	logPath         string // full output log file (l opens it); empty for triggers
+	// prior marks a row seeded from the last committed run rather than this
+	// session's work: it is not queued, so it shows its stored result (or stNoData
+	// when none exists), is excluded from the run progress, renders dimmed with no
+	// live delta, and has no workspace/log to open (those are cleaned up).
+	prior bool
 }
 
 // unitState is one (skill, model, tier) execution unit.
@@ -253,6 +259,11 @@ func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter
 		}
 		d.buildCases(u, sc, filter)
 		u.total = len(u.cases)
+		// A unit with nothing queued never receives engine events, so settle it
+		// from its prior cases now — otherwise its group row would read "pending".
+		if len(u.cases) > 0 && !queuedCases(u.cases) {
+			u.status = caseAggStatus(u.cases)
+		}
 		d.index[ref] = len(d.units)
 		d.units = append(d.units, u)
 	}
@@ -261,10 +272,11 @@ func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter
 	return d
 }
 
-// buildCases pre-populates a unit's case rows from the catalog so pending cases
-// render with their labels before they run. It mirrors the engine's applicability
-// (per-provider skips and the selection filter) so the rows match what runs;
-// live updates are matched back by label.
+// buildCases pre-populates a unit's case rows from the catalog: every authored
+// case the provider applies to, so deleted cases drop out but everything still on
+// disk shows. A case the selection filter queues starts pending and runs live; the
+// rest are seeded from the last committed run (their stored result, or stNoData)
+// and rendered as prior. Live updates are matched back by label.
 func (d *dashboardModel) buildCases(u *unitState, sc *run.SkillCatalog, filter *run.Filter) {
 	if sc == nil {
 		return
@@ -272,23 +284,122 @@ func (d *dashboardModel) buildCases(u *unitState, sc *run.SkillCatalog, filter *
 	prov := providerOf(u.ref.Key)
 	if u.ref.Kind == run.KindTriggers {
 		for _, t := range sc.Triggers {
-			if t.SkipsProvider(prov) || !selectedCase(filter, run.KindTriggers, sc.Skill, t.Query) {
+			if t.SkipsProvider(prov) {
 				continue
 			}
-			cr := &caseState{kind: run.KindTriggers, label: t.Query, shouldTrigger: t.ShouldTrigger, status: stPending}
+			cr := &caseState{kind: run.KindTriggers, label: t.Query, shouldTrigger: t.ShouldTrigger}
+			if selectedCase(filter, run.KindTriggers, sc.Skill, t.Query) {
+				cr.status = stPending
+			} else {
+				d.seedPriorTrigger(cr, u.ref)
+			}
 			u.cases = append(u.cases, cr)
 			u.byLabel[t.Query] = cr
 		}
 		return
 	}
 	for _, e := range sc.Evals {
-		if e.SkipsProvider(prov) || !selectedCase(filter, run.KindEvals, sc.Skill, e.ID) {
+		if e.SkipsProvider(prov) {
 			continue
 		}
-		cr := &caseState{kind: run.KindEvals, label: e.ID, status: stPending}
+		cr := &caseState{kind: run.KindEvals, label: e.ID}
+		if selectedCase(filter, run.KindEvals, sc.Skill, e.ID) {
+			cr.status = stPending
+		} else {
+			d.seedPriorEval(cr, u.ref)
+		}
 		u.cases = append(u.cases, cr)
 		u.byLabel[e.ID] = cr
 	}
+}
+
+// seedPriorTrigger fills a non-queued trigger row from the last committed run —
+// its stored pass/fail and metrics — and marks it prior. With no stored result it
+// shows stNoData.
+func (d *dashboardModel) seedPriorTrigger(cr *caseState, ref run.UnitRef) {
+	cr.prior = true
+	m, ok := d.prior.TriggerPrevious(ref, cr.label)
+	if !ok || m.Passed == nil {
+		cr.status = stNoData
+		return
+	}
+	cr.status = boolStatus(*m.Passed)
+	cr.metrics = run.ItemMetrics{Hits: m.Hits, Runs: m.Runs, AvgRunSeconds: m.AvgRunSeconds}
+	if m.Estimate != nil {
+		cr.metrics.InputTokens = new(m.Estimate.InputTokens)
+		cr.metrics.CostUSD = m.Estimate.InputCostUSD
+	}
+}
+
+// seedPriorEval fills a non-queued eval row from the last committed run. The
+// compact prior metrics carry pass/fail, timing, measured tokens, and cost but not
+// the assertion counts, so the Pass/Tot column stays a dash; the glyph and the
+// rolled-up totals still reflect the stored outcome.
+func (d *dashboardModel) seedPriorEval(cr *caseState, ref run.UnitRef) {
+	cr.prior = true
+	m, ok := d.prior.EvalPrevious(ref, cr.label)
+	if !ok || (m.Passed == nil && !m.Errored) {
+		cr.status = stNoData
+		return
+	}
+	cr.status = boolStatus(m.Passed != nil && *m.Passed)
+	if m.Errored {
+		cr.status = stError
+	}
+	cr.metrics = run.ItemMetrics{AvgRunSeconds: m.AvgRunSeconds}
+	if m.Measured != nil {
+		cr.metrics.InputTokens = m.Measured.InputTokens
+		cr.metrics.OutputTokens = m.Measured.OutputTokens
+		cr.metrics.CacheReadTokens = m.Measured.CacheReadTokens
+		cr.metrics.CacheCreationTokens = m.Measured.CacheCreationTokens
+		cr.metrics.CostUSD = m.Measured.CostUSD
+	}
+}
+
+// boolStatus maps a stored pass/fail bool to its dashboard status.
+func boolStatus(passed bool) status {
+	if passed {
+		return stPass
+	}
+	return stFail
+}
+
+// caseAggStatus rolls a unit's case statuses into one settled status, used for a
+// unit with no queued cases (all prior) so its group row shows the stored rollup
+// rather than "pending". Worst outcome wins; all-no-data folds to skipped.
+func caseAggStatus(cases []*caseState) status {
+	var anyErr, anyFail, anyPass bool
+	for _, c := range cases {
+		switch c.status {
+		case stError:
+			anyErr = true
+		case stFail:
+			anyFail = true
+		case stPass:
+			anyPass = true
+		}
+	}
+	switch {
+	case anyErr:
+		return stError
+	case anyFail:
+		return stFail
+	case anyPass:
+		return stPass
+	default:
+		return stSkipped
+	}
+}
+
+// queuedCases reports whether a unit has any case running this session (a
+// non-prior case), as opposed to being shown purely from prior results.
+func queuedCases(cases []*caseState) bool {
+	for _, c := range cases {
+		if !c.prior {
+			return true
+		}
+	}
+	return false
 }
 
 // buildTree groups the (already execution-ordered) units into plugin → skill →

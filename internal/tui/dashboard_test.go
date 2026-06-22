@@ -9,8 +9,82 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
+
+// TestDashboardSeedsPriorAndQueuedCases pins the partial-rerun display: every
+// on-disk case shows, the queued case is pending and counted, a case that passed
+// last run is shown from its stored result (prior, excluded from progress), and a
+// case with no stored result and nothing queued reads as no-data.
+func TestDashboardSeedsPriorAndQueuedCases(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+
+	// Commit a prior run where q1 and e1 passed; q2 and e2 have no stored result.
+	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
+	f.SetTrigger(m1.Key(), &results.TriggerEntry{
+		Header:  results.Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []results.TriggerResult{{Query: "q1", ShouldTrigger: true, Hits: new(3), Runs: new(3), Passed: new(true), AvgRunSeconds: new(1.5)}},
+		Summary: results.TriggerSummary{Total: 1},
+	})
+	f.SetEval(m1.Key(), &results.EvalEntry{
+		Header:  results.Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []results.EvalResult{{ID: "e1", Passed: new(true), Summary: &results.GradeSummary{PassRate: new(1.0)}}},
+		Summary: results.EvalSummary{Passed: new(1), Total: 1},
+	})
+	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
+		t.Fatal(err)
+	}
+	prior := run.LoadPriorMetrics(cat)
+
+	tiers := run.Tiers{Triggers: true, Evals: true}
+	units := run.PlanFor(cat, m1, nil, tiers) // every on-disk unit
+	// Only q2 is queued this run (the --failed-style rerun set).
+	filter := &run.Filter{
+		Skills:   map[string]bool{"solo-skill": true},
+		Triggers: map[string]map[string]bool{"solo-skill": {"q2": true}},
+	}
+	d := newDashboard(cat, units, filter, prior)
+
+	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
+	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
+	trCases, evCases := d.unit(tr).byLabel, d.unit(ev).byLabel
+
+	if c := trCases["q2"]; c == nil || c.status != stPending || c.prior {
+		t.Errorf("q2 = %+v, want pending non-prior (queued)", c)
+	}
+	if c := trCases["q1"]; c == nil || c.status != stPass || !c.prior {
+		t.Errorf("q1 = %+v, want prior pass", c)
+	}
+	if c := evCases["e1"]; c == nil || c.status != stPass || !c.prior {
+		t.Errorf("e1 = %+v, want prior pass", c)
+	}
+	if c := evCases["e2"]; c == nil || c.status != stNoData || !c.prior {
+		t.Errorf("e2 = %+v, want prior no-data", c)
+	}
+
+	// The evals unit has nothing queued, so it settles from its prior cases (e1
+	// passed) rather than reading "pending".
+	if u := d.unit(ev); u.status != stPass {
+		t.Errorf("all-prior evals unit status = %v, want pass (settled from prior)", u.status)
+	}
+
+	// Progress counts only the queued case, not the three prior rows.
+	if _, _, _, total, _ := d.overallProgress(); total != 1 {
+		t.Errorf("progress total = %d, want 1 (only the queued case)", total)
+	}
+
+	// The tree renders every on-disk case, with the no-data glyph for e2.
+	d.w, d.h = 120, 40
+	nodes := d.buildNodeRefsWith(func(nodeKey) bool { return true }) // every group open
+	tree := d.renderLeftBody(nodes, 0, 110, len(nodes)+4)
+	for _, want := range []string{"q1", "q2", "e1", "e2", "·"} {
+		if !strings.Contains(tree, want) {
+			t.Errorf("execution tree missing %q:\n%s", want, tree)
+		}
+	}
+}
 
 // inflightCount counts the live execution timers tracked for one case.
 func inflightCount(d dashboardModel, ref run.UnitRef, label string) int {

@@ -40,6 +40,8 @@ func (d dashboardModel) glyph(s status) string {
 		return mutedStyle.Render("⊘")
 	case stCount:
 		return mutedStyle.Render("≈")
+	case stNoData:
+		return mutedStyle.Render("·")
 	default:
 		return pendStyle.Render("◌")
 	}
@@ -59,6 +61,8 @@ func statusWord(s status) string {
 		return "skipped"
 	case stCount:
 		return "counts only"
+	case stNoData:
+		return "no data"
 	default:
 		return "pending"
 	}

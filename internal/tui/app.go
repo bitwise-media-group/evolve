@@ -102,9 +102,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) startRun() (tea.Model, tea.Cmd) {
 	req := m.form.request()
 	tiers := run.Tiers{Triggers: true, Evals: true} // the form spans both tiers
+	// Plan every on-disk unit (nil filter), not just the queued ones, so the
+	// dashboard can show preserved cases from prior runs; the merged filter still
+	// marks which cases are queued this session.
 	units := make([]run.UnitRef, 0, len(req.Models)*2)
 	for _, sel := range req.Models {
-		units = append(units, run.PlanFor(m.cat, sel, req.Filters[sel.Key()], tiers)...)
+		units = append(units, run.PlanFor(m.cat, sel, nil, tiers)...)
 	}
 	m.dash = newDashboard(m.cat, units, mergeFilters(req.Filters), m.prior)
 	m.dash.w, m.dash.h = m.w, m.h
