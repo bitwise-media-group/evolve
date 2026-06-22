@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
@@ -36,19 +38,17 @@ func TestDashboardSeedsPriorAndQueuedCases(t *testing.T) {
 	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
 		t.Fatal(err)
 	}
-	prior := run.LoadPriorMetrics(cat)
+	prior := plan.LoadPriorMetrics(cat)
 
-	tiers := run.Tiers{Triggers: true, Evals: true}
-	units := run.PlanFor(cat, m1, nil, tiers) // every on-disk unit
 	// Only q2 is queued this run (the --failed-style rerun set).
-	filter := &run.Filter{
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q2": true}},
 	}
-	d := newDashboard(cat, units, filter, prior)
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, prior)
 
-	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
 	trCases, evCases := d.unit(tr).byLabel, d.unit(ev).byLabel
 
 	if c := trCases["q2"]; c == nil || c.status != stPending || c.prior {
@@ -102,14 +102,14 @@ func TestQueuedCaseShowsPriorUntilLive(t *testing.T) {
 	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
 		t.Fatal(err)
 	}
-	prior := run.LoadPriorMetrics(cat)
+	prior := plan.LoadPriorMetrics(cat)
 
-	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
-	filter := &run.Filter{ // q1 is queued AND has a prior pass
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	filter := &plan.Filter{ // q1 is queued AND has a prior pass
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true}},
 	}
-	d := newDashboard(cat, run.PlanFor(cat, m1, nil, run.Tiers{Triggers: true, Evals: true}), filter, prior)
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, prior)
 
 	q1 := d.unit(tr).byLabel["q1"]
 	if q1.status != stPass || q1.prior || q1.liveDone {
@@ -120,9 +120,9 @@ func TestQueuedCaseShowsPriorUntilLive(t *testing.T) {
 	}
 
 	// Its live result overwrites the prior display and settles progress.
-	d.apply(unitStartedMsg{ref: tr, total: 1, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 1, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Index: 0, Label: "q1"}})
-	d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Index: 0, Label: "q1", Status: run.StatusFail}})
+	d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Index: 0, Label: "q1", Status: plan.StatusFail}})
 	if !q1.liveDone || q1.status != stFail {
 		t.Errorf("after live result q1 = %+v, want fresh fail + liveDone", q1)
 	}
@@ -132,7 +132,7 @@ func TestQueuedCaseShowsPriorUntilLive(t *testing.T) {
 }
 
 // inflightCount counts the live execution timers tracked for one case.
-func inflightCount(d dashboardModel, ref run.UnitRef, label string) int {
+func inflightCount(d dashboardModel, ref plan.UnitRef, label string) int {
 	n := 0
 	for _, ifl := range d.inflight {
 		if ifl.ref == ref && ifl.label == label {
@@ -149,14 +149,14 @@ func inflightCount(d dashboardModel, ref run.UnitRef, label string) int {
 func TestBaselineRunningLifecycle(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
-	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
-	filter := &run.Filter{
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills: map[string]bool{"solo-skill": true},
 		Evals:  map[string]map[string]bool{"solo-skill": {"e1": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40
-	d.apply(unitStartedMsg{ref: ev, total: 1, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 1, mode: plan.ModeRun})
 
 	// Baseline starts first.
 	d.apply(baselineStartedMsg{ref: ev, item: run.ItemStart{Label: "e1"}})
@@ -181,8 +181,8 @@ func TestBaselineRunningLifecycle(t *testing.T) {
 	}
 
 	// Completion settles the row.
-	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: run.StatusPass,
-		Metrics: run.ItemMetrics{AvgRunSeconds: new(2.0)}}})
+	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: plan.StatusPass,
+		Metrics: plan.ItemMetrics{AvgRunSeconds: new(2.0)}}})
 	if cr.baselineRunning || cr.status != stPass {
 		t.Errorf("after itemDone: baselineRunning=%v status=%v, want false + pass", cr.baselineRunning, cr.status)
 	}

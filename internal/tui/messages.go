@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
@@ -12,33 +13,33 @@ import (
 // the program from the engine goroutines.
 type (
 	unitStartedMsg struct {
-		ref   run.UnitRef
+		ref   plan.UnitRef
 		total int
 		runs  int
-		mode  run.Mode
+		mode  plan.Mode
 	}
 	unitSkippedMsg struct {
-		ref    run.UnitRef
+		ref    plan.UnitRef
 		reason string
 	}
 	itemStartedMsg struct {
-		ref  run.UnitRef
+		ref  plan.UnitRef
 		item run.ItemStart
 	}
 	baselineStartedMsg struct {
-		ref  run.UnitRef
+		ref  plan.UnitRef
 		item run.ItemStart
 	}
 	itemDoneMsg struct {
-		ref  run.UnitRef
+		ref  plan.UnitRef
 		item run.ItemResult
 	}
 	baselineDoneMsg struct {
-		ref  run.UnitRef
+		ref  plan.UnitRef
 		item run.ItemResult
 	}
 	unitFinishedMsg struct {
-		ref      run.UnitRef
+		ref      plan.UnitRef
 		sum      run.UnitSummary
 		savedRel string
 	}
@@ -51,11 +52,12 @@ type (
 	}
 )
 
-// RunRequest is what the form emits when the user chooses RUN: the models that
-// will run and, per model (keyed by Selection.Key()), the filter of cases to
-// execute. Per-model filters let a model run a different set of cases than its
-// peers — needed so --new reruns only the units that are actually stale.
+// RunRequest is what the form emits when the user chooses RUN: the models the run
+// spans (in display/spec order) and the resolved Selection (enable/disable intent
+// plus the preselect baseline). The engine builds the canonical plan.Plan from
+// these via plan.Build — the single resolver the form preview also uses — so what
+// runs cannot drift from what the form showed.
 type RunRequest struct {
-	Models  []provider.Selection
-	Filters map[string]*run.Filter
+	Models    []provider.Selection
+	Selection plan.Selection
 }

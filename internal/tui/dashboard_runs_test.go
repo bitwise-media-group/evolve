@@ -10,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -20,27 +22,27 @@ func sharedSelDashboard(t *testing.T) dashboardModel {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true, "q2": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true, "e2": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	for _, q := range []string{"q1", "q2"} {
 		d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: q}})
-		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: run.StatusPass,
-			Metrics: run.ItemMetrics{Hits: new(1), Runs: new(1)}}})
+		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: plan.StatusPass,
+			Metrics: plan.ItemMetrics{Hits: new(1), Runs: new(1)}}})
 	}
 	d.apply(unitFinishedMsg{ref: tr, sum: run.UnitSummary{Executed: true, Passed: 2, Total: 2}})
-	d.apply(unitStartedMsg{ref: ev, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: "e1"}})
-	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: run.StatusPass,
+	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: plan.StatusPass,
 		Output: "ANSWER", Detail: "  [PASS] e1\n",
-		Metrics: run.ItemMetrics{AvgRunSeconds: new(2.0), AssertPassed: new(1), AssertTotal: new(1)}}})
+		Metrics: plan.ItemMetrics{AvgRunSeconds: new(2.0), AssertPassed: new(1), AssertTotal: new(1)}}})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: "e2"}})
 	return d
 }
@@ -116,9 +118,9 @@ func TestRunsPreloadsPendingExecutions(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, nil, run.PriorMetrics{})
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	d := dashFromFilter(cat, []provider.Selection{m1}, nil, plan.PriorMetrics{})
 	d.w, d.h = 100, 30
 
 	// Every planned execution is listed before anything starts, in plan order.
@@ -139,7 +141,7 @@ func TestRunsPreloadsPendingExecutions(t *testing.T) {
 	}
 
 	// Following tracks the live (most recently started) run, not the last row.
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q2"}})
 	if d.liveIdx != 1 || d.execLog[d.currentRun()].label != "q2" {
 		t.Errorf("follow should track the live run q2 (idx 1): liveIdx=%d sel=%q",
@@ -158,18 +160,18 @@ func TestRunsPreloadsPendingExecutions(t *testing.T) {
 // TestRunsFollowPause covers follow semantics: Runs tracks the newest execution,
 // the Details pane pauses that follow while active, and F re-follows.
 func TestRunsFollowPause(t *testing.T) {
-	cat := soloCatalog(t)
+	cat := evalOnlyCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills: map[string]bool{"solo-skill": true},
 		Evals:  map[string]map[string]bool{"solo-skill": {"e1": true, "e2": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 100, 30
 
-	d.apply(unitStartedMsg{ref: ev, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Index: 0, Label: "e1"}})
 	if d.currentRun() != 0 {
 		t.Fatalf("Runs should follow the first execution, sel=%d", d.currentRun())
@@ -202,18 +204,18 @@ func TestRunsFollowPause(t *testing.T) {
 // and keeps a mid-list selection on the center row, with ▲/▼ overflow indicators
 // on the outer rows.
 func TestRunsPaneCentersSelection(t *testing.T) {
-	cat := soloCatalog(t)
+	cat := evalOnlyCatalog(t)
 	_, m1 := soloModels()
-	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
-	filter := &run.Filter{
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills: map[string]bool{"solo-skill": true},
 		Evals:  map[string]map[string]bool{"solo-skill": {}},
 	}
-	d := newDashboard(cat, []run.UnitRef{ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40 // tall enough that the Runs window hits its 7-row cap
 
 	const n = 15
-	d.apply(unitStartedMsg{ref: ev, total: n, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: n, mode: plan.ModeRun})
 	for i := range n {
 		d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Index: i, Label: fmt.Sprintf("e%d", i)}})
 	}

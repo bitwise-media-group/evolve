@@ -1,7 +1,7 @@
 // Copyright 2026 BitWise Media Group Ltd
 // SPDX-License-Identifier: MIT
 
-package run
+package plan
 
 import (
 	"path/filepath"
@@ -55,7 +55,6 @@ func TestLoadPriorMetrics(t *testing.T) {
 	}
 }
 
-// resultsDirOf documents the on-disk layout the loader probes.
 func TestLoadPriorMetricsMissingDir(t *testing.T) {
 	pm := LoadPriorMetrics([]SkillCatalog{{Plugin: "p", Skill: "s", ResultsDir: filepath.Join(t.TempDir(), "absent")}})
 	if _, ok := pm.EvalPrevious(UnitRef{Skill: "s", Key: "fake/m1", Kind: KindEvals}, "e1"); ok {

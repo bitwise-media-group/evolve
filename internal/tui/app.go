@@ -11,8 +11,8 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 type screen int
@@ -28,8 +28,8 @@ type Model struct {
 	screen screen
 	form   formModel
 	dash   dashboardModel
-	cat    []run.SkillCatalog
-	prior  run.PriorMetrics
+	cat    []plan.SkillCatalog
+	prior  plan.PriorMetrics
 	runReq chan<- RunRequest
 	w, h   int
 }
@@ -40,8 +40,8 @@ type Model struct {
 // per-case preselection reasons shown beside each case; evalFilter forces
 // non-matching evals off. The chosen RunRequest is sent on runReq when the user
 // runs; the channel is closed by the caller if they cancel.
-func New(cat []run.SkillCatalog, sels []provider.Selection, needs map[string]map[run.CaseRef]bool,
-	notes map[run.CaseRef]string, evalFilter string, prior run.PriorMetrics, runReq chan<- RunRequest) Model {
+func New(cat []plan.SkillCatalog, sels []provider.Selection, needs map[string]map[plan.CaseRef]bool,
+	notes map[plan.CaseRef]string, evalFilter string, prior plan.PriorMetrics, runReq chan<- RunRequest) Model {
 	return Model{
 		screen: screenForm,
 		form:   newForm(cat, sels, needs, notes, evalFilter),
@@ -98,54 +98,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // startRun transitions to the dashboard and dispatches the run request to the
-// engine goroutine.
+// engine goroutine. The dashboard is built from the canonical plan.Build — the
+// same resolver the engine executes — so the tree, ordering, and per-model
+// queued/prior state are exactly what will run.
 func (m Model) startRun() (tea.Model, tea.Cmd) {
 	req := m.form.request()
-	tiers := run.Tiers{Triggers: true, Evals: true} // the form spans both tiers
-	// Plan every on-disk unit (nil filter), not just the queued ones, so the
-	// dashboard can show preserved cases from prior runs; the merged filter still
-	// marks which cases are queued this session.
-	units := make([]run.UnitRef, 0, len(req.Models)*2)
-	for _, sel := range req.Models {
-		units = append(units, run.PlanFor(m.cat, sel, nil, tiers)...)
-	}
-	m.dash = newDashboard(m.cat, units, mergeFilters(req.Filters), m.prior)
+	p := plan.Build(m.cat, req.Models, req.Selection, m.prior)
+	m.dash = newDashboard(p, m.cat, m.prior)
 	m.dash.w, m.dash.h = m.w, m.h
 	m.screen = screenDashboard
 	return m, tea.Batch(
 		func() tea.Msg { m.runReq <- req; return nil },
 		m.dash.spin.Tick,
 	)
-}
-
-// mergeFilters unions the per-model filters into one filter for the dashboard
-// catalog, which shows every case that is part of the run for any model.
-func mergeFilters(filters map[string]*run.Filter) *run.Filter {
-	merged := &run.Filter{
-		Skills:   map[string]bool{},
-		Triggers: map[string]map[string]bool{},
-		Evals:    map[string]map[string]bool{},
-	}
-	add := func(dst, src map[string]map[string]bool) {
-		for skill, set := range src {
-			if dst[skill] == nil {
-				dst[skill] = map[string]bool{}
-			}
-			for k, v := range set {
-				if v {
-					dst[skill][k] = true
-				}
-			}
-		}
-	}
-	for _, f := range filters {
-		for s := range f.Skills {
-			merged.Skills[s] = true
-		}
-		add(merged.Triggers, f.Triggers)
-		add(merged.Evals, f.Evals)
-	}
-	return merged
 }
 
 func (m Model) View() tea.View {

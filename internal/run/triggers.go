@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/workspace"
@@ -123,12 +124,12 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	// modelApplicable is every query valid for this model (skip_providers + skill
 	// only), ignoring the selection filter, so a partial rerun can preserve the
 	// queries it does not touch. applicable then narrows by the selection filter.
-	modelApplicable := applicableTriggers(triggers, provName, set.Skill, nil)
-	applicable := applicableTriggers(triggers, provName, set.Skill, opts.Filter)
+	modelApplicable := plan.ApplicableTriggers(triggers, provName, set.Skill, nil)
+	applicable := plan.ApplicableTriggers(triggers, provName, set.Skill, opts.Filter)
 	if len(applicable) == 0 {
 		return false, nil
 	}
-	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindTriggers}
+	ref := plan.UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: plan.KindTriggers}
 	ctx, span := tracer().Start(ctx, "evolve.unit", trace.WithAttributes(unitSpanAttrs(ref)...))
 	defer func() { endSpan(span, err) }()
 
@@ -158,9 +159,9 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 			sel.Provider.CLI()[0], sel.Key())
 	}
 
-	mode := ModeCountOnly
+	mode := plan.ModeCountOnly
 	if execute {
-		mode = ModeRun
+		mode = plan.ModeRun
 	}
 	rep.UnitStarted(ref, len(runSet), opts.Runs, mode)
 
@@ -214,7 +215,7 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 // runQueries executes every query's runs concurrently (jobs at a time) and
 // fills hits/runs/passed/avg into entryResults as queries complete. Sharing
 // the workspace is safe: trigger sessions are read-only.
-func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection, cli, ws string, ref UnitRef,
+func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection, cli, ws string, ref plan.UnitRef,
 	triggers []evalspec.Trigger, entryResults []results.TriggerResult) (bool, error) {
 
 	rep := opts.reporter()
@@ -259,9 +260,9 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 			entryResults[i].Passed = &passed
 			entryResults[i].AvgRunSeconds = &avg
 
-			status, expect := StatusPass, "no"
+			status, expect := plan.StatusPass, "no"
 			if !passed {
-				status = StatusFail
+				status = plan.StatusFail
 			}
 			if expected {
 				expect = "yes"
@@ -272,7 +273,7 @@ func runQueries(ctx context.Context, opts TriggerOptions, sel provider.Selection
 				Status: status,
 				Detail: fmt.Sprintf("rate=%.2f avg=%.1fs expect=%s %s",
 					rate, avg, expect, truncate(triggers[i].Query, 70)),
-				Metrics: ItemMetrics{
+				Metrics: plan.ItemMetrics{
 					Hits: &h, Runs: &r, AvgRunSeconds: &avg,
 					InputTokens: estTokens(entryResults[i].Estimate),
 					CostUSD:     estCost(entryResults[i].Estimate),
@@ -402,23 +403,6 @@ func mergeTriggerResults(existing *results.TriggerEntry, fresh []results.Trigger
 		}
 	}
 	return merged
-}
-
-func applicableTriggers(triggers []evalspec.Trigger, providerName, skill string, f *Filter) []evalspec.Trigger {
-	if !f.skillIncluded(skill) {
-		return nil
-	}
-	var out []evalspec.Trigger
-	for _, t := range triggers {
-		if t.SkipsProvider(providerName) {
-			continue
-		}
-		if !f.triggerIncluded(skill, t.Query) {
-			continue
-		}
-		out = append(out, t)
-	}
-	return out
 }
 
 // estTokens and estCost lift an estimate's input figures into the optional

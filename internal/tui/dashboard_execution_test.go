@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
@@ -17,17 +19,17 @@ import (
 // basis (and so colors the metrics) only once a case is complete — never while it
 // is still running, so the row does not flicker as work finishes underneath.
 func TestCaseMetricCellsGatedOnCompletion(t *testing.T) {
-	ev := run.UnitRef{Skill: "s", Key: "fake/m1", Kind: run.KindEvals}
-	d := dashboardModel{prior: run.PriorMetrics{}, liveBaseline: map[caseKey]results.EvalCaseMetrics{
+	ev := plan.UnitRef{Skill: "s", Key: "fake/m1", Kind: plan.KindEvals}
+	d := dashboardModel{prior: plan.PriorMetrics{}, liveBaseline: map[caseKey]results.EvalCaseMetrics{
 		{ev, "e1"}: {PassRate: new(0.0)},
 	}}
-	metrics := run.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}
+	metrics := plan.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}
 
-	running := &caseState{kind: run.KindEvals, label: "e1", status: stRunning, metrics: metrics}
+	running := &caseState{kind: plan.KindEvals, label: "e1", status: stRunning, metrics: metrics}
 	if _, basis := d.caseMetricCells(ev, running); basis != basisNone {
 		t.Errorf("running case basis = %v, want none (no delta until complete)", basis)
 	}
-	done := &caseState{kind: run.KindEvals, label: "e1", status: stPass, liveDone: true, metrics: metrics}
+	done := &caseState{kind: plan.KindEvals, label: "e1", status: stPass, liveDone: true, metrics: metrics}
 	if _, basis := d.caseMetricCells(ev, done); basis != basisBaseline {
 		t.Errorf("completed case basis = %v, want baseline", basis)
 	}
@@ -41,20 +43,19 @@ func TestExecutingPaneAndRuler(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	plan := []run.UnitRef{tr, ev}
-	filter := &run.Filter{
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true, "q2": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true, "e2": true}},
 	}
-	d := newDashboard(cat, plan, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40
 
 	// Triggers running, evals still pending: the active model expands and exactly
 	// one ruler sits between its last trigger row and its first eval row.
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Index: 0, Label: "q1"}})
 
 	nodes := d.buildNodeRefs()
@@ -64,7 +65,7 @@ func TestExecutingPaneAndRuler(t *testing.T) {
 		case n.kind == nkRule:
 			rules++
 			ruleIdx = i
-		case n.kind == nkCase && d.units[n.unitIdx].ref.Kind == run.KindTriggers:
+		case n.kind == nkCase && d.units[n.unitIdx].ref.Kind == plan.KindTriggers:
 			lastTrig = i
 		case n.kind == nkCase && firstEval == -1:
 			firstEval = i
@@ -84,17 +85,17 @@ func TestExecutingPaneAndRuler(t *testing.T) {
 	// and retained paths. Runs auto-follows the live execution and shows its
 	// output, verdict, and o/l open hints.
 	d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{
-		Index: 0, Label: "q1", Status: run.StatusPass,
-		Metrics: run.ItemMetrics{Hits: new(1), Runs: new(1)},
+		Index: 0, Label: "q1", Status: plan.StatusPass,
+		Metrics: plan.ItemMetrics{Hits: new(1), Runs: new(1)},
 	}})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Index: 0, Label: "e1"}})
 	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{
-		Index: 0, Label: "e1", Status: run.StatusPass,
+		Index: 0, Label: "e1", Status: plan.StatusPass,
 		Output:        "FINAL ANSWER LINE",
 		Detail:        "  [PASS] e1: output matches /ok/\n",
 		WorkspacePath: "/tmp/evolve-run.x/evals.abc",
 		LogPath:       "/tmp/evolve-run.x/evals.abc.log",
-		Metrics:       run.ItemMetrics{AvgRunSeconds: new(3.0), AssertPassed: new(1), AssertTotal: new(1)},
+		Metrics:       plan.ItemMetrics{AvgRunSeconds: new(3.0), AssertPassed: new(1), AssertTotal: new(1)},
 	}})
 
 	// execLog preloads every planned execution (q1, q2, e1, e2); Runs follows the
@@ -136,14 +137,7 @@ func TestExecutionRenderIndependentOfFocus(t *testing.T) {
 	cat := soloCatalog(t)
 	sels, _ := soloModels()
 	key := func(i int) string { return sels[i].Key() }
-	ref := func(i int, k run.Kind) run.UnitRef {
-		return run.UnitRef{Skill: "solo-skill", Key: key(i), Kind: k}
-	}
-	plan := []run.UnitRef{
-		ref(0, run.KindTriggers), ref(0, run.KindEvals),
-		ref(1, run.KindTriggers), ref(1, run.KindEvals),
-	}
-	d := newDashboard(cat, plan, nil, run.PriorMetrics{})
+	d := dashFromFilter(cat, sels, nil, plan.PriorMetrics{})
 	d.w, d.h = 80, 40
 
 	nodes := d.buildNodeRefsWith(func(nodeKey) bool { return true }) // every group open
@@ -191,7 +185,7 @@ func TestExecutionRenderIndependentOfFocus(t *testing.T) {
 
 // commitAllPass writes a prior run in which every solo-skill case passed, so a
 // freshly built dashboard seeds green prior results for the model's cases.
-func commitAllPass(t *testing.T, cat []run.SkillCatalog, key string) run.PriorMetrics {
+func commitAllPass(t *testing.T, cat []plan.SkillCatalog, key string) plan.PriorMetrics {
 	t.Helper()
 	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
 	f.SetTrigger(key, &results.TriggerEntry{
@@ -213,7 +207,7 @@ func commitAllPass(t *testing.T, cat []run.SkillCatalog, key string) run.PriorMe
 	if _, err := f.SaveDir(cat[0].ResultsDir, "json"); err != nil {
 		t.Fatal(err)
 	}
-	return run.LoadPriorMetrics(cat)
+	return plan.LoadPriorMetrics(cat)
 }
 
 func soloModelUnits(d dashboardModel) []int { return d.tree[0].skills[0].models[0].units }
@@ -225,23 +219,23 @@ func soloModelUnits(d dashboardModel) []int { return d.tree[0].skills[0].models[
 func TestCompletedGroupSettlesWithoutSpinner(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
-	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, nil, run.PriorMetrics{})
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
+	d := dashFromFilter(cat, []provider.Selection{m1}, nil, plan.PriorMetrics{})
 
 	// Run every case to a pass but never deliver unitFinishedMsg, so each unit's
 	// status stays stRunning while all of its cases have settled.
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	for _, q := range []string{"q1", "q2"} {
 		d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: q}})
-		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: run.StatusPass,
-			Metrics: run.ItemMetrics{Hits: new(1), Runs: new(1)}}})
+		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: plan.StatusPass,
+			Metrics: plan.ItemMetrics{Hits: new(1), Runs: new(1)}}})
 	}
-	d.apply(unitStartedMsg{ref: ev, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 2, mode: plan.ModeRun})
 	for _, e := range []string{"e1", "e2"} {
 		d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: e}})
-		d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: e, Status: run.StatusPass,
-			Metrics: run.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}}})
+		d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: e, Status: plan.StatusPass,
+			Metrics: plan.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}}})
 	}
 
 	units := soloModelUnits(d)
@@ -261,7 +255,7 @@ func TestQueuedGroupShowsPendingIndicator(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	prior := commitAllPass(t, cat, m1.Key())
-	d := newDashboard(cat, run.PlanFor(cat, m1, nil, run.Tiers{Triggers: true, Evals: true}), nil, prior)
+	d := dashFromFilter(cat, []provider.Selection{m1}, nil, prior)
 
 	units := soloModelUnits(d)
 	if d.groupActive(units) {
@@ -280,11 +274,10 @@ func TestQueuedGroupShowsPendingIndicator(t *testing.T) {
 func TestRunningGroupShowsSpinner(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
-	tr := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: run.KindEvals}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, nil, run.PriorMetrics{})
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	d := dashFromFilter(cat, []provider.Selection{m1}, nil, plan.PriorMetrics{})
 
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q1"}})
 
 	units := soloModelUnits(d)
@@ -304,18 +297,17 @@ func TestExecutionBrowseKeepsCursorOnScreen(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true, "q2": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true, "e2": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40
 
 	// A live path (so the model is expanded), then focus the Execution pane.
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q1"}})
 	d.handleKey(runeKey("1"))
 
@@ -342,30 +334,30 @@ func TestExecutionBrowseMode(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true, "q2": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true, "e2": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 120, 40
 
 	// Drive triggers to completion, finish e1, and leave e2 in flight — a live
 	// path with both a settled case (e1) and a running one (e2).
-	d.apply(unitStartedMsg{ref: tr, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 2, mode: plan.ModeRun})
 	for _, q := range []string{"q1", "q2"} {
 		d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: q}})
-		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: run.StatusPass,
-			Metrics: run.ItemMetrics{Hits: new(1), Runs: new(1)}}})
+		d.apply(itemDoneMsg{ref: tr, item: run.ItemResult{Label: q, Status: plan.StatusPass,
+			Metrics: plan.ItemMetrics{Hits: new(1), Runs: new(1)}}})
 	}
 	d.apply(unitFinishedMsg{ref: tr, sum: run.UnitSummary{Executed: true, Passed: 2, Total: 2}})
-	d.apply(unitStartedMsg{ref: ev, total: 2, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 2, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: "e1"}})
-	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: run.StatusPass,
+	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{Label: "e1", Status: plan.StatusPass,
 		Output: "ANSWER", Detail: "  [PASS] e1\n",
-		Metrics: run.ItemMetrics{AvgRunSeconds: new(2.0), AssertPassed: new(1), AssertTotal: new(1)}}})
+		Metrics: plan.ItemMetrics{AvgRunSeconds: new(2.0), AssertPassed: new(1), AssertTotal: new(1)}}})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Label: "e2"}})
 
 	// Focus the Execution pane → browse mode, seeded from the live path so the

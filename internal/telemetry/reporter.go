@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -44,26 +45,26 @@ type telemetryReporter struct {
 
 // ItemDone records the case's metrics and a debug log, then is otherwise the
 // wrapped reporter's ItemDone.
-func (t *telemetryReporter) ItemDone(u run.UnitRef, item run.ItemResult) {
+func (t *telemetryReporter) ItemDone(u plan.UnitRef, item run.ItemResult) {
 	t.Reporter.ItemDone(u, item)
 	t.recordItem(u, item, false)
 }
 
 // BaselineDone mirrors ItemDone for the without-skill baseline case.
-func (t *telemetryReporter) BaselineDone(u run.UnitRef, item run.ItemResult) {
+func (t *telemetryReporter) BaselineDone(u plan.UnitRef, item run.ItemResult) {
 	t.Reporter.BaselineDone(u, item)
 	t.recordItem(u, item, true)
 }
 
 // UnitSkipped notes the skip as a debug log alongside the wrapped reporter.
-func (t *telemetryReporter) UnitSkipped(u run.UnitRef, reason string) {
+func (t *telemetryReporter) UnitSkipped(u plan.UnitRef, reason string) {
 	t.Reporter.UnitSkipped(u, reason)
 	attrs := append(unitLogAttrs(u), slog.String("reason", reason))
 	t.log.LogAttrs(context.Background(), slog.LevelDebug, "unit skipped", attrs...)
 }
 
 // UnitFinished records the unit rollup as a histogram sample and a debug log.
-func (t *telemetryReporter) UnitFinished(u run.UnitRef, sum run.UnitSummary, savedRel string) {
+func (t *telemetryReporter) UnitFinished(u plan.UnitRef, sum run.UnitSummary, savedRel string) {
 	t.Reporter.UnitFinished(u, sum, savedRel)
 	ctx := context.Background()
 	if sum.AvgRunSeconds != nil {
@@ -83,7 +84,7 @@ func (t *telemetryReporter) UnitFinished(u run.UnitRef, sum run.UnitSummary, sav
 // recordItem records every populated metric for one finished case and a debug
 // log. ItemMetrics fields are pointers because triggers and evals fill disjoint
 // subsets, so each is guarded before recording.
-func (t *telemetryReporter) recordItem(u run.UnitRef, item run.ItemResult, baseline bool) {
+func (t *telemetryReporter) recordItem(u plan.UnitRef, item run.ItemResult, baseline bool) {
 	ctx := context.Background()
 	set := caseAttrSet(u, item.Status)
 	opt := metric.WithAttributeSet(set)
@@ -126,7 +127,7 @@ func (t *telemetryReporter) recordItem(u run.UnitRef, item run.ItemResult, basel
 }
 
 // caseAttrSet is the low-cardinality metric attribute set for one case.
-func caseAttrSet(u run.UnitRef, s run.Status) attribute.Set {
+func caseAttrSet(u plan.UnitRef, s plan.Status) attribute.Set {
 	prov, model := splitKey(u.Key)
 	return attribute.NewSet(
 		attribute.String("skill", u.Skill),
@@ -138,7 +139,7 @@ func caseAttrSet(u run.UnitRef, s run.Status) attribute.Set {
 }
 
 // unitAttrSet is caseAttrSet without the per-case status, for unit rollups.
-func unitAttrSet(u run.UnitRef) attribute.Set {
+func unitAttrSet(u plan.UnitRef) attribute.Set {
 	prov, model := splitKey(u.Key)
 	return attribute.NewSet(
 		attribute.String("skill", u.Skill),
@@ -149,7 +150,7 @@ func unitAttrSet(u run.UnitRef) attribute.Set {
 }
 
 // unitLogAttrs is the shared slog attribute prefix for a unit's log lines.
-func unitLogAttrs(u run.UnitRef) []slog.Attr {
+func unitLogAttrs(u plan.UnitRef) []slog.Attr {
 	prov, model := splitKey(u.Key)
 	return []slog.Attr{
 		slog.String("skill", u.Skill),
@@ -168,23 +169,23 @@ func splitKey(key string) (provider, model string) {
 }
 
 // kindString names a unit's tier.
-func kindString(k run.Kind) string {
-	if k == run.KindTriggers {
+func kindString(k plan.Kind) string {
+	if k == plan.KindTriggers {
 		return "triggers"
 	}
 	return "evals"
 }
 
 // statusString names a case outcome.
-func statusString(s run.Status) string {
+func statusString(s plan.Status) string {
 	switch s {
-	case run.StatusPass:
+	case plan.StatusPass:
 		return "pass"
-	case run.StatusFail:
+	case plan.StatusFail:
 		return "fail"
-	case run.StatusSkip:
+	case plan.StatusSkip:
 		return "skip"
-	case run.StatusError:
+	case plan.StatusError:
 		return "error"
 	default:
 		return "unknown"

@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
 // The right-column "Runs" pane: the execution log list (newest last), windowed
@@ -49,7 +49,7 @@ func (d dashboardModel) execLine(e execItem, w int, selected bool) string {
 		gutter = selectedStyle.Render("›")
 	}
 	kind := "trig"
-	if e.ref.Kind == run.KindEvals {
+	if e.ref.Kind == plan.KindEvals {
 		kind = "eval"
 	}
 	g := pendStyle.Render("◌")

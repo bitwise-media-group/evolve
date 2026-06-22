@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -408,8 +409,8 @@ func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 	withNew := topts.Options
 	withNew.New = true
 	key := topts.Selected[0].Key()
-	cr := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "please trigger this"}
-	n, notes := Needs(withNew, cat, topts.Selected, Tiers{Triggers: true}, "")
+	cr := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "please trigger this"}
+	n, notes := Needs(withNew, cat, topts.Selected, plan.Tiers{Triggers: true}, "")
 	if n[key][cr] {
 		t.Error("--new pre-selected a case whose only missing data is a token-count estimate")
 	}

@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
 // scopeName is this package's OpenTelemetry instrumentation scope. The engine
@@ -38,7 +40,7 @@ func recordSpanErr(span trace.Span, err error) {
 }
 
 // unitSpanAttrs is the shared attribute set for a unit span.
-func unitSpanAttrs(ref UnitRef) []attribute.KeyValue {
+func unitSpanAttrs(ref plan.UnitRef) []attribute.KeyValue {
 	prov, model := splitUnitKey(ref.Key)
 	return []attribute.KeyValue{
 		attribute.String("skill", ref.Skill),
@@ -57,8 +59,8 @@ func splitUnitKey(key string) (provider, model string) {
 }
 
 // kindAttr names a unit's tier for span attributes.
-func kindAttr(k Kind) string {
-	if k == KindTriggers {
+func kindAttr(k plan.Kind) string {
+	if k == plan.KindTriggers {
 		return "triggers"
 	}
 	return "evals"

@@ -6,7 +6,7 @@ package tui
 import (
 	"testing"
 
-	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
 // TestPendingGlyph proves the "queued to run" indicator is tinted by the prior
@@ -38,7 +38,7 @@ func TestPendingGlyph(t *testing.T) {
 // a read-only prior row's settled check/cross, a running case spins, and a freshly
 // settled or no-data row keeps its plain glyph.
 func TestCaseGlyphQueuedVsPrior(t *testing.T) {
-	d := newDashboard(soloCatalog(t), nil, nil, run.PriorMetrics{})
+	d := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{})
 	cases := []struct {
 		name string
 		c    *caseState

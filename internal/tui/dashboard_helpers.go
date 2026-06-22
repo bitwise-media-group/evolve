@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
 // Cross-pane rendering primitives shared by the dashboard view files: status
@@ -87,7 +87,7 @@ func statusWord(s status) string {
 	}
 }
 
-func (d dashboardModel) inflightElapsed(ref run.UnitRef, label string) (float64, bool) {
+func (d dashboardModel) inflightElapsed(ref plan.UnitRef, label string) (float64, bool) {
 	for _, ifl := range d.inflight {
 		if ifl.ref == ref && ifl.label == label {
 			return d.now().Sub(ifl.start).Seconds(), true

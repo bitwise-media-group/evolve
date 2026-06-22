@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -76,7 +77,7 @@ type Options struct {
 	// triggers/evals on top of the PluginFilter/SkillFilter/EvalFilter and
 	// SkipProviders. Nil means no extra narrowing. The TUI selection form
 	// builds it; the plain flag path leaves it nil.
-	Filter *Filter
+	Filter *plan.Filter
 
 	// Reporter receives progress events. When nil the engine uses a
 	// PlainReporter over Stdout/Stderr, preserving the historical line output.

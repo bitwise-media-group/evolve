@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitwise-media-group/evolve/internal/grade"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -31,7 +32,7 @@ var evalsCmd = &cobra.Command{
 			return err
 		}
 		if interactive {
-			return uiRun(cmd, &evalsFlags.SweepFlags, run.Tiers{Evals: true},
+			return uiRun(cmd, &evalsFlags.SweepFlags, plan.Tiers{Evals: true},
 				3, evalsFlags.Eval, evalsFlags.JudgeModel, "evals: some evals failed", false)
 		}
 

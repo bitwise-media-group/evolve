@@ -7,40 +7,9 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
-
-// Kind distinguishes the two eval tiers a unit belongs to.
-type Kind int
-
-const (
-	KindTriggers Kind = iota
-	KindEvals
-)
-
-// Mode is how a unit executes: a real agent run, or token counting only.
-type Mode int
-
-const (
-	ModeRun Mode = iota
-	ModeCountOnly
-)
-
-// Status is one item's outcome (a query for triggers, an eval for evals).
-type Status int
-
-const (
-	StatusPass Status = iota
-	StatusFail
-	StatusSkip
-	StatusError
-)
-
-// UnitRef identifies one execution unit: a (skill, provider/model, tier) triple.
-type UnitRef struct {
-	Skill string
-	Key   string // provider.Selection.Key(): "provider/model"
-	Kind  Kind
-}
 
 // ItemStart announces that work on one item within a unit has begun. The TUI
 // uses it to mark the case running and to look up its authored spec (prompt,
@@ -61,32 +30,16 @@ type ItemStart struct {
 type ItemResult struct {
 	Index   int
 	Label   string // trigger query or eval id
-	Status  Status
+	Status  plan.Status
 	Detail  string
 	Output  string
-	Metrics ItemMetrics
+	Metrics plan.ItemMetrics
 
 	// WorkspacePath is the retained throwaway workspace the agent ran in, and
 	// LogPath the file holding its full output; the live TUI opens them on a
 	// keypress. Both are empty unless the run retains workspaces (TUI runs do).
 	WorkspacePath string
 	LogPath       string
-}
-
-// ItemMetrics is the per-case figures the live dashboard shows. All fields are
-// optional: triggers fill hits/runs and the input-side estimate; evals fill the
-// duration, measured input/output tokens, cost, and assertion tally.
-type ItemMetrics struct {
-	Hits                *int
-	Runs                *int
-	AvgRunSeconds       *float64 // triggers: avg per run; evals: executor duration
-	InputTokens         *int     // fresh (uncached) input
-	CacheReadTokens     *int     // evals only
-	CacheCreationTokens *int     // evals only
-	OutputTokens        *int     // evals only
-	CostUSD             *float64
-	AssertPassed        *int
-	AssertTotal         *int
 }
 
 // UnitSummary is the rollup the engine reports when a unit finishes.
@@ -104,23 +57,23 @@ type UnitSummary struct {
 // TUI. Implementations must be safe for concurrent use: ItemDone and Warn are
 // called from the parallel agent-run goroutines.
 type Reporter interface {
-	UnitStarted(u UnitRef, total, runs int, mode Mode)
-	UnitSkipped(u UnitRef, reason string)
-	ItemStarted(u UnitRef, item ItemStart)
-	ItemDone(u UnitRef, item ItemResult)
+	UnitStarted(u plan.UnitRef, total, runs int, mode plan.Mode)
+	UnitSkipped(u plan.UnitRef, reason string)
+	ItemStarted(u plan.UnitRef, item ItemStart)
+	ItemDone(u plan.UnitRef, item ItemResult)
 	// BaselineStarted reports that an eval's without-skill baseline run has begun.
 	// A baseline runs interleaved right before the eval's own run, so the dashboard
 	// can flag that row as "running its baseline first" instead of looking stalled
 	// while the (invisible) without-skill agent session executes. The plain reporter
 	// ignores it, like ItemStarted.
-	BaselineStarted(u UnitRef, item ItemStart)
+	BaselineStarted(u plan.UnitRef, item ItemStart)
 	// BaselineDone reports one finished without-skill baseline eval. Baselines are
 	// not tree cases (they measure the skill's absence, not the run under test), but
 	// their metrics stream live so the dashboard can show a vs-baseline delta on a
 	// first-ever run instead of waiting for the next one. Detail is a one-liner for
 	// plain output; Metrics carries the figures the dashboard compares against.
-	BaselineDone(u UnitRef, item ItemResult)
-	UnitFinished(u UnitRef, sum UnitSummary, savedRel string)
+	BaselineDone(u plan.UnitRef, item ItemResult)
+	UnitFinished(u plan.UnitRef, sum UnitSummary, savedRel string)
 	Warn(format string, a ...any)
 }
 
@@ -154,37 +107,37 @@ func (l lockedWriter) Write(p []byte) (int, error) {
 	return l.w.Write(p)
 }
 
-func (r PlainReporter) UnitStarted(u UnitRef, total, runs int, mode Mode) {
+func (r PlainReporter) UnitStarted(u plan.UnitRef, total, runs int, mode plan.Mode) {
 	m := "count-only"
-	if mode == ModeRun {
+	if mode == plan.ModeRun {
 		m = "run"
 	}
-	if u.Kind == KindTriggers {
+	if u.Kind == plan.KindTriggers {
 		fmt.Fprintf(r.Stdout, "\n=== %s / %s (%d queries x %d runs, %s) ===\n", u.Skill, u.Key, total, runs, m)
 		return
 	}
 	fmt.Fprintf(r.Stdout, "\n=== %s / %s (%s) ===\n", u.Skill, u.Key, m)
 }
 
-func (r PlainReporter) UnitSkipped(u UnitRef, reason string) {
+func (r PlainReporter) UnitSkipped(u plan.UnitRef, reason string) {
 	fmt.Fprintf(r.Stdout, "\n=== %s / %s (skip: %s) ===\n", u.Skill, u.Key, reason)
 }
 
 // ItemStarted is a no-op for plain output: the historical line format reports
 // items only on completion.
-func (r PlainReporter) ItemStarted(UnitRef, ItemStart) {}
+func (r PlainReporter) ItemStarted(plan.UnitRef, ItemStart) {}
 
 // BaselineStarted is a no-op for plain output: like ItemStarted, the line format
 // reports a baseline only when it finishes (BaselineDone).
-func (r PlainReporter) BaselineStarted(UnitRef, ItemStart) {}
+func (r PlainReporter) BaselineStarted(plan.UnitRef, ItemStart) {}
 
-func (r PlainReporter) ItemDone(u UnitRef, item ItemResult) {
-	if u.Kind == KindEvals {
+func (r PlainReporter) ItemDone(u plan.UnitRef, item ItemResult) {
+	if u.Kind == plan.KindEvals {
 		// A runtime-error diagnostic (the agent run produced no gradable output)
 		// is a failure, not a result, so it goes to stderr; the per-assertion
 		// PASS/FAIL block is normal result output and stays on stdout.
 		w := r.Stdout
-		if item.Status == StatusError {
+		if item.Status == plan.StatusError {
 			w = r.Stderr
 		}
 		fmt.Fprint(w, item.Detail) // pre-rendered, may span several lines
@@ -195,14 +148,14 @@ func (r PlainReporter) ItemDone(u UnitRef, item ItemResult) {
 
 // BaselineDone prints a concise one-line baseline result; the full grading block
 // belongs to the with-skill run, not its baseline.
-func (r PlainReporter) BaselineDone(u UnitRef, item ItemResult) {
+func (r PlainReporter) BaselineDone(u plan.UnitRef, item ItemResult) {
 	fmt.Fprintf(r.Stdout, "  [base %s] %s\n", marker(item.Status), item.Detail)
 }
 
-func (r PlainReporter) UnitFinished(u UnitRef, sum UnitSummary, savedRel string) {
+func (r PlainReporter) UnitFinished(u plan.UnitRef, sum UnitSummary, savedRel string) {
 	if sum.Executed {
 		noun, extra := "queries", ""
-		if u.Kind == KindEvals {
+		if u.Kind == plan.KindEvals {
 			noun = "evals"
 			if sum.Errored > 0 {
 				extra = fmt.Sprintf(", %d errored", sum.Errored)
@@ -219,15 +172,15 @@ func (r PlainReporter) Warn(format string, a ...any) {
 }
 
 // marker maps a status to its plain-output token.
-func marker(s Status) string {
+func marker(s plan.Status) string {
 	switch s {
-	case StatusPass:
+	case plan.StatusPass:
 		return "PASS"
-	case StatusFail:
+	case plan.StatusFail:
 		return "FAIL"
-	case StatusSkip:
+	case plan.StatusSkip:
 		return "SKIP"
-	case StatusError:
+	case plan.StatusError:
 		return "ERROR"
 	}
 	return "?"

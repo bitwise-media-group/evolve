@@ -6,8 +6,8 @@ package tui
 import (
 	"fmt"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 // Live deltas: the dashboard compares each finished case against the run it is
@@ -31,13 +31,13 @@ const baselineMark = "ᵇ"
 
 // caseKey identifies one case within a unit, for the live-baseline lookup.
 type caseKey struct {
-	ref   run.UnitRef
+	ref   plan.UnitRef
 	label string
 }
 
 // evalCaseMetricsOf projects a finished eval case's live status and metrics into
 // the results shape the delta helpers compare. The rate is the expectation tally.
-func evalCaseMetricsOf(st status, m run.ItemMetrics) results.EvalCaseMetrics {
+func evalCaseMetricsOf(st status, m plan.ItemMetrics) results.EvalCaseMetrics {
 	out := results.EvalCaseMetrics{AvgRunSeconds: m.AvgRunSeconds, Errored: st == stError}
 	if m.AssertPassed != nil && m.AssertTotal != nil && *m.AssertTotal > 0 {
 		r := float64(*m.AssertPassed) / float64(*m.AssertTotal)
@@ -61,7 +61,7 @@ func evalCaseMetricsOf(st status, m run.ItemMetrics) results.EvalCaseMetrics {
 }
 
 // triggerCaseMetricsOf projects a finished trigger case into the results shape.
-func triggerCaseMetricsOf(st status, m run.ItemMetrics) results.TriggerCaseMetrics {
+func triggerCaseMetricsOf(st status, m plan.ItemMetrics) results.TriggerCaseMetrics {
 	out := results.TriggerCaseMetrics{Hits: m.Hits, Runs: m.Runs, AvgRunSeconds: m.AvgRunSeconds}
 	if st == stPass || st == stFail {
 		p := st == stPass
@@ -81,7 +81,7 @@ func triggerCaseMetricsOf(st status, m run.ItemMetrics) results.TriggerCaseMetri
 
 // evalCasePrior resolves an eval case's comparison basis: previous, else baseline
 // (live this run, else seeded), else none.
-func (d dashboardModel) evalCasePrior(ref run.UnitRef, label string) (results.EvalCaseMetrics, deltaBasis) {
+func (d dashboardModel) evalCasePrior(ref plan.UnitRef, label string) (results.EvalCaseMetrics, deltaBasis) {
 	if m, ok := d.prior.EvalPrevious(ref, label); ok {
 		return m, basisPrevious
 	}
@@ -95,8 +95,8 @@ func (d dashboardModel) evalCasePrior(ref run.UnitRef, label string) (results.Ev
 }
 
 // caseDelta is the per-metric delta and basis for one finished case.
-func (d dashboardModel) caseDelta(ref run.UnitRef, c *caseState) (results.Delta, deltaBasis) {
-	if c.kind == run.KindEvals {
+func (d dashboardModel) caseDelta(ref plan.UnitRef, c *caseState) (results.Delta, deltaBasis) {
+	if c.kind == plan.KindEvals {
 		prior, basis := d.evalCasePrior(ref, c.label)
 		if basis == basisNone {
 			return results.Delta{}, basisNone
@@ -142,8 +142,8 @@ type priorScalars struct {
 	basis   deltaBasis
 }
 
-func (d dashboardModel) casePriorScalars(ref run.UnitRef, c *caseState) (priorScalars, bool) {
-	if c.kind == run.KindEvals {
+func (d dashboardModel) casePriorScalars(ref plan.UnitRef, c *caseState) (priorScalars, bool) {
+	if c.kind == plan.KindEvals {
 		m, basis := d.evalCasePrior(ref, c.label)
 		if basis == basisNone {
 			return priorScalars{}, false

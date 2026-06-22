@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -25,31 +26,31 @@ func NewReporter(p *tea.Program) run.Reporter { return &tuiReporter{p: p} }
 // RunDone is the message the engine goroutine sends once every tier finishes.
 func RunDone(failed bool, err error) tea.Msg { return runDoneMsg{failed: failed, err: err} }
 
-func (r *tuiReporter) UnitStarted(u run.UnitRef, total, runs int, mode run.Mode) {
+func (r *tuiReporter) UnitStarted(u plan.UnitRef, total, runs int, mode plan.Mode) {
 	r.p.Send(unitStartedMsg{ref: u, total: total, runs: runs, mode: mode})
 }
 
-func (r *tuiReporter) UnitSkipped(u run.UnitRef, reason string) {
+func (r *tuiReporter) UnitSkipped(u plan.UnitRef, reason string) {
 	r.p.Send(unitSkippedMsg{ref: u, reason: reason})
 }
 
-func (r *tuiReporter) ItemStarted(u run.UnitRef, item run.ItemStart) {
+func (r *tuiReporter) ItemStarted(u plan.UnitRef, item run.ItemStart) {
 	r.p.Send(itemStartedMsg{ref: u, item: item})
 }
 
-func (r *tuiReporter) ItemDone(u run.UnitRef, item run.ItemResult) {
+func (r *tuiReporter) ItemDone(u plan.UnitRef, item run.ItemResult) {
 	r.p.Send(itemDoneMsg{ref: u, item: item})
 }
 
-func (r *tuiReporter) BaselineStarted(u run.UnitRef, item run.ItemStart) {
+func (r *tuiReporter) BaselineStarted(u plan.UnitRef, item run.ItemStart) {
 	r.p.Send(baselineStartedMsg{ref: u, item: item})
 }
 
-func (r *tuiReporter) BaselineDone(u run.UnitRef, item run.ItemResult) {
+func (r *tuiReporter) BaselineDone(u plan.UnitRef, item run.ItemResult) {
 	r.p.Send(baselineDoneMsg{ref: u, item: item})
 }
 
-func (r *tuiReporter) UnitFinished(u run.UnitRef, sum run.UnitSummary, savedRel string) {
+func (r *tuiReporter) UnitFinished(u plan.UnitRef, sum run.UnitSummary, savedRel string) {
 	r.p.Send(unitFinishedMsg{ref: u, sum: sum, savedRel: savedRel})
 }
 

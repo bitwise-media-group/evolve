@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 )
 
@@ -79,39 +80,14 @@ func TestPlanEnumeratesUnits(t *testing.T) {
 	p := &fakeTriggerProvider{}
 	sels := []provider.Selection{{Provider: p, Model: p.Models()[0]}}
 
-	both := Plan(cat, sels, nil, Tiers{Triggers: true, Evals: true})
+	both := Plan(cat, sels, nil, plan.Tiers{Triggers: true, Evals: true})
 	if len(both) != 2 {
 		t.Fatalf("plan = %d units, want 2 (one triggers, one evals)", len(both))
 	}
 
-	onlyTriggers := Plan(cat, sels, nil, Tiers{Triggers: true})
-	if len(onlyTriggers) != 1 || onlyTriggers[0].Kind != KindTriggers {
+	onlyTriggers := Plan(cat, sels, nil, plan.Tiers{Triggers: true})
+	if len(onlyTriggers) != 1 || onlyTriggers[0].Kind != plan.KindTriggers {
 		t.Errorf("triggers-only plan = %+v", onlyTriggers)
-	}
-}
-
-func TestFilterInclusion(t *testing.T) {
-	var nilF *Filter
-	if !nilF.skillIncluded("x") || !nilF.triggerIncluded("x", "q") || !nilF.evalIncluded("x", "e") {
-		t.Error("nil filter must include everything")
-	}
-
-	f := &Filter{
-		Skills:   map[string]bool{"a": true},
-		Triggers: map[string]map[string]bool{"a": {"q1": true}},
-		Evals:    map[string]map[string]bool{"a": {}}, // present but empty = none
-	}
-	if !f.skillIncluded("a") || f.skillIncluded("b") {
-		t.Error("skillIncluded")
-	}
-	if !f.triggerIncluded("a", "q1") || f.triggerIncluded("a", "q2") {
-		t.Error("triggerIncluded for restricted skill")
-	}
-	if !f.triggerIncluded("z", "anything") {
-		t.Error("triggerIncluded for a skill with no entry must be unrestricted")
-	}
-	if f.evalIncluded("a", "e1") {
-		t.Error("an empty (non-nil) eval set must include nothing")
 	}
 }
 
@@ -123,23 +99,23 @@ func TestApplicableHonorsFilter(t *testing.T) {
 	}
 	sc := cat[0]
 
-	f := &Filter{
+	f := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e2": true}},
 	}
-	tr := applicableTriggers(sc.Triggers, "fake", "solo-skill", f)
+	tr := plan.ApplicableTriggers(sc.Triggers, "fake", "solo-skill", f)
 	if len(tr) != 1 || tr[0].Query != "q1" {
 		t.Errorf("triggers = %+v, want only q1", tr)
 	}
-	ev := applicableEvals(sc.Evals, "fake", "solo-skill", f)
+	ev := plan.ApplicableEvals(sc.Evals, "fake", "solo-skill", f)
 	if len(ev) != 1 || ev[0].ID != "e2" {
 		t.Errorf("evals = %+v, want only e2", ev)
 	}
 
 	// A skill excluded from the filter yields nothing.
-	none := &Filter{Skills: map[string]bool{"other": true}}
-	if got := applicableTriggers(sc.Triggers, "fake", "solo-skill", none); len(got) != 0 {
+	none := &plan.Filter{Skills: map[string]bool{"other": true}}
+	if got := plan.ApplicableTriggers(sc.Triggers, "fake", "solo-skill", none); len(got) != 0 {
 		t.Errorf("excluded skill still produced %d triggers", len(got))
 	}
 }
@@ -154,11 +130,11 @@ func TestNeedsDefaultsAndFlags(t *testing.T) {
 	sels := []provider.Selection{{Provider: p, Model: p.Models()[0]}}
 	base := Options{Repo: repo, Selected: sels}
 	key := sels[0].Key()
-	tc := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "q1"}
-	ec := CaseRef{Skill: "solo-skill", Kind: KindEvals, Case: "e1"}
+	tc := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "q1"}
+	ec := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindEvals, Case: "e1"}
 
 	// Triggers-only default: trigger cases present, eval cases absent.
-	n, notes := Needs(base, cat, sels, Tiers{Triggers: true}, "")
+	n, notes := Needs(base, cat, sels, plan.Tiers{Triggers: true}, "")
 	if !n[key][tc] {
 		t.Errorf("trigger case should need run (no --new): %+v", n[key])
 	}
@@ -170,7 +146,7 @@ func TestNeedsDefaultsAndFlags(t *testing.T) {
 	}
 
 	// Both default: trigger and eval cases present and needed.
-	n, _ = Needs(base, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	n, _ = Needs(base, cat, sels, plan.Tiers{Triggers: true, Evals: true}, "")
 	if !n[key][tc] || !n[key][ec] {
 		t.Errorf("both cases should need run: %+v", n[key])
 	}
@@ -178,7 +154,7 @@ func TestNeedsDefaultsAndFlags(t *testing.T) {
 	// --skill excludes other skills: matrix is empty.
 	withSkill := base
 	withSkill.SkillFilter = []string{"nope"}
-	n, _ = Needs(withSkill, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	n, _ = Needs(withSkill, cat, sels, plan.Tiers{Triggers: true, Evals: true}, "")
 	if len(n[key]) != 0 {
 		t.Errorf("skill filter should exclude solo-skill: %+v", n[key])
 	}
@@ -187,12 +163,12 @@ func TestNeedsDefaultsAndFlags(t *testing.T) {
 	// the fixture's own plugin ("solo").
 	withPlugin := base
 	withPlugin.PluginFilter = []string{"nope"}
-	n, _ = Needs(withPlugin, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	n, _ = Needs(withPlugin, cat, sels, plan.Tiers{Triggers: true, Evals: true}, "")
 	if len(n[key]) != 0 {
 		t.Errorf("plugin filter should exclude the solo plugin: %+v", n[key])
 	}
 	withPlugin.PluginFilter = []string{"solo"}
-	n, _ = Needs(withPlugin, cat, sels, Tiers{Triggers: true, Evals: true}, "")
+	n, _ = Needs(withPlugin, cat, sels, plan.Tiers{Triggers: true, Evals: true}, "")
 	if !n[key][tc] {
 		t.Errorf("matching plugin filter should include solo-skill: %+v", n[key])
 	}
@@ -209,14 +185,14 @@ func TestNeedsNewSkipsComplete(t *testing.T) {
 	withNew.New = true
 	sels := topts.Selected
 	key := sels[0].Key()
-	tc := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "q1"}
+	tc := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "q1"}
 
 	// Before any run, --new needs the unrun trigger (reason "new").
 	cat, err := Catalog(topts.Options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, notes := Needs(withNew, cat, sels, Tiers{Triggers: true}, ""); !n[key][tc] {
+	if n, notes := Needs(withNew, cat, sels, plan.Tiers{Triggers: true}, ""); !n[key][tc] {
 		t.Fatalf("--new should need triggers with no stored results: %+v", n[key])
 	} else if notes[tc] != ReasonNoData.String() {
 		t.Errorf("note = %q, want %q", notes[tc], ReasonNoData)
@@ -231,7 +207,7 @@ func TestNeedsNewSkipsComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := Needs(withNew, cat, sels, Tiers{Triggers: true}, ""); n[key][tc] {
+	if n, _ := Needs(withNew, cat, sels, plan.Tiers{Triggers: true}, ""); n[key][tc] {
 		t.Errorf("--new should not rerun completed triggers: %+v", n[key])
 	}
 }
@@ -255,19 +231,19 @@ func TestNeedsBaselineAdditiveWithNew(t *testing.T) {
 	}
 	sels := opts.Selected
 	key := sels[0].Key()
-	ec := CaseRef{Skill: "solo-skill", Kind: KindEvals, Case: "basic"}
+	ec := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindEvals, Case: "basic"}
 
 	// --new alone leaves the complete eval unselected.
 	withNew := opts.Options
 	withNew.New = true
-	if n, _ := Needs(withNew, cat, sels, Tiers{Evals: true}, ""); n[key][ec] {
+	if n, _ := Needs(withNew, cat, sels, plan.Tiers{Evals: true}, ""); n[key][ec] {
 		t.Fatalf("--new should not select a complete eval: %+v", n[key])
 	}
 
 	// Adding --baseline reselects it (baseline missing), noted "needs baseline".
 	withBoth := withNew
 	withBoth.Baseline = true
-	n, notes := Needs(withBoth, cat, sels, Tiers{Evals: true}, "")
+	n, notes := Needs(withBoth, cat, sels, plan.Tiers{Evals: true}, "")
 	if !n[key][ec] {
 		t.Errorf("--new --baseline should select the eval whose baseline is missing: %+v", n[key])
 	}
@@ -287,7 +263,7 @@ func TestNeedsModifiedSelectsChangedContent(t *testing.T) {
 	withMod.Modified = true
 	sels := topts.Selected
 	key := sels[0].Key()
-	q1 := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "q1"}
+	q1 := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "q1"}
 
 	// Establish a baseline of stored fingerprints, then --modified selects nothing.
 	if _, err := Triggers(context.Background(), topts); err != nil {
@@ -297,7 +273,7 @@ func TestNeedsModifiedSelectsChangedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := Needs(withMod, cat, sels, Tiers{Triggers: true}, ""); n[key][q1] {
+	if n, _ := Needs(withMod, cat, sels, plan.Tiers{Triggers: true}, ""); n[key][q1] {
 		t.Errorf("--modified should not select an unchanged trigger: %+v", n[key])
 	}
 
@@ -312,7 +288,7 @@ func TestNeedsModifiedSelectsChangedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, notes := Needs(withMod, cat, sels, Tiers{Triggers: true}, "")
+	n, notes := Needs(withMod, cat, sels, plan.Tiers{Triggers: true}, "")
 	if !n[key][q1] {
 		t.Errorf("--modified should select a trigger whose definition changed: %+v", n[key])
 	}
@@ -332,7 +308,7 @@ func TestNeedsModifiedSelectsChangedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := Needs(withMod, cat, sels, Tiers{Triggers: true}, ""); !n[key][q1] {
+	if n, _ := Needs(withMod, cat, sels, plan.Tiers{Triggers: true}, ""); !n[key][q1] {
 		t.Errorf("--modified should select triggers when SKILL.md frontmatter changed: %+v", n[key])
 	}
 }
@@ -348,7 +324,7 @@ func TestNeedsFailedSelectsFailures(t *testing.T) {
 	withFailed.Failed = true
 	sels := topts.Selected
 	key := sels[0].Key()
-	passing := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "please trigger this"}
+	passing := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "please trigger this"}
 
 	// After a passing run, --failed must not select the passing case.
 	if _, err := Triggers(context.Background(), topts); err != nil {
@@ -358,7 +334,7 @@ func TestNeedsFailedSelectsFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := Needs(withFailed, cat, sels, Tiers{Triggers: true}, ""); n[key][passing] {
+	if n, _ := Needs(withFailed, cat, sels, plan.Tiers{Triggers: true}, ""); n[key][passing] {
 		t.Errorf("--failed should skip a passing case: %+v", n[key])
 	}
 
@@ -373,8 +349,8 @@ func TestNeedsFailedSelectsFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failing := CaseRef{Skill: "solo-skill", Kind: KindTriggers, Case: "never fires"}
-	n, notes := Needs(withFailed, cat, sels, Tiers{Triggers: true}, "")
+	failing := plan.CaseRef{Skill: "solo-skill", Kind: plan.KindTriggers, Case: "never fires"}
+	n, notes := Needs(withFailed, cat, sels, plan.Tiers{Triggers: true}, "")
 	if !n[key][failing] {
 		t.Errorf("--failed should select a failing query: %+v", n[key])
 	}

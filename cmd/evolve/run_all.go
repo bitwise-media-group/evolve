@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/bitwise-media-group/evolve/internal/grade"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -28,7 +29,7 @@ var runAllCmd = &cobra.Command{
 			return err
 		}
 		if interactive {
-			return uiRun(cmd, &allFlags.SweepFlags, run.Tiers{Triggers: true, Evals: true},
+			return uiRun(cmd, &allFlags.SweepFlags, plan.Tiers{Triggers: true, Evals: true},
 				allFlags.Runs, "", grade.DefaultJudgeModel, "run: some checks or cases failed", true)
 		}
 
@@ -50,7 +51,7 @@ var runAllCmd = &cobra.Command{
 		triggerTO, evalTO := perTierTimeouts(cmd, allFlags.Timeout)
 		failed, runErr := run.Sweep(cmd.Context(), run.SweepOptions{
 			Options:        common,
-			Tiers:          run.Tiers{Triggers: true, Evals: true},
+			Tiers:          plan.Tiers{Triggers: true, Evals: true},
 			Runs:           allFlags.Runs,
 			JudgeModel:     grade.DefaultJudgeModel,
 			TriggerTimeout: triggerTO,

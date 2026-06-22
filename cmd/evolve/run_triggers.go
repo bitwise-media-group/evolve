@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bitwise-media-group/evolve/internal/grade"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -30,7 +31,7 @@ var triggersCmd = &cobra.Command{
 			return err
 		}
 		if interactive {
-			return uiRun(cmd, &triggersFlags.SweepFlags, run.Tiers{Triggers: true},
+			return uiRun(cmd, &triggersFlags.SweepFlags, plan.Tiers{Triggers: true},
 				triggersFlags.Runs, "", grade.DefaultJudgeModel, "triggers: some queries failed", false)
 		}
 

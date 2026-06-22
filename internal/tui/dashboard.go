@@ -6,15 +6,14 @@ package tui
 import (
 	"os/exec"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 // status is the lifecycle state of one execution unit or case.
@@ -38,15 +37,15 @@ func (s status) terminal() bool {
 }
 
 // statusOf maps an engine item status to a dashboard status.
-func statusOf(s run.Status) status {
+func statusOf(s plan.Status) status {
 	switch s {
-	case run.StatusPass:
+	case plan.StatusPass:
 		return stPass
-	case run.StatusFail:
+	case plan.StatusFail:
 		return stFail
-	case run.StatusError:
+	case plan.StatusError:
 		return stError
-	case run.StatusSkip:
+	case plan.StatusSkip:
 		return stSkipped
 	default:
 		return stPending
@@ -58,7 +57,7 @@ func statusOf(s run.Status) status {
 // agent's final text (evals only) and verdict the rendered grading block; both
 // are retained so the Executing pane can show what each run produced.
 type caseState struct {
-	kind          run.Kind
+	kind          plan.Kind
 	label         string
 	shouldTrigger bool // triggers only: expected to fire — so passes = correct runs
 	status        status
@@ -66,7 +65,7 @@ type caseState struct {
 	// now, ahead of its own run. status is stRunning throughout; this flag only
 	// tints the row (yellow spinner + label) so the baseline phase is visible.
 	baselineRunning bool
-	metrics         run.ItemMetrics
+	metrics         plan.ItemMetrics
 	output          string // capped head of the agent's final text (full text is in logPath)
 	verdict         string
 	workdir         string // retained workspace dir (o opens it); empty until retained
@@ -99,11 +98,11 @@ func (c *caseState) queuedPending() bool {
 
 // unitState is one (skill, model, tier) execution unit.
 type unitState struct {
-	ref      run.UnitRef
+	ref      plan.UnitRef
 	plugin   string
 	display  string // provider/model label
 	status   status
-	mode     run.Mode
+	mode     plan.Mode
 	total    int
 	done     int
 	passed   int
@@ -118,7 +117,7 @@ type unitState struct {
 // inflight is one case currently executing, tracked so the detail panel can show
 // what is in progress (the engine runs several at once under --jobs).
 type inflight struct {
-	ref   run.UnitRef
+	ref   plan.UnitRef
 	label string
 	start time.Time
 }
@@ -127,7 +126,7 @@ type inflight struct {
 // pane navigates this log (newest last); the case it names is resolved live so
 // the row reflects the latest status/metrics/output.
 type execItem struct {
-	ref   run.UnitRef
+	ref   plan.UnitRef
 	label string
 }
 
@@ -155,7 +154,7 @@ const (
 )
 
 // Tree grouping: units are grouped plugin → skill → model for the left pane. The
-// grouping is fixed at construction (the plan does not change mid-run); live
+// grouping is fixed at construction (the units does not change mid-run); live
 // status is read from the units it points at.
 type (
 	modelGroup struct {
@@ -175,17 +174,17 @@ type (
 )
 
 type dashboardModel struct {
-	cat      []run.SkillCatalog
-	skillCat map[string]*run.SkillCatalog
+	cat      []plan.SkillCatalog
+	skillCat map[string]*plan.SkillCatalog
 	units    []*unitState
-	index    map[run.UnitRef]int
+	index    map[plan.UnitRef]int
 	tree     []pluginGroup
 
 	// prior is the last committed metrics each live case is compared against (the
 	// vs-previous basis, plus the seeded baseline). liveBaseline collects baselines
 	// streamed this run via BaselineDone, so a first-ever run can show a delta
 	// against the baseline before the next run exists.
-	prior        run.PriorMetrics
+	prior        plan.PriorMetrics
 	liveBaseline map[caseKey]results.EvalCaseMetrics
 
 	spin     spinner.Model
@@ -210,7 +209,7 @@ type dashboardModel struct {
 	execSel    int              // browse cursor: index into buildNodeRefsWith(browseExpanded)
 	execExpand map[nodeKey]bool // user expand/collapse overrides (browse mode only)
 
-	// execLog is every planned execution, pre-populated in plan order so the Runs
+	// execLog is every planned execution, pre-populated in units order so the Runs
 	// pane shows the pending ones before they start. liveIdx is the index of the
 	// most recently started execution — the anchor runFollow tracks (the list is no
 	// longer start-ordered, so "newest" is not simply the last row). -1 until the
@@ -226,16 +225,19 @@ type dashboardModel struct {
 	w, h int
 }
 
-func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter,
-	prior run.PriorMetrics,
-) dashboardModel {
+// newDashboard builds the live dashboard as a projection of the engine's plan:
+// the tree, ordering, and each case's queued/prior state and prior metrics come
+// straight from plan.Build, so the view never re-derives them (and so cannot drift
+// from what the engine runs). cat supplies the authored specs the Details pane
+// shows; prior seeds the delta basis.
+func newDashboard(p plan.Plan, cat []plan.SkillCatalog, prior plan.PriorMetrics) dashboardModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
 	d := dashboardModel{
 		cat:          cat,
-		skillCat:     map[string]*run.SkillCatalog{},
-		index:        map[run.UnitRef]int{},
+		skillCat:     map[string]*plan.SkillCatalog{},
+		index:        map[plan.UnitRef]int{},
 		spin:         sp,
 		now:          time.Now,
 		focus:        paneRuns,
@@ -248,140 +250,64 @@ func newDashboard(cat []run.SkillCatalog, plan []run.UnitRef, filter *run.Filter
 		d.skillCat[cat[i].Skill] = &cat[i]
 	}
 
-	// Order units by execution order: catalog index (plugin → skill), then the
-	// order models first appear in the plan, then tier (triggers before evals).
-	skillOrder := map[string]int{}
-	for i := range cat {
-		skillOrder[cat[i].Skill] = i
+	for _, pl := range p.Plugins {
+		pg := pluginGroup{name: pl.Name}
+		for _, sk := range pl.Skills {
+			title := sk.Title
+			if title == "" {
+				title = sk.Skill
+			}
+			sg := skillGroup{skill: sk.Skill, title: title}
+			for _, mdl := range sk.Models {
+				mg := modelGroup{key: mdl.Key, display: mdl.Display}
+				for _, un := range mdl.Units {
+					u := &unitState{
+						ref: un.Ref, plugin: pl.Name, display: mdl.Display,
+						status: stPending, byLabel: map[string]*caseState{},
+					}
+					for _, c := range un.Cases {
+						cs := caseFromPlan(c)
+						u.cases = append(u.cases, cs)
+						u.byLabel[c.Label] = cs
+					}
+					u.total = len(u.cases)
+					// A unit with nothing queued never receives engine events, so settle it
+					// from its prior cases now — otherwise its group row would read "pending".
+					if len(u.cases) > 0 && !queuedCases(u.cases) {
+						u.status = caseAggStatus(u.cases)
+					}
+					mg.units = append(mg.units, len(d.units))
+					d.index[un.Ref] = len(d.units)
+					d.units = append(d.units, u)
+				}
+				sg.models = append(sg.models, mg)
+			}
+			pg.skills = append(pg.skills, sg)
+		}
+		d.tree = append(d.tree, pg)
 	}
-	modelOrder := map[string]int{}
-	for _, ref := range plan {
-		if _, ok := modelOrder[ref.Key]; !ok {
-			modelOrder[ref.Key] = len(modelOrder)
-		}
-	}
-	refs := append([]run.UnitRef(nil), plan...)
-	sort.SliceStable(refs, func(i, j int) bool {
-		if si, sj := skillOrder[refs[i].Skill], skillOrder[refs[j].Skill]; si != sj {
-			return si < sj
-		}
-		if mi, mj := modelOrder[refs[i].Key], modelOrder[refs[j].Key]; mi != mj {
-			return mi < mj
-		}
-		return refs[i].Kind < refs[j].Kind
-	})
-	for _, ref := range refs {
-		sc := d.skillCat[ref.Skill]
-		u := &unitState{ref: ref, status: stPending, display: ref.Key, byLabel: map[string]*caseState{}}
-		if sc != nil {
-			u.plugin = sc.Plugin
-		}
-		d.buildCases(u, sc, filter)
-		u.total = len(u.cases)
-		// A unit with nothing queued never receives engine events, so settle it
-		// from its prior cases now — otherwise its group row would read "pending".
-		if len(u.cases) > 0 && !queuedCases(u.cases) {
-			u.status = caseAggStatus(u.cases)
-		}
-		d.index[ref] = len(d.units)
-		d.units = append(d.units, u)
-	}
-	d.buildTree()
 	d.buildExecLog()
 	return d
 }
 
-// buildCases pre-populates a unit's case rows from the catalog: every authored
-// case the provider applies to, so deleted cases drop out but everything still on
-// disk shows. A case the selection filter queues starts pending and runs live; the
-// rest are seeded from the last committed run (their stored result, or stNoData)
-// and rendered as prior. Live updates are matched back by label.
-func (d *dashboardModel) buildCases(u *unitState, sc *run.SkillCatalog, filter *run.Filter) {
-	if sc == nil {
-		return
+// caseFromPlan builds a case row from a resolved plan case. A queued case runs
+// live (prior=false) and shows its prior result until then; a non-queued case is
+// read-only (prior=true). The seeded status drives the glyph: its prior outcome
+// when one exists, else pending (queued) or no-data.
+func caseFromPlan(c plan.Case) *caseState {
+	cs := &caseState{
+		kind: c.Kind, label: c.Label, shouldTrigger: c.ShouldTrigger,
+		prior: !c.Queued, metrics: c.Prior,
 	}
-	prov := providerOf(u.ref.Key)
-	if u.ref.Kind == run.KindTriggers {
-		for _, t := range sc.Triggers {
-			if t.SkipsProvider(prov) {
-				continue
-			}
-			cr := &caseState{kind: run.KindTriggers, label: t.Query, shouldTrigger: t.ShouldTrigger}
-			d.seedCase(cr, u.ref, selectedCase(filter, run.KindTriggers, sc.Skill, t.Query))
-			u.cases = append(u.cases, cr)
-			u.byLabel[t.Query] = cr
-		}
-		return
+	switch {
+	case c.HasPrior:
+		cs.status = statusOf(c.PriorStatus)
+	case c.Queued:
+		cs.status = stPending
+	default:
+		cs.status = stNoData
 	}
-	for _, e := range sc.Evals {
-		if e.SkipsProvider(prov) {
-			continue
-		}
-		cr := &caseState{kind: run.KindEvals, label: e.ID}
-		d.seedCase(cr, u.ref, selectedCase(filter, run.KindEvals, sc.Skill, e.ID))
-		u.cases = append(u.cases, cr)
-		u.byLabel[e.ID] = cr
-	}
-}
-
-// seedCase fills a case row from the last committed run and classifies it. Every
-// case shows its prior result if it has one; a queued case (selected to run this
-// session) keeps prior=false so it counts toward progress and overwrites the prior
-// display with its live result as it completes (see liveDone). A non-queued case is
-// marked prior (shown read-only) or, with nothing ever recorded, no-data.
-func (d *dashboardModel) seedCase(cr *caseState, ref run.UnitRef, queued bool) {
-	hadPrior := d.seedPrior(cr, ref)
-	cr.prior = !queued
-	if !hadPrior {
-		cr.status = stPending
-		if !queued {
-			cr.status = stNoData
-		}
-	}
-}
-
-// seedPrior fills a row's status and metrics from the last committed run for its
-// tier, returning whether a stored result was found; it leaves the zero (pending)
-// status when there is none.
-func (d *dashboardModel) seedPrior(cr *caseState, ref run.UnitRef) bool {
-	if cr.kind == run.KindTriggers {
-		m, ok := d.prior.TriggerPrevious(ref, cr.label)
-		if !ok || m.Passed == nil {
-			return false
-		}
-		cr.status = boolStatus(*m.Passed)
-		cr.metrics = run.ItemMetrics{Hits: m.Hits, Runs: m.Runs, AvgRunSeconds: m.AvgRunSeconds}
-		if m.Estimate != nil {
-			cr.metrics.InputTokens = new(m.Estimate.InputTokens)
-			cr.metrics.CostUSD = m.Estimate.InputCostUSD
-		}
-		return true
-	}
-	m, ok := d.prior.EvalPrevious(ref, cr.label)
-	if !ok || (m.Passed == nil && !m.Errored) {
-		return false
-	}
-	cr.status = boolStatus(m.Passed != nil && *m.Passed)
-	if m.Errored {
-		cr.status = stError
-	}
-	cr.metrics = run.ItemMetrics{AvgRunSeconds: m.AvgRunSeconds, AssertPassed: m.AssertPassed, AssertTotal: m.AssertTotal}
-	if m.Measured != nil {
-		cr.metrics.InputTokens = m.Measured.InputTokens
-		cr.metrics.OutputTokens = m.Measured.OutputTokens
-		cr.metrics.CacheReadTokens = m.Measured.CacheReadTokens
-		cr.metrics.CacheCreationTokens = m.Measured.CacheCreationTokens
-		cr.metrics.CostUSD = m.Measured.CostUSD
-	}
-	return true
-}
-
-// boolStatus maps a stored pass/fail bool to its dashboard status.
-func boolStatus(passed bool) status {
-	if passed {
-		return stPass
-	}
-	return stFail
+	return cs
 }
 
 // caseAggStatus rolls a set of case statuses into one settled status — used both
@@ -427,63 +353,16 @@ func queuedCases(cases []*caseState) bool {
 	return false
 }
 
-// buildTree groups the (already execution-ordered) units into plugin → skill →
-// model for the left pane.
-func (d *dashboardModel) buildTree() {
-	for i, u := range d.units {
-		if len(d.tree) == 0 || d.tree[len(d.tree)-1].name != u.plugin {
-			d.tree = append(d.tree, pluginGroup{name: u.plugin})
-		}
-		pi := len(d.tree) - 1
-		sk := d.tree[pi].skills
-		if len(sk) == 0 || sk[len(sk)-1].skill != u.ref.Skill {
-			title := u.ref.Skill
-			if sc := d.skillCat[u.ref.Skill]; sc != nil && sc.Title != "" {
-				title = sc.Title
-			}
-			d.tree[pi].skills = append(d.tree[pi].skills, skillGroup{skill: u.ref.Skill, title: title})
-		}
-		si := len(d.tree[pi].skills) - 1
-		md := d.tree[pi].skills[si].models
-		if len(md) == 0 || md[len(md)-1].key != u.ref.Key {
-			d.tree[pi].skills[si].models = append(d.tree[pi].skills[si].models,
-				modelGroup{key: u.ref.Key, display: u.display})
-		}
-		mi := len(d.tree[pi].skills[si].models) - 1
-		d.tree[pi].skills[si].models[mi].units = append(d.tree[pi].skills[si].models[mi].units, i)
-	}
-}
-
-// buildExecLog pre-populates the execution log from every unit's pre-built cases,
-// in plan order, so the Runs pane lists the pending executions up front instead of
+// buildExecLog pre-populates the execution log from every unit's plan cases, in
+// plan order, so the Runs pane lists the pending executions up front instead of
 // growing as each one starts. itemStarted matches back to these rows by label
-// (appending only a case the catalog did not predeclare).
+// (appending only a case the plan did not predeclare).
 func (d *dashboardModel) buildExecLog() {
 	for _, u := range d.units {
 		for _, c := range u.cases {
 			d.execLog = append(d.execLog, execItem{ref: u.ref, label: c.label})
 		}
 	}
-}
-
-// selectedCase reports whether a case is part of the run. A nil filter includes
-// everything; otherwise membership is the merged per-skill set the dashboard was
-// built with.
-func selectedCase(f *run.Filter, kind run.Kind, skill, key string) bool {
-	if f == nil {
-		return true
-	}
-	if kind == run.KindTriggers {
-		return f.Triggers[skill][key]
-	}
-	return f.Evals[skill][key]
-}
-
-func providerOf(key string) string {
-	if before, _, ok := strings.Cut(key, "/"); ok {
-		return before
-	}
-	return key
 }
 
 // ── message handling ───────────────────────────────────────────────────────
@@ -521,11 +400,11 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 		if u := d.unit(m.ref); u != nil {
 			u.done++
 			switch m.item.Status {
-			case run.StatusPass:
+			case plan.StatusPass:
 				u.passed++
-			case run.StatusError:
+			case plan.StatusError:
 				u.errored++
-			case run.StatusFail:
+			case plan.StatusFail:
 				u.failed++
 			}
 			if cr := u.byLabel[m.item.Label]; cr != nil {
@@ -580,7 +459,7 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 // distinguishes an eval's without-skill baseline phase from the run under test
 // that follows it; a baseline phase may have left an inflight entry and a live
 // timer, so the timer is reset either way and each phase times its own duration.
-func (d *dashboardModel) startCase(ref run.UnitRef, label string, baseline bool) {
+func (d *dashboardModel) startCase(ref plan.UnitRef, label string, baseline bool) {
 	d.markStarted()
 	u := d.unit(ref)
 	if u == nil {
@@ -633,14 +512,14 @@ func (d *dashboardModel) markStarted() {
 	}
 }
 
-func (d *dashboardModel) unit(ref run.UnitRef) *unitState {
+func (d *dashboardModel) unit(ref plan.UnitRef) *unitState {
 	if i, ok := d.index[ref]; ok {
 		return d.units[i]
 	}
 	return nil
 }
 
-func (d *dashboardModel) removeInflight(ref run.UnitRef, label string) {
+func (d *dashboardModel) removeInflight(ref plan.UnitRef, label string) {
 	for i := range d.inflight {
 		if d.inflight[i].ref == ref && d.inflight[i].label == label {
 			d.inflight = append(d.inflight[:i], d.inflight[i+1:]...)
@@ -856,7 +735,7 @@ func (d *dashboardModel) runTop() {
 }
 
 // runBottom jumps to the last execution in the list (the [G] key). The list is
-// plan-ordered, so the bottom is the last planned execution, not necessarily the
+// units-ordered, so the bottom is the last planned execution, not necessarily the
 // live one — following re-engages only if they coincide.
 func (d *dashboardModel) runBottom() {
 	n := len(d.execLog)

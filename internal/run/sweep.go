@@ -15,6 +15,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/workspace"
@@ -28,7 +29,7 @@ import (
 // across everything and then all evals.
 type SweepOptions struct {
 	Options
-	Tiers      Tiers
+	Tiers      plan.Tiers
 	Runs       int    // runs per query (triggers tier)
 	EvalFilter string // restrict evals to a single id ("" = all)
 	JudgeModel string
@@ -40,7 +41,7 @@ type SweepOptions struct {
 	// Filters narrows the run per resolved model, keyed by Selection.Key(). When
 	// non-nil, a model whose entry is nil is skipped entirely — the TUI uses this
 	// to honor --new per model. When nil, Options.Filter applies to every model.
-	Filters map[string]*Filter
+	Filters map[string]*plan.Filter
 }
 
 // Sweep runs the configured tiers in execution order: skill → model → tiers.

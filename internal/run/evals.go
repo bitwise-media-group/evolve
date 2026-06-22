@@ -20,6 +20,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/workspace"
@@ -119,12 +120,12 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	// modelApplicable is every eval valid for this model (skip_providers + skill
 	// only), ignoring the selection filter, so a partial rerun preserves the evals
 	// it does not touch. evals then narrows by the selection filter.
-	modelApplicable := applicableEvals(allEvals, provName, set.Skill, nil)
-	evals := applicableEvals(allEvals, provName, set.Skill, opts.Filter)
+	modelApplicable := plan.ApplicableEvals(allEvals, provName, set.Skill, nil)
+	evals := plan.ApplicableEvals(allEvals, provName, set.Skill, opts.Filter)
 	if len(evals) == 0 {
 		return false, nil
 	}
-	ref := UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: KindEvals}
+	ref := plan.UnitRef{Skill: set.Skill, Key: sel.Key(), Kind: plan.KindEvals}
 	ctx, span := tracer().Start(ctx, "evolve.unit", trace.WithAttributes(unitSpanAttrs(ref)...))
 	defer func() { endSpan(span, err) }()
 
@@ -146,9 +147,9 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 		rep.Warn("  warn: no behavioral runner for %s; token counts only\n", sel.Key())
 	}
 
-	mode := ModeCountOnly
+	mode := plan.ModeCountOnly
 	if execute {
-		mode = ModeRun
+		mode = plan.ModeRun
 	}
 	rep.UnitStarted(ref, len(runSet), 0, mode)
 
@@ -240,7 +241,7 @@ const (
 // before its own run rather than as a silent post-pass at the end of the unit.
 // priorBaseline is the entry's stored baseline (the staleness reference); the
 // returned map holds the baselines that re-ran this round, keyed by eval id.
-func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection, ref UnitRef,
+func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel provider.Selection, ref plan.UnitRef,
 	evalRunner provider.EvalRunner, cli string, evals []evalspec.Eval, entryResults []results.EvalResult,
 	priorBaseline *results.EvalSnapshot,
 ) (bool, map[string]results.EvalCaseMetrics, error) {
@@ -382,7 +383,7 @@ func mergeBaseline(old *results.EvalSnapshot, fresh map[string]results.EvalCaseM
 	return snap
 }
 
-func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref UnitRef,
+func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref plan.UnitRef,
 	evalRunner provider.EvalRunner, cli string, c evalspec.Eval, index int, skills []string, baseline bool,
 ) (evalOutcome, results.EvalResult, error) {
 	ctx, span := tracer().Start(ctx, "evolve.case", trace.WithAttributes(
@@ -466,8 +467,8 @@ func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref 
 		item := ItemResult{
 			Index:         index,
 			Label:         c.ID,
-			Status:        StatusError,
-			Metrics:       ItemMetrics{AvgRunSeconds: &runSeconds},
+			Status:        plan.StatusError,
+			Metrics:       plan.ItemMetrics{AvgRunSeconds: &runSeconds},
 			WorkspacePath: workdir,
 			LogPath:       logPath,
 		}
@@ -532,9 +533,9 @@ func runEval(ctx context.Context, opts EvalOptions, sel provider.Selection, ref 
 		}
 		fmt.Fprintf(&lines, "  [%s] %s: %s\n", mark, c.ID, graded[i].Text)
 	}
-	status := StatusFail
+	status := plan.StatusFail
 	if evalPassed {
-		status = StatusPass
+		status = plan.StatusPass
 	}
 
 	result := results.EvalResult{
@@ -581,8 +582,8 @@ func baselineDetail(id string, s *results.GradeSummary) string {
 
 // evalItemMetrics lifts a finished eval's measured usage and assertion tally
 // into the per-case metric pointers the dashboard renders.
-func evalItemMetrics(dur *float64, m *results.Measured, s *results.GradeSummary) ItemMetrics {
-	im := ItemMetrics{AvgRunSeconds: dur}
+func evalItemMetrics(dur *float64, m *results.Measured, s *results.GradeSummary) plan.ItemMetrics {
+	im := plan.ItemMetrics{AvgRunSeconds: dur}
 	if m != nil {
 		im.InputTokens = m.InputTokens
 		im.CacheReadTokens = m.CacheReadTokens
@@ -778,21 +779,4 @@ func mergeEvalResults(existing *results.EvalEntry, fresh []results.EvalResult,
 		}
 	}
 	return merged
-}
-
-func applicableEvals(evals []evalspec.Eval, providerName, skill string, f *Filter) []evalspec.Eval {
-	if !f.skillIncluded(skill) {
-		return nil
-	}
-	var out []evalspec.Eval
-	for _, c := range evals {
-		if c.SkipsProvider(providerName) {
-			continue
-		}
-		if !f.evalIncluded(skill, c.ID) {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
 }

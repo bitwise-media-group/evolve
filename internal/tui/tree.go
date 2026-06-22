@@ -3,7 +3,7 @@
 
 package tui
 
-import "github.com/bitwise-media-group/evolve/internal/run"
+import "github.com/bitwise-media-group/evolve/internal/plan"
 
 // nodeState is a leaf's tri-state selection. Partial is an initial-only state
 // (from --new analysis): once the user toggles a leaf it becomes on or off and
@@ -31,7 +31,7 @@ type treeNode struct {
 	// payloads, by node role:
 	selIdx  int             // model leaf -> index into the selections slice
 	skill   string          // skill / tier / case nodes
-	kind    run.Kind        // tier / case nodes -> which tier
+	kind    plan.Kind       // tier / case nodes -> which tier
 	caseKey string          // case leaf -> trigger query or eval id
 	skip    map[string]bool // case leaf -> provider names this case skips
 }
@@ -40,6 +40,45 @@ type treeNode struct {
 type tree struct {
 	nodes  []treeNode
 	cursor int // position within the currently visible rows
+
+	// display overrides a leaf's rendered checkbox (node index -> state), without
+	// touching its authoritative state. The form sets it on the case panes so a
+	// case shows whether it will actually run for any enabled model (the resolved
+	// plan), while toggles keep editing the leaf's own intent. nil = render state.
+	display map[int]nodeState
+}
+
+// displayState is the checkbox state to render for node i: a leaf's display
+// override if one is set, else its own state; a parent aggregates its leaves'
+// display states (every leaf on -> on, every leaf off -> off, else partial).
+func (t *tree) displayState(i int) nodeState {
+	if t.nodes[i].leaf {
+		if s, ok := t.display[i]; ok {
+			return s
+		}
+		return t.nodes[i].state
+	}
+	leaves := t.leaves(i)
+	if len(leaves) == 0 {
+		return nodeOff
+	}
+	on, off := 0, 0
+	for _, l := range leaves {
+		switch t.displayState(l) {
+		case nodeOn:
+			on++
+		case nodeOff:
+			off++
+		}
+	}
+	switch {
+	case on == len(leaves):
+		return nodeOn
+	case off == len(leaves):
+		return nodeOff
+	default:
+		return nodePartial
+	}
 }
 
 // add appends a node and returns its index, registering it with its parent.

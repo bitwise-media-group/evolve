@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -18,21 +20,21 @@ func TestExecutingPaneScrolls(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	ev := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindEvals}
+	filter := &plan.Filter{
 		Skills: map[string]bool{"solo-skill": true},
 		Evals:  map[string]map[string]bool{"solo-skill": {"e1": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 100, 24 // a short pane so the output overflows the result region
 
-	d.apply(unitStartedMsg{ref: ev, total: 1, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: ev, total: 1, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: ev, item: run.ItemStart{Index: 0, Label: "e1"}})
 	d.apply(itemDoneMsg{ref: ev, item: run.ItemResult{
-		Index: 0, Label: "e1", Status: run.StatusPass,
+		Index: 0, Label: "e1", Status: plan.StatusPass,
 		Output:  strings.TrimRight(strings.Repeat("output line\n", 30), "\n"),
 		Detail:  "  [PASS] e1: VERDICT-MARKER\n",
-		Metrics: run.ItemMetrics{AvgRunSeconds: new(1.0)},
+		Metrics: plan.ItemMetrics{AvgRunSeconds: new(1.0)},
 	}})
 
 	// Focus the Details pane so its scroll keys are live.

@@ -10,8 +10,8 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 // formAction is what a key press resolved to on the selection screen.
@@ -38,21 +38,23 @@ type formModel struct {
 	left     tree // providers -> models
 	triggers tree // plugin -> skills -> triggers
 	evals    tree // plugin -> skills -> evals
+	cat      []plan.SkillCatalog
 	sels     []provider.Selection
-	needs    map[string]map[run.CaseRef]bool // resolved model key -> case -> needs run
+	needs    map[string]map[plan.CaseRef]bool // resolved model key -> case -> needs run
 	focus    int
 	w, h     int
 }
 
 func newForm(
-	cat []run.SkillCatalog, sels []provider.Selection,
-	needs map[string]map[run.CaseRef]bool, notes map[run.CaseRef]string, evalFilter string,
+	cat []plan.SkillCatalog, sels []provider.Selection,
+	needs map[string]map[plan.CaseRef]bool, notes map[plan.CaseRef]string, evalFilter string,
 ) formModel {
 	st := deriveStates(needs)
 	f := formModel{
 		left:     buildProviderTree(sels, st),
-		triggers: buildTierTree(cat, run.KindTriggers, st, notes, evalFilter),
-		evals:    buildTierTree(cat, run.KindEvals, st, notes, evalFilter),
+		triggers: buildTierTree(cat, plan.KindTriggers, st, notes, evalFilter),
+		evals:    buildTierTree(cat, plan.KindEvals, st, notes, evalFilter),
+		cat:      cat,
 		sels:     sels,
 		needs:    needs,
 	}
@@ -60,6 +62,7 @@ func newForm(
 	f.left.collapseUnselected()
 	f.triggers.collapseUnselected()
 	f.evals.collapseUnselected()
+	f.resolve() // seed the case panes' displayed state from the initial plan
 	return f
 }
 
@@ -71,11 +74,11 @@ func newForm(
 type formStates struct {
 	model     map[string]nodeState // model key -> state
 	mNote     map[string]string    // grey fraction for partial models
-	caseState map[run.CaseRef]nodeState
+	caseState map[plan.CaseRef]nodeState
 }
 
-func deriveStates(needs map[string]map[run.CaseRef]bool) formStates {
-	involvedCases := map[run.CaseRef]bool{}
+func deriveStates(needs map[string]map[plan.CaseRef]bool) formStates {
+	involvedCases := map[plan.CaseRef]bool{}
 	involvedModels := map[string]bool{}
 	for mk, cm := range needs {
 		for cr, need := range cm {
@@ -88,7 +91,7 @@ func deriveStates(needs map[string]map[run.CaseRef]bool) formStates {
 	s := formStates{
 		model:     map[string]nodeState{},
 		mNote:     map[string]string{},
-		caseState: map[run.CaseRef]nodeState{},
+		caseState: map[plan.CaseRef]nodeState{},
 	}
 	for mk := range needs {
 		got := 0
@@ -167,9 +170,9 @@ func skipSet(names []string) map[string]bool {
 	return m
 }
 
-func tierCases(sc run.SkillCatalog, kind run.Kind) []caseRow {
+func tierCases(sc plan.SkillCatalog, kind plan.Kind) []caseRow {
 	var rows []caseRow
-	if kind == run.KindTriggers {
+	if kind == plan.KindTriggers {
 		for _, tr := range sc.Triggers {
 			rows = append(rows, caseRow{key: tr.Query, label: triggerLabel(tr), skip: skipSet(tr.SkipProviders)})
 		}
@@ -184,8 +187,8 @@ func tierCases(sc run.SkillCatalog, kind run.Kind) []caseRow {
 // buildTierTree builds a plugin → skill → case tree for one tier, with each leaf
 // in its per-case tri-state and annotated with the reason it is preselected.
 // --eval forces non-matching evals off.
-func buildTierTree(cat []run.SkillCatalog, kind run.Kind, st formStates,
-	notes map[run.CaseRef]string, evalFilter string,
+func buildTierTree(cat []plan.SkillCatalog, kind plan.Kind, st formStates,
+	notes map[plan.CaseRef]string, evalFilter string,
 ) tree {
 	var t tree
 	pluginNode := map[string]int{}
@@ -204,9 +207,9 @@ func buildTierTree(cat []run.SkillCatalog, kind run.Kind, st formStates,
 			skill: sc.Skill, kind: kind, selIdx: -1,
 		})
 		for _, c := range cases {
-			cr := run.CaseRef{Skill: sc.Skill, Kind: kind, Case: c.key}
+			cr := plan.CaseRef{Skill: sc.Skill, Kind: kind, Case: c.key}
 			state, note := st.caseState[cr], notes[cr]
-			if kind == run.KindEvals && evalFilter != "" && c.key != evalFilter {
+			if kind == plan.KindEvals && evalFilter != "" && c.key != evalFilter {
 				state, note = nodeOff, ""
 			}
 			t.add(treeNode{
@@ -267,11 +270,13 @@ func (f formModel) update(key string) (formModel, formAction) {
 	case " ", "space":
 		if i := t.currentNode(); i >= 0 {
 			t.toggle(i)
+			f.resolve() // re-resolve the plan so the case panes reflect the new selection
 		}
 	case "enter":
 		if i := t.currentNode(); i >= 0 {
 			if t.nodes[i].leaf {
 				t.toggle(i)
+				f.resolve()
 			} else {
 				t.nodes[i].expanded = !t.nodes[i].expanded
 			}
@@ -286,58 +291,114 @@ func (f formModel) update(key string) (formModel, formAction) {
 	return f, actionNone
 }
 
-// request turns the current selection into a RunRequest: a per-model filter so
-// each model runs exactly the cases it should. The run rule per (model m, case
-// c): both must be selected (on/partial) and applicable, and then it runs if
-// the model is fully on (runs all its selected cases), or the case is fully on
-// (runs for all selected models), or — both partial — the per-case matrix says m
-// needs c. That reproduces non-TUI mode while letting the user widen it.
+// request turns the current selection into a RunRequest: the enabled models (in
+// display order) and a plan.Selection capturing each model's and case's intent
+// plus the preselect baseline. The engine resolves it through plan.Build — the
+// same resolver this form previews with — so what runs matches what is shown.
 func (f formModel) request() RunRequest {
-	var models []provider.Selection
-	filters := map[string]*run.Filter{}
-	for _, mn := range f.left.nodes {
-		if !mn.leaf || mn.state == nodeOff {
-			continue
-		}
-		sel := f.sels[mn.selIdx]
-		ff := &run.Filter{
-			Skills:   map[string]bool{},
-			Triggers: map[string]map[string]bool{},
-			Evals:    map[string]map[string]bool{},
-		}
-		f.collectInto(ff, mn.state, sel, f.triggers, run.KindTriggers)
-		f.collectInto(ff, mn.state, sel, f.evals, run.KindEvals)
-		if len(ff.Skills) > 0 {
-			models = append(models, sel)
-			filters[sel.Key()] = ff
-		}
-	}
-	return RunRequest{Models: models, Filters: filters}
+	return RunRequest{Models: f.enabledModels(), Selection: f.selection()}
 }
 
-// collectInto adds the cases of one tier that this model should run into ff.
-func (f formModel) collectInto(ff *run.Filter, mState nodeState, sel provider.Selection, src tree, kind run.Kind) {
-	dst := ff.Triggers
-	if kind == run.KindEvals {
-		dst = ff.Evals
+// selection captures the form's current intent as a plan.Selection over the whole
+// matrix (every model and case, plus the preselect baseline).
+func (f formModel) selection() plan.Selection {
+	sel := plan.Selection{
+		Models: map[string]plan.State{},
+		Cases:  map[plan.CaseRef]plan.State{},
+		Needs:  f.needs,
 	}
-	mk, provName := sel.Key(), sel.Provider.Name()
-	for _, cn := range src.nodes {
-		if !cn.leaf {
-			continue
+	for _, mn := range f.left.nodes {
+		if mn.leaf {
+			sel.Models[f.sels[mn.selIdx].Key()] = planState(mn.state)
 		}
-		// Seed an (empty, non-nil) per-skill set so an unselected tier reads as
-		// "none included", not "unrestricted".
-		if dst[cn.skill] == nil {
-			dst[cn.skill] = map[string]bool{}
+	}
+	for _, t := range []*tree{&f.triggers, &f.evals} {
+		for _, cn := range t.nodes {
+			if cn.leaf {
+				sel.Cases[plan.CaseRef{Skill: cn.skill, Kind: cn.kind, Case: cn.caseKey}] = planState(cn.state)
+			}
 		}
-		if cn.state == nodeOff || cn.skip[provName] {
-			continue
+	}
+	return sel
+}
+
+// enabledModels is the selections whose model leaf is not off, in display order.
+func (f formModel) enabledModels() []provider.Selection {
+	var out []provider.Selection
+	for _, mn := range f.left.nodes {
+		if mn.leaf && planState(mn.state) != plan.Off {
+			out = append(out, f.sels[mn.selIdx])
 		}
-		if mState == nodeOn || cn.state == nodeOn || f.needs[mk][run.CaseRef{Skill: cn.skill, Kind: kind, Case: cn.caseKey}] {
-			dst[cn.skill][cn.caseKey] = true
-			ff.Skills[cn.skill] = true
+	}
+	return out
+}
+
+// resolve rebuilds the live plan from the current selection and refreshes the
+// case panes' displayed checkboxes from it. Disabling a model immediately
+// unchecks a case only that model would have run, so the form shows exactly what
+// will run before the user submits — the engine owns the resolution, the form
+// just reflects it.
+func (f *formModel) resolve() {
+	disp := caseDisplayFromPlan(plan.Build(f.cat, f.enabledModels(), f.selection(), plan.PriorMetrics{}))
+	for _, t := range []*tree{&f.triggers, &f.evals} {
+		t.display = map[int]nodeState{}
+		for i, cn := range t.nodes {
+			if cn.leaf {
+				t.display[i] = disp[plan.CaseRef{Skill: cn.skill, Kind: cn.kind, Case: cn.caseKey}]
+			}
 		}
+	}
+}
+
+// caseDisplayFromPlan reduces a resolved plan to a per-case checkbox state: a case
+// is on when every enabled model that has it will run it, off when none will, and
+// partial in between. A case absent from the plan (no enabled model has it) is off.
+func caseDisplayFromPlan(p plan.Plan) map[plan.CaseRef]nodeState {
+	type agg struct{ queued, total int }
+	tally := map[plan.CaseRef]*agg{}
+	for _, pl := range p.Plugins {
+		for _, sk := range pl.Skills {
+			for _, mdl := range sk.Models {
+				for _, u := range mdl.Units {
+					for _, c := range u.Cases {
+						cr := plan.CaseRef{Skill: sk.Skill, Kind: c.Kind, Case: c.Label}
+						a := tally[cr]
+						if a == nil {
+							a = &agg{}
+							tally[cr] = a
+						}
+						a.total++
+						if c.Queued {
+							a.queued++
+						}
+					}
+				}
+			}
+		}
+	}
+	out := make(map[plan.CaseRef]nodeState, len(tally))
+	for cr, a := range tally {
+		switch a.queued {
+		case 0:
+			out[cr] = nodeOff
+		case a.total:
+			out[cr] = nodeOn
+		default:
+			out[cr] = nodePartial
+		}
+	}
+	return out
+}
+
+// planState maps a form node's tri-state to the planner's.
+func planState(s nodeState) plan.State {
+	switch s {
+	case nodeOn:
+		return plan.On
+	case nodePartial:
+		return plan.Partial
+	default:
+		return plan.Off
 	}
 }
 
@@ -432,11 +493,7 @@ func renderTree(t *tree, focused bool, w, h int) string {
 }
 
 func checkbox(t *tree, i int) string {
-	st := t.checkState(i)
-	if t.nodes[i].leaf {
-		st = t.nodes[i].state
-	}
-	switch st {
+	switch t.displayState(i) {
 	case nodeOn:
 		return passStyle.Render("[x]")
 	case nodePartial:

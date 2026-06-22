@@ -11,6 +11,7 @@ import (
 
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -60,14 +61,14 @@ type fakeReporter struct {
 	unitStarted  int
 }
 
-func (r *fakeReporter) UnitStarted(run.UnitRef, int, int, run.Mode)       { r.unitStarted++ }
-func (r *fakeReporter) UnitSkipped(run.UnitRef, string)                   { r.unitSkipped++ }
-func (r *fakeReporter) ItemStarted(run.UnitRef, run.ItemStart)            {}
-func (r *fakeReporter) ItemDone(run.UnitRef, run.ItemResult)              { r.itemDone++ }
-func (r *fakeReporter) BaselineStarted(run.UnitRef, run.ItemStart)        {}
-func (r *fakeReporter) BaselineDone(run.UnitRef, run.ItemResult)          { r.baselineDone++ }
-func (r *fakeReporter) UnitFinished(run.UnitRef, run.UnitSummary, string) { r.unitFinished++ }
-func (r *fakeReporter) Warn(string, ...any)                               {}
+func (r *fakeReporter) UnitStarted(plan.UnitRef, int, int, plan.Mode)      { r.unitStarted++ }
+func (r *fakeReporter) UnitSkipped(plan.UnitRef, string)                   { r.unitSkipped++ }
+func (r *fakeReporter) ItemStarted(plan.UnitRef, run.ItemStart)            {}
+func (r *fakeReporter) ItemDone(plan.UnitRef, run.ItemResult)              { r.itemDone++ }
+func (r *fakeReporter) BaselineStarted(plan.UnitRef, run.ItemStart)        {}
+func (r *fakeReporter) BaselineDone(plan.UnitRef, run.ItemResult)          { r.baselineDone++ }
+func (r *fakeReporter) UnitFinished(plan.UnitRef, run.UnitSummary, string) { r.unitFinished++ }
+func (r *fakeReporter) Warn(string, ...any)                                {}
 
 // metricByName indexes collected metrics by instrument name for assertions.
 func metricByName(t *testing.T, rm metricdata.ResourceMetrics) map[string]metricdata.Metrics {

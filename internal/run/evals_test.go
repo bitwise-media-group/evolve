@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -29,26 +30,26 @@ type captureReporter struct {
 	baselineStarts []ItemStart
 }
 
-func (r *captureReporter) UnitStarted(UnitRef, int, int, Mode) {}
-func (r *captureReporter) UnitSkipped(UnitRef, string)         {}
-func (r *captureReporter) ItemStarted(UnitRef, ItemStart)      {}
-func (r *captureReporter) BaselineStarted(_ UnitRef, item ItemStart) {
+func (r *captureReporter) UnitStarted(plan.UnitRef, int, int, plan.Mode) {}
+func (r *captureReporter) UnitSkipped(plan.UnitRef, string)              {}
+func (r *captureReporter) ItemStarted(plan.UnitRef, ItemStart)           {}
+func (r *captureReporter) BaselineStarted(_ plan.UnitRef, item ItemStart) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.baselineStarts = append(r.baselineStarts, item)
 }
-func (r *captureReporter) ItemDone(_ UnitRef, item ItemResult) {
+func (r *captureReporter) ItemDone(_ plan.UnitRef, item ItemResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.items = append(r.items, item)
 }
-func (r *captureReporter) BaselineDone(_ UnitRef, item ItemResult) {
+func (r *captureReporter) BaselineDone(_ plan.UnitRef, item ItemResult) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.baselines = append(r.baselines, item)
 }
-func (r *captureReporter) UnitFinished(UnitRef, UnitSummary, string) {}
-func (r *captureReporter) Warn(string, ...any)                       {}
+func (r *captureReporter) UnitFinished(plan.UnitRef, UnitSummary, string) {}
+func (r *captureReporter) Warn(string, ...any)                            {}
 
 // fakeEvalProvider implements Provider + EvalRunner (+ TokenCounter when
 // counting). reportsUsage=false models a cursor-like provider.

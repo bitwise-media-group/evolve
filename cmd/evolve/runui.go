@@ -15,6 +15,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/telemetry"
@@ -73,9 +74,9 @@ func forward(rep run.Reporter) io.Writer {
 // runs engine via the supplied callback once the user chooses RUN, keeping the
 // dashboard interactive until they quit. The callback receives the chosen
 // selections/filter and the reporter to attach to its run.Options.
-func runWithUI(cmd *cobra.Command, cat []run.SkillCatalog, sels []provider.Selection,
-	needs map[string]map[run.CaseRef]bool, notes map[run.CaseRef]string, evalFilter string,
-	prior run.PriorMetrics,
+func runWithUI(cmd *cobra.Command, cat []plan.SkillCatalog, sels []provider.Selection,
+	needs map[string]map[plan.CaseRef]bool, notes map[plan.CaseRef]string, evalFilter string,
+	prior plan.PriorMetrics,
 	engine func(ctx context.Context, req tui.RunRequest, rep run.Reporter) (bool, error),
 ) (bool, error) {
 	runReq := make(chan tui.RunRequest, 1)
@@ -140,7 +141,7 @@ func runSub(cmd, sub *cobra.Command, failures *bool) error {
 // checked by default, and the config/CLI filters (--plugin/--skill/--eval/--new/--failed)
 // refine the initial selection. withChecksReport adds `run all`'s static-checks step
 // before and report step after.
-func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
+func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 	triggerRuns int, evalFilter, judgeModel, failMsg string, withChecksReport bool) error {
 	var failures bool
 	if withChecksReport {
@@ -184,7 +185,7 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
 
 	// Seed the dashboard with the last committed metrics so it can color deltas as
 	// cases finish — the live run is compared against the run it replaces.
-	prior := run.LoadPriorMetrics(cat)
+	prior := plan.LoadPriorMetrics(cat)
 
 	// Per-tier timeouts: the triggers/evals defaults (120/600) unless the user
 	// set --timeout explicitly, in which case it applies to both.
@@ -200,22 +201,27 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def run.Tiers,
 		// The per-model filters already encode the plugin/skill narrowing.
 		base.PluginFilter = nil
 		base.SkillFilter = nil
-		// The form's per-model Filters already encode --new/--failed/--modified,
-		// so clear those flags or the engine would re-filter the user's selection.
+		// The form's Selection already encodes --new/--failed/--modified, so clear
+		// those flags or the engine would re-filter the user's selection.
 		base = base.ClearSelectionFlags()
+
+		// Resolve the form's Selection through the shared planner — the same
+		// plan.Build the form previewed with — and execute its per-model filters, so
+		// what runs is exactly what the form showed.
+		p := plan.Build(cat, req.Models, req.Selection, prior)
 
 		// One interleaved sweep: per skill, each model runs its triggers then its
 		// evals before the next. Per-model filters skip a model whose results are
 		// already complete and rerun a stale one — matching --new.
 		failed, err := run.Sweep(ctx, run.SweepOptions{
 			Options:        base,
-			Tiers:          run.Tiers{Triggers: true, Evals: true},
+			Tiers:          plan.Tiers{Triggers: true, Evals: true},
 			Runs:           triggerRuns,
 			EvalFilter:     evalFilter,
 			JudgeModel:     judgeModel,
 			TriggerTimeout: triggerTO,
 			EvalTimeout:    evalTO,
-			Filters:        req.Filters,
+			Filters:        p.Filters(),
 		})
 		if err != nil {
 			_ = saveCounter(common.Counter)

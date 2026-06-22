@@ -42,10 +42,17 @@ Generated/build outputs not to edit by hand: `docs/` (run `make docs`), `dist/` 
 ## Packages (`internal/`)
 
 - `cli` — shared command plumbing: global `Options`, layered `.evolve` config, provider/repo/threshold resolution.
-- `run` — the three eval engines (`checks.go`, `triggers.go`, `evals.go`, `sweep.go`), the execution `plan.go`, and the
-  `Reporter` seam (`reporter.go`) the TUI and plain output both implement.
-- `tui` — the interactive bubbletea selection form and live run dashboard; a presentation layer over `run`. **See
-  DESIGN.md → TUI for the full wiring.**
+- `plan` — the planner: the single owner of _what runs, for which models, in what order_. Holds the structural types
+  (`UnitRef`, `Kind`, `Status`, `Mode`, `ItemMetrics`, `CaseRef`, `Filter`, `Tiers`, `SkillCatalog`), applicability +
+  prior-metrics, and the canonical model — `Plan` (ordered plugin→skill→model→unit→case tree), `Selection` (the form's
+  enable/disable intent), and `Build` (resolve a Selection into a Plan with per-model queued/prior). `run` and `tui`
+  both import it and must not re-derive ordering or selection; it imports neither, so the two cannot drift from it.
+- `run` — the three eval engines (`checks.go`, `triggers.go`, `evals.go`, `sweep.go`), the unit enumeration / preselect
+  matrix (`plan.go`: `Catalog`/`Plan`/`Needs`), and the `Reporter` seam (`reporter.go`) the TUI and plain output both
+  implement. Executes the per-model filters `plan.Build` resolves.
+- `tui` — the interactive bubbletea selection form and live run dashboard; a presentation layer over `plan` (the form
+  previews `plan.Build`; the dashboard projects the `plan.Plan` the engine runs). **See DESIGN.md → TUI for the full
+  wiring.**
 - `provider` — the agent providers: model matrices + pricing, runner-CLI command construction, output parsing.
 - `runner` — executes provider command specs; the only package touching `os/exec` (so engines test against a fake).
 - `grade` — assertion evaluation: deterministic checks (files/regex/commands) plus an LLM judge.

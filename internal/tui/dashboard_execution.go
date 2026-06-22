@@ -10,8 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 // The left "Execution" pane: the plugin -> skill -> model -> case tree, its
@@ -210,12 +210,12 @@ func (d dashboardModel) buildNodeRefsWith(expanded func(nodeKey) bool) []nodeRef
 						// One ruler separates the trigger block from the eval block.
 						// Units within a model are ordered triggers-before-evals, so
 						// the boundary is the first eval case after a trigger was shown.
-						if !ruled && trigShown && d.units[ui].ref.Kind == run.KindEvals {
+						if !ruled && trigShown && d.units[ui].ref.Kind == plan.KindEvals {
 							nodes = append(nodes, nodeRef{kind: nkRule, pi: pi, si: si, mi: mi})
 							ruled = true
 						}
 						nodes = append(nodes, nodeRef{kind: nkCase, pi: pi, si: si, mi: mi, unitIdx: ui, caseIdx: ci})
-						if d.units[ui].ref.Kind == run.KindTriggers {
+						if d.units[ui].ref.Kind == plan.KindTriggers {
 							trigShown = true
 						}
 					}
@@ -323,7 +323,7 @@ func (d dashboardModel) caseLine(n nodeRef, w int, hot bool) string {
 	}
 	prefix := gutter + "      " + d.caseGlyph(c) + " "
 	label := c.label
-	if c.kind == run.KindEvals {
+	if c.kind == plan.KindEvals {
 		label = "eval: " + label
 	}
 	// During the baseline phase there are no metrics yet; render just the label in
@@ -368,7 +368,7 @@ func joinRow(label string, pad int, metric string, basis deltaBasis, hot bool) s
 // caseMetricCells renders a case's metric block, tinting each cell by its delta
 // once the case is complete and a comparison basis exists. It returns the basis so
 // the row can flag a baseline-based delta.
-func (d dashboardModel) caseMetricCells(ref run.UnitRef, c *caseState) (string, deltaBasis) {
+func (d dashboardModel) caseMetricCells(ref plan.UnitRef, c *caseState) (string, deltaBasis) {
 	rate := caseRate(c)
 	avg := fmtDurPtr(c.metrics.AvgRunSeconds)
 	in := fmtTokPtr(c.metrics.InputTokens)
@@ -440,7 +440,7 @@ func (d dashboardModel) groupMetric(units []int) (string, deltaBasis) {
 }
 
 func caseRate(c *caseState) string {
-	if c.kind == run.KindTriggers {
+	if c.kind == plan.KindTriggers {
 		if c.metrics.Hits != nil && c.metrics.Runs != nil {
 			// Pass count is correct runs: hits for a should-trigger query, the
 			// non-firing runs for a should-not-trigger one — so a correct negative
@@ -854,7 +854,7 @@ func (d *dashboardModel) clampExecCursor() {
 }
 
 // execLogIndex finds the Runs-log row for a (unit, case) pair, newest first.
-func (d dashboardModel) execLogIndex(ref run.UnitRef, label string) int {
+func (d dashboardModel) execLogIndex(ref plan.UnitRef, label string) int {
 	for i := len(d.execLog) - 1; i >= 0; i-- {
 		if d.execLog[i].ref == ref && d.execLog[i].label == label {
 			return i

@@ -9,83 +9,23 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/manifest"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/results"
 )
-
-// Tiers selects which eval tiers a plan covers: a single-tier command enables
-// one, `run all` enables both.
-type Tiers struct {
-	Triggers bool
-	Evals    bool
-}
-
-// Filter narrows a sweep to specific skills and individual triggers/evals, on
-// top of the PluginFilter/SkillFilter/EvalFilter and per-case SkipProviders. A nil *Filter, or a
-// nil sub-map, imposes no restriction at that level — so the flag-only path
-// (Filter == nil) behaves exactly as before. The TUI selection form populates
-// it explicitly: an empty (non-nil) per-skill set means "this skill is included
-// but none of its cases", which a missing entry (nil) does not.
-type Filter struct {
-	Skills   map[string]bool            // nil = all skills
-	Triggers map[string]map[string]bool // skill -> selected trigger queries
-	Evals    map[string]map[string]bool // skill -> selected eval ids
-}
-
-func (f *Filter) skillIncluded(skill string) bool {
-	if f == nil || f.Skills == nil {
-		return true
-	}
-	return f.Skills[skill]
-}
-
-func (f *Filter) triggerIncluded(skill, query string) bool {
-	if f == nil || f.Triggers == nil {
-		return true
-	}
-	sub, ok := f.Triggers[skill]
-	if !ok {
-		return true
-	}
-	return sub[query]
-}
-
-func (f *Filter) evalIncluded(skill, id string) bool {
-	if f == nil || f.Evals == nil {
-		return true
-	}
-	sub, ok := f.Evals[skill]
-	if !ok {
-		return true
-	}
-	return sub[id]
-}
-
-// SkillCatalog is one skill's metadata and authored test cases — the data both
-// TUI panes draw from. It is the parsed spec, independent of any run.
-type SkillCatalog struct {
-	Plugin      string
-	Skill       string
-	Title       string // SKILL.md frontmatter title (falls back to name)
-	Description string
-	SkillDir    string // the skill's root directory, fingerprinted for --modified
-	ResultsDir  string // evals/<skill>, where results.<ext> persists
-	Triggers    []evalspec.Trigger
-	Evals       []evalspec.Eval
-}
 
 // Catalog loads every skill's triggers, evals, and SKILL.md metadata across the
 // repository. It ignores the plugin/skill/eval filters so the form can show the full
 // tree and merely preselect the flag-narrowed subset. A skill whose spec fails
 // to parse is included with whatever loaded (so the UI still lists it).
-func Catalog(opts Options) ([]SkillCatalog, error) {
+func Catalog(opts Options) ([]plan.SkillCatalog, error) {
 	sets, err := opts.Repo.EvalSets()
 	if err != nil {
 		return nil, err
 	}
-	cat := make([]SkillCatalog, 0, len(sets))
+	cat := make([]plan.SkillCatalog, 0, len(sets))
 	for _, set := range sets {
-		sc := SkillCatalog{Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir}
+		sc := plan.SkillCatalog{Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir}
 		if fields, ok, _ := manifest.Frontmatter(filepath.Join(set.SkillDir, "SKILL.md")); ok {
 			if sc.Title = fields["title"]; sc.Title == "" {
 				sc.Title = fields["name"]
@@ -109,17 +49,17 @@ func Catalog(opts Options) ([]SkillCatalog, error) {
 
 // Plan enumerates the execution units a sweep would produce for the given
 // selections, tiers, and filter — every (skill, provider/model, tier) triple
-// with at least one applicable case. It reuses the engine's applicability
+// with at least one applicable case. It reuses the planner's applicability
 // checks so the planned list cannot drift from what the engine runs.
-func Plan(cat []SkillCatalog, sels []provider.Selection, f *Filter, tiers Tiers) []UnitRef {
-	var units []UnitRef
+func Plan(cat []plan.SkillCatalog, sels []provider.Selection, f *plan.Filter, tiers plan.Tiers) []plan.UnitRef {
+	var units []plan.UnitRef
 	for _, sc := range cat {
 		for _, sel := range sels {
-			if tiers.Triggers && len(applicableTriggers(sc.Triggers, sel.Provider.Name(), sc.Skill, f)) > 0 {
-				units = append(units, UnitRef{Skill: sc.Skill, Key: sel.Key(), Kind: KindTriggers})
+			if tiers.Triggers && len(plan.ApplicableTriggers(sc.Triggers, sel.Provider.Name(), sc.Skill, f)) > 0 {
+				units = append(units, plan.UnitRef{Skill: sc.Skill, Key: sel.Key(), Kind: plan.KindTriggers})
 			}
-			if tiers.Evals && len(applicableEvals(sc.Evals, sel.Provider.Name(), sc.Skill, f)) > 0 {
-				units = append(units, UnitRef{Skill: sc.Skill, Key: sel.Key(), Kind: KindEvals})
+			if tiers.Evals && len(plan.ApplicableEvals(sc.Evals, sel.Provider.Name(), sc.Skill, f)) > 0 {
+				units = append(units, plan.UnitRef{Skill: sc.Skill, Key: sel.Key(), Kind: plan.KindEvals})
 			}
 		}
 	}
@@ -127,17 +67,8 @@ func Plan(cat []SkillCatalog, sels []provider.Selection, f *Filter, tiers Tiers)
 }
 
 // PlanFor enumerates the units one selection would run under a per-model filter.
-func PlanFor(cat []SkillCatalog, sel provider.Selection, f *Filter, tiers Tiers) []UnitRef {
+func PlanFor(cat []plan.SkillCatalog, sel provider.Selection, f *plan.Filter, tiers plan.Tiers) []plan.UnitRef {
 	return Plan(cat, []provider.Selection{sel}, f, tiers)
-}
-
-// CaseRef identifies one authored case (a trigger query or eval id) within a
-// tier, independent of any model. It is the key the selection form and the
-// per-case run matrix share.
-type CaseRef struct {
-	Skill string
-	Kind  Kind
-	Case  string // trigger query or eval id
 }
 
 // Needs reports, per resolved selection (keyed by Selection.Key()) and per
@@ -150,13 +81,13 @@ type CaseRef struct {
 // skip_providers honored), appear. Token-count estimates are deliberately not a
 // reason here nor in the engine, so this needs no token-counting round trip.
 func Needs(
-	opts Options, cat []SkillCatalog, sels []provider.Selection, def Tiers, evalFilter string,
-) (need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
-	need = make(map[string]map[CaseRef]bool, len(sels))
+	opts Options, cat []plan.SkillCatalog, sels []provider.Selection, def plan.Tiers, evalFilter string,
+) (need map[string]map[plan.CaseRef]bool, notes map[plan.CaseRef]string) {
+	need = make(map[string]map[plan.CaseRef]bool, len(sels))
 	for _, sel := range sels {
-		need[sel.Key()] = map[CaseRef]bool{}
+		need[sel.Key()] = map[plan.CaseRef]bool{}
 	}
-	notes = map[CaseRef]string{}
+	notes = map[plan.CaseRef]string{}
 	flags := opts.New || opts.Failed || opts.Modified
 	for _, sc := range cat {
 		if !opts.selects(sc.Plugin, sc.Skill) {
@@ -184,7 +115,7 @@ func Needs(
 // --modified preview, or empty strings when --modified is off (the only flag
 // that consults them). Empty on any read/walk error: a missing fingerprint is
 // treated as "no baseline", never a spurious modification.
-func needContentHashes(opts Options, sc SkillCatalog, def Tiers) (triggerContent, evalContent string) {
+func needContentHashes(opts Options, sc plan.SkillCatalog, def plan.Tiers) (triggerContent, evalContent string) {
 	if !opts.Modified {
 		return "", ""
 	}
@@ -201,11 +132,11 @@ func needContentHashes(opts Options, sc SkillCatalog, def Tiers) (triggerContent
 
 // needTriggers records, for each of a skill's triggers, whether each model would
 // run it and the aggregate preselect note — the same predicate the engine uses.
-func needTriggers(opts Options, sc SkillCatalog, sels []provider.Selection, flags bool,
-	file *results.File, content string, need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
+func needTriggers(opts Options, sc plan.SkillCatalog, sels []provider.Selection, flags bool,
+	file *results.File, content string, need map[string]map[plan.CaseRef]bool, notes map[plan.CaseRef]string) {
 
 	for _, t := range sc.Triggers {
-		cr := CaseRef{Skill: sc.Skill, Kind: KindTriggers, Case: t.Query}
+		cr := plan.CaseRef{Skill: sc.Skill, Kind: plan.KindTriggers, Case: t.Query}
 		var freshSpec string
 		if opts.Modified {
 			freshSpec = specHash(t)
@@ -231,14 +162,14 @@ func needTriggers(opts Options, sc SkillCatalog, sels []provider.Selection, flag
 }
 
 // needEvals is needTriggers for the eval tier, honoring evalFilter.
-func needEvals(opts Options, sc SkillCatalog, sels []provider.Selection, flags bool,
-	file *results.File, content, evalFilter string, need map[string]map[CaseRef]bool, notes map[CaseRef]string) {
+func needEvals(opts Options, sc plan.SkillCatalog, sels []provider.Selection, flags bool,
+	file *results.File, content, evalFilter string, need map[string]map[plan.CaseRef]bool, notes map[plan.CaseRef]string) {
 
 	for _, c := range sc.Evals {
 		if evalFilter != "" && c.ID != evalFilter {
 			continue
 		}
-		cr := CaseRef{Skill: sc.Skill, Kind: KindEvals, Case: c.ID}
+		cr := plan.CaseRef{Skill: sc.Skill, Kind: plan.KindEvals, Case: c.ID}
 		var freshSpec string
 		if opts.Modified {
 			freshSpec = evalFingerprint(c)

@@ -11,6 +11,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -29,7 +30,7 @@ func TestWrapReporterEnabledWraps(t *testing.T) {
 	if _, ok := got.(*telemetryReporter); !ok {
 		t.Fatalf("enabled WrapReporter should wrap, got %T", got)
 	}
-	got.ItemDone(run.UnitRef{Skill: "s", Key: "anthropic/m", Kind: run.KindEvals}, run.ItemResult{})
+	got.ItemDone(plan.UnitRef{Skill: "s", Key: "anthropic/m", Kind: plan.KindEvals}, run.ItemResult{})
 	if fake.itemDone != 1 {
 		t.Errorf("ItemDone not forwarded to the wrapped reporter: %d", fake.itemDone)
 	}
@@ -46,11 +47,11 @@ func TestTelemetryReporterRecordsMetricsAndLogs(t *testing.T) {
 	fake := &fakeReporter{}
 	tr := &telemetryReporter{Reporter: fake, log: slog.New(logCap), inst: inst}
 
-	ref := run.UnitRef{Skill: "skill", Key: "anthropic/claude", Kind: run.KindEvals}
+	ref := plan.UnitRef{Skill: "skill", Key: "anthropic/claude", Kind: plan.KindEvals}
 	dur, in := 1.5, 100
 	tr.ItemDone(ref, run.ItemResult{
-		Index: 0, Label: "case-1", Status: run.StatusPass,
-		Metrics: run.ItemMetrics{AvgRunSeconds: &dur, InputTokens: &in},
+		Index: 0, Label: "case-1", Status: plan.StatusPass,
+		Metrics: plan.ItemMetrics{AvgRunSeconds: &dur, InputTokens: &in},
 	})
 	unitAvg := 2.0
 	tr.UnitFinished(ref, run.UnitSummary{Executed: true, Passed: 1, Total: 1, AvgRunSeconds: &unitAvg}, "results.json")

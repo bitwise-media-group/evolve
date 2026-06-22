@@ -11,7 +11,7 @@ import (
 
 // instruments holds the metric instruments the reporter decorator records into.
 // They derive from the figures the engine already aggregates per item and unit
-// (run.ItemMetrics / run.UnitSummary). All attribute sets stay low-cardinality
+// (plan.ItemMetrics / run.UnitSummary). All attribute sets stay low-cardinality
 // (skill, provider, model, kind, status) — the per-case label is never a metric
 // attribute.
 type instruments struct {

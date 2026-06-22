@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 )
@@ -23,9 +24,9 @@ type recReporter struct {
 	started []string // "skill/kind"
 }
 
-func (r *recReporter) note(u UnitRef) {
+func (r *recReporter) note(u plan.UnitRef) {
 	kind := "triggers"
-	if u.Kind == KindEvals {
+	if u.Kind == plan.KindEvals {
 		kind = "evals"
 	}
 	r.mu.Lock()
@@ -33,14 +34,14 @@ func (r *recReporter) note(u UnitRef) {
 	r.mu.Unlock()
 }
 
-func (r *recReporter) UnitStarted(u UnitRef, _, _ int, _ Mode)   { r.note(u) }
-func (r *recReporter) UnitSkipped(UnitRef, string)               {}
-func (r *recReporter) ItemStarted(UnitRef, ItemStart)            {}
-func (r *recReporter) BaselineStarted(UnitRef, ItemStart)        {}
-func (r *recReporter) ItemDone(UnitRef, ItemResult)              {}
-func (r *recReporter) BaselineDone(UnitRef, ItemResult)          {}
-func (r *recReporter) UnitFinished(UnitRef, UnitSummary, string) {}
-func (r *recReporter) Warn(string, ...any)                       {}
+func (r *recReporter) UnitStarted(u plan.UnitRef, _, _ int, _ plan.Mode) { r.note(u) }
+func (r *recReporter) UnitSkipped(plan.UnitRef, string)                  {}
+func (r *recReporter) ItemStarted(plan.UnitRef, ItemStart)               {}
+func (r *recReporter) BaselineStarted(plan.UnitRef, ItemStart)           {}
+func (r *recReporter) ItemDone(plan.UnitRef, ItemResult)                 {}
+func (r *recReporter) BaselineDone(plan.UnitRef, ItemResult)             {}
+func (r *recReporter) UnitFinished(plan.UnitRef, UnitSummary, string)    {}
+func (r *recReporter) Warn(string, ...any)                               {}
 
 // twoSkillRepo builds a repo whose two skills each have triggers and evals.
 func twoSkillRepo(t *testing.T) *layout.Repo {
@@ -87,7 +88,7 @@ func TestSweepInterleavesTiersPerSkill(t *testing.T) {
 			Now:         func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) },
 			Reporter:    rep,
 		},
-		Tiers: Tiers{Triggers: true, Evals: true},
+		Tiers: plan.Tiers{Triggers: true, Evals: true},
 		Runs:  1,
 	}
 	if _, err := Sweep(context.Background(), opts); err != nil {

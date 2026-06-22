@@ -6,8 +6,8 @@ package tui
 import (
 	"testing"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 func TestColorDirections(t *testing.T) {
@@ -25,7 +25,7 @@ func TestColorDirections(t *testing.T) {
 }
 
 func TestEvalCaseMetricsOf(t *testing.T) {
-	m := evalCaseMetricsOf(stPass, run.ItemMetrics{
+	m := evalCaseMetricsOf(stPass, plan.ItemMetrics{
 		AvgRunSeconds: new(12.0), AssertPassed: new(3), AssertTotal: new(4),
 		InputTokens: new(100), OutputTokens: new(10), CostUSD: new(0.5),
 	})
@@ -38,16 +38,16 @@ func TestEvalCaseMetricsOf(t *testing.T) {
 	if m.Measured == nil || m.Measured.InputTokens == nil || *m.Measured.InputTokens != 100 {
 		t.Errorf("measured = %+v, want input 100", m.Measured)
 	}
-	if e := evalCaseMetricsOf(stError, run.ItemMetrics{}); !e.Errored {
+	if e := evalCaseMetricsOf(stError, plan.ItemMetrics{}); !e.Errored {
 		t.Error("an error status should set Errored")
 	}
 }
 
 func TestCaseDeltaBasisFallback(t *testing.T) {
-	ev := run.UnitRef{Skill: "s", Key: "fake/m1", Kind: run.KindEvals}
-	d := dashboardModel{prior: run.PriorMetrics{}, liveBaseline: map[caseKey]results.EvalCaseMetrics{}}
-	c := &caseState{kind: run.KindEvals, label: "e1", status: stPass,
-		metrics: run.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}}
+	ev := plan.UnitRef{Skill: "s", Key: "fake/m1", Kind: plan.KindEvals}
+	d := dashboardModel{prior: plan.PriorMetrics{}, liveBaseline: map[caseKey]results.EvalCaseMetrics{}}
+	c := &caseState{kind: plan.KindEvals, label: "e1", status: stPass,
+		metrics: plan.ItemMetrics{AssertPassed: new(1), AssertTotal: new(1)}}
 
 	// No prior of any kind: no basis, no delta.
 	if _, basis := d.caseDelta(ev, c); basis != basisNone {

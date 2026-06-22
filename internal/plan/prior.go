@@ -1,7 +1,7 @@
 // Copyright 2026 BitWise Media Group Ltd
 // SPDX-License-Identifier: MIT
 
-package run
+package plan
 
 import "github.com/bitwise-media-group/evolve/internal/results"
 

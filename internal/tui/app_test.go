@@ -9,6 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/provider"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -25,7 +27,7 @@ func TestRunTransitionAndDashboard(t *testing.T) {
 	if len(m.dash.units) != 2 {
 		t.Fatalf("dashboard units = %d, want 2", len(m.dash.units))
 	}
-	if m.dash.units[0].ref.Kind != run.KindTriggers || m.dash.units[1].ref.Kind != run.KindEvals {
+	if m.dash.units[0].ref.Kind != plan.KindTriggers || m.dash.units[1].ref.Kind != plan.KindEvals {
 		t.Fatalf("units not ordered triggers→evals: %+v", m.dash.units)
 	}
 	// The triggers unit pre-lists its applicable cases (q1, q2) so they render
@@ -36,19 +38,19 @@ func TestRunTransitionAndDashboard(t *testing.T) {
 
 	// Drive the triggers unit to completion via the streamed events.
 	ref := m.dash.units[0].ref
-	m = step(m, unitStartedMsg{ref: ref, total: 2, mode: run.ModeRun})
+	m = step(m, unitStartedMsg{ref: ref, total: 2, mode: plan.ModeRun})
 	m = step(m, itemStartedMsg{ref: ref, item: run.ItemStart{Index: 0, Label: "q1"}})
 	if len(m.dash.inflight) != 1 {
 		t.Fatalf("inflight = %d, want 1 after itemStarted", len(m.dash.inflight))
 	}
-	m = step(m, itemDoneMsg{ref: ref, item: run.ItemResult{Index: 0, Label: "q1", Status: run.StatusPass}})
+	m = step(m, itemDoneMsg{ref: ref, item: run.ItemResult{Index: 0, Label: "q1", Status: plan.StatusPass}})
 	if len(m.dash.inflight) != 0 {
 		t.Errorf("inflight = %d, want 0 after itemDone", len(m.dash.inflight))
 	}
 	if m.dash.units[0].byLabel["q1"].status != stPass {
 		t.Errorf("case q1 status = %v, want pass", m.dash.units[0].byLabel["q1"].status)
 	}
-	m = step(m, itemDoneMsg{ref: ref, item: run.ItemResult{Index: 1, Label: "q2", Status: run.StatusPass}})
+	m = step(m, itemDoneMsg{ref: ref, item: run.ItemResult{Index: 1, Label: "q2", Status: plan.StatusPass}})
 	m = step(m, unitFinishedMsg{ref: ref, sum: run.UnitSummary{Executed: true, Passed: 2, Total: 2}, savedRel: "evals/x/results.json"})
 	if m.dash.units[0].status != stPass {
 		t.Errorf("unit status = %v, want pass", m.dash.units[0].status)
@@ -91,16 +93,15 @@ func TestTitleBarAlignment(t *testing.T) {
 	cat := soloCatalog(t)
 	_, m1 := soloModels()
 	key := m1.Key()
-	tr := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindTriggers}
-	ev := run.UnitRef{Skill: "solo-skill", Key: key, Kind: run.KindEvals}
-	filter := &run.Filter{
+	tr := plan.UnitRef{Skill: "solo-skill", Key: key, Kind: plan.KindTriggers}
+	filter := &plan.Filter{
 		Skills:   map[string]bool{"solo-skill": true},
 		Triggers: map[string]map[string]bool{"solo-skill": {"q1": true}},
 		Evals:    map[string]map[string]bool{"solo-skill": {"e1": true}},
 	}
-	d := newDashboard(cat, []run.UnitRef{tr, ev}, filter, run.PriorMetrics{})
+	d := dashFromFilter(cat, []provider.Selection{m1}, filter, plan.PriorMetrics{})
 	d.w, d.h = 140, 30
-	d.apply(unitStartedMsg{ref: tr, total: 1, mode: run.ModeRun})
+	d.apply(unitStartedMsg{ref: tr, total: 1, mode: plan.ModeRun})
 	d.apply(itemStartedMsg{ref: tr, item: run.ItemStart{Label: "q1"}})
 
 	lines := strings.Split(d.view(), "\n")

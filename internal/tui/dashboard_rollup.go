@@ -10,8 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
-	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
 // The top-right "Rollup" pane: per-(skill, model) rows ranked by pass-rate change
@@ -111,9 +111,9 @@ func (d dashboardModel) buildSkillRow(sg skillGroup, mg modelGroup) skillRow {
 	for _, ui := range mg.units {
 		u := d.units[ui]
 		switch u.ref.Kind {
-		case run.KindEvals:
+		case plan.KindEvals:
 			d.fillEvalRow(&row, u)
-		case run.KindTriggers:
+		case plan.KindTriggers:
 			d.fillTrigRow(&row, u)
 		}
 	}

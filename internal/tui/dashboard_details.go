@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
-	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
 // The right-column "Details" pane: the selected execution's pinned header above
@@ -56,7 +56,7 @@ func (d dashboardModel) detailHeader(e execItem, w int) []string {
 	}
 	c := u.byLabel[e.label]
 	kind := "trigger"
-	if e.ref.Kind == run.KindEvals {
+	if e.ref.Kind == plan.KindEvals {
 		kind = "eval"
 	}
 	out := []string{
@@ -153,7 +153,7 @@ func writeBlock(b *strings.Builder, title, text string, w, maxRows int) {
 // prompt under test stays visible throughout.
 func (d dashboardModel) writePrompt(b *strings.Builder, e execItem, w int) {
 	wrap := lipgloss.NewStyle().Width(max(w, 10))
-	if e.ref.Kind == run.KindTriggers {
+	if e.ref.Kind == plan.KindTriggers {
 		b.WriteString(headerDetailsStyle.Render("Query"))
 		b.WriteString("\n")
 		b.WriteString(wrap.Render(e.label))
@@ -176,7 +176,7 @@ func (d dashboardModel) writeSpec(b *strings.Builder, e execItem, w int) {
 	wrap := lipgloss.NewStyle().Width(max(w, 10))
 	sc := d.skillCat[e.ref.Skill]
 	d.writePrompt(b, e, w)
-	if e.ref.Kind == run.KindTriggers {
+	if e.ref.Kind == plan.KindTriggers {
 		b.WriteString(headerDetailsStyle.Render("Expected"))
 		b.WriteString("\n")
 		exp := "should NOT trigger this skill"
@@ -242,7 +242,7 @@ func (d dashboardModel) writeSpec(b *strings.Builder, e execItem, w int) {
 
 func tokenLine(c *caseState) string {
 	m := c.metrics
-	if c.kind == run.KindTriggers {
+	if c.kind == plan.KindTriggers {
 		if m.InputTokens == nil && m.CostUSD == nil {
 			return ""
 		}
@@ -266,7 +266,7 @@ func tokenLine(c *caseState) string {
 	return strings.Join(parts, "    ")
 }
 
-func findTrigger(sc *run.SkillCatalog, query string) *evalspec.Trigger {
+func findTrigger(sc *plan.SkillCatalog, query string) *evalspec.Trigger {
 	if sc == nil {
 		return nil
 	}
@@ -278,7 +278,7 @@ func findTrigger(sc *run.SkillCatalog, query string) *evalspec.Trigger {
 	return nil
 }
 
-func findEval(sc *run.SkillCatalog, id string) *evalspec.Eval {
+func findEval(sc *plan.SkillCatalog, id string) *evalspec.Eval {
 	if sc == nil {
 		return nil
 	}
