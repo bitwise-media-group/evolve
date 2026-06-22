@@ -8,12 +8,23 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // TestRunAllForwardsFlags drives the real commands: flags set on `run all`
 // reach the tiers that define them, and everything left unset keeps each
 // tier's own default — most notably the per-tier timeouts.
 func TestRunAllForwardsFlags(t *testing.T) {
+	// runAllCmd is a package-level command, and a pflag StringSlice appends on
+	// every Parse — so repeated runs (go test -count>1) would otherwise see
+	// --model grow to [haiku, haiku, …]. Clear the slice flags so each run
+	// starts from the flag defaults.
+	runAllCmd.Flags().VisitAll(func(f *pflag.Flag) {
+		if sv, ok := f.Value.(pflag.SliceValue); ok {
+			_ = sv.Replace(nil)
+		}
+	})
+
 	if err := runAllCmd.Flags().Parse([]string{
 		"--models", "claude-haiku-4-5", "--runs", "1", "--jobs", "1",
 	}); err != nil {
