@@ -152,10 +152,35 @@ func TestLoadToleratesGarbage(t *testing.T) {
 		t.Error("corrupt file must load fresh")
 	}
 
-	old := t.TempDir()
-	os.WriteFile(filepath.Join(old, "results.json"), []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644)
-	if f, _ := LoadDir(old, "p", "s"); len(f.Triggers) != 0 || f.Schema != Schema {
-		t.Error("old-schema file must load fresh (clean break)")
+	newer := t.TempDir()
+	os.WriteFile(filepath.Join(newer, "results.json"), []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644)
+	if f, reset := LoadDir(newer, "p", "s"); !reset || len(f.Triggers) != 0 || f.Schema != Schema {
+		t.Error("a newer schema cannot be read down and must load fresh")
+	}
+}
+
+// TestLoadMigratesOlderSchema pins the auto-upgrade: a file from an older schema is
+// preserved (not discarded) and brought to the current version in place.
+func TestLoadMigratesOlderSchema(t *testing.T) {
+	dir := t.TempDir()
+	f := &File{Schema: Schema - 1, Plugin: "p", Skill: "s"}
+	f.SetTrigger("fake/m1", &TriggerEntry{
+		Header:  Header{Provider: "fake", Model: "m1", Executed: true},
+		Results: []TriggerResult{{Query: "q1", Hits: new(2), Runs: new(3)}},
+		Summary: TriggerSummary{Total: 1},
+	})
+	if _, err := f.SaveDir(dir, "json"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, reset := LoadDir(dir, "p", "s")
+	if reset {
+		t.Error("an older schema must upgrade, not reset")
+	}
+	if loaded.Schema != Schema {
+		t.Errorf("schema = %d, want upgraded to %d", loaded.Schema, Schema)
+	}
+	if len(loaded.Triggers) != 1 {
+		t.Errorf("committed history must survive the upgrade, got %d trigger entries", len(loaded.Triggers))
 	}
 }
 

@@ -26,7 +26,13 @@ import (
 // load unchanged, and an older binary simply ignores them. They do shift the
 // meaning of the failed count — an eval whose agent never produced usable
 // output is now reported as errored rather than failed.
-const Schema = 3
+//
+// v4 records the per-case assertion counts (EvalCaseMetrics.AssertPassed/Total,
+// derived from each result's grade summary) so a preserved eval row can show its
+// Pass/Tot. From v4 on a file one or more versions behind is upgraded in place on
+// load (see migrate) rather than discarded, so committed history survives a schema
+// bump; only an unreadable file or one written by a newer evolve still resets.
+const Schema = 4
 
 // File is one evals/<skill>/results.<ext>.
 type File struct {
@@ -180,7 +186,9 @@ type EvalSnapshot struct {
 // when the skill changes).
 type EvalCaseMetrics struct {
 	Passed        *bool     `json:"passed,omitempty"`
-	PassRate      *float64  `json:"pass_rate,omitempty"` // expectation rate (GradeSummary)
+	PassRate      *float64  `json:"pass_rate,omitempty"`     // expectation rate (GradeSummary)
+	AssertPassed  *int      `json:"assert_passed,omitempty"` // graded expectations that passed
+	AssertTotal   *int      `json:"assert_total,omitempty"`  // graded expectations total
 	AvgRunSeconds *float64  `json:"avg_run_seconds,omitempty"`
 	Measured      *Measured `json:"measured,omitempty"`
 	Estimate      *Estimate `json:"estimate,omitempty"`
@@ -293,10 +301,12 @@ func Find(dir string) string {
 	return ""
 }
 
-// LoadDir finds and decodes the results file in dir regardless of format,
-// or initialises a fresh one when the file is missing, unparseable, or has
-// a different schema (clean break). reset reports that an existing file was
-// discarded, so callers can tell the user history is starting over.
+// LoadDir finds and decodes the results file in dir regardless of format, or
+// initialises a fresh one when the file is missing. A file an older schema upgrades
+// in place (migrate) and is rewritten on the next SaveDir, so committed history
+// survives a schema bump; a file that is unreadable or written by a newer evolve is
+// discarded. reset reports such a discard so callers can tell the user history is
+// starting over.
 func LoadDir(dir, plugin, skill string) (f *File, reset bool) {
 	fresh := &File{Schema: Schema, Plugin: plugin, Skill: skill}
 	path := Find(dir)
@@ -304,11 +314,26 @@ func LoadDir(dir, plugin, skill string) (f *File, reset bool) {
 		return fresh, false
 	}
 	var loaded File
-	if encfmt.DecodeFile(path, &loaded) != nil || loaded.Schema != Schema {
+	if encfmt.DecodeFile(path, &loaded) != nil || loaded.Schema > Schema {
 		return fresh, true
+	}
+	if loaded.Schema < Schema {
+		migrate(&loaded)
 	}
 	loaded.Plugin, loaded.Skill = plugin, skill
 	return &loaded, false
+}
+
+// migrate upgrades a decoded results file from an older schema to the current one,
+// in place, so committed history is preserved instead of discarded. Steps are
+// additive and idempotent, so a file several versions behind is brought fully
+// current. The upgraded file is rewritten with the new schema by the next SaveDir.
+//
+// v3 -> v4: EvalCaseMetrics.AssertPassed/AssertTotal are re-derived from each
+// result's grade summary (EvalCaseMetricsOf) whenever a snapshot is written, so the
+// counts repopulate on the next save without backfilling the compact snapshots.
+func migrate(f *File) {
+	f.Schema = Schema
 }
 
 // SaveDir writes results.<format> atomically with deterministic formatting,
@@ -449,6 +474,8 @@ func EvalCaseMetricsOf(r EvalResult) EvalCaseMetrics {
 	}
 	if r.Summary != nil {
 		m.PassRate = r.Summary.PassRate
+		m.AssertPassed = new(r.Summary.Passed)
+		m.AssertTotal = new(r.Summary.Total)
 	}
 	if r.Timing != nil {
 		m.AvgRunSeconds = r.Timing.ExecutorDurationSeconds

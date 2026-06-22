@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/results.schema.json",
-  "title": "evolve results file (schema 3)",
+  "title": "evolve results file (schema 4)",
   "description": "One skill's committed results (evals/<skill>/results.<ext>; format selected by results_format). Each per-eval result is a superset of a skill-creator grading.json document. Entries also retain compact prior states — previous (the run replaced) on both tiers and baseline (the same evals run without the skill) on the eval tier — so deltas are computable without re-running. Consumers must treat an absent key and an explicit null identically.",
   "type": "object",
   "required": ["schema", "plugin", "skill"],
   "properties": {
     "$schema": { "type": "string" },
-    "schema": { "const": 3 },
+    "schema": { "const": 4 },
     "plugin": { "type": "string" },
     "skill": { "type": "string" },
     "triggers": {
@@ -125,6 +125,8 @@
       "properties": {
         "passed": { "type": ["boolean", "null"] },
         "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "assert_passed": { "type": "integer", "minimum": 0 },
+        "assert_total": { "type": "integer", "minimum": 0 },
         "avg_run_seconds": { "type": "number", "minimum": 0 },
         "measured": { "$ref": "common.schema.json#/$defs/measured" },
         "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
