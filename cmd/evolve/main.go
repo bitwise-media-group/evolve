@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/profile"
 	"github.com/bitwise-media-group/evolve/internal/telemetry"
 	"github.com/bitwise-media-group/evolve/internal/version"
 )
@@ -27,6 +28,9 @@ import (
 type RootFlags struct {
 	// Verbose raises the log level to debug.
 	Verbose bool
+	// Profile is the hidden --profile flag: which pprof profiles to write for the
+	// run (cpu, memory, all), repeatable or comma-separated.
+	Profile []string
 }
 
 var (
@@ -46,6 +50,10 @@ var (
 	// telemetryShutdown flushes the OTEL providers; main calls it after the
 	// command returns. Init sets it in PersistentPreRunE.
 	telemetryShutdown telemetry.ShutdownFunc
+
+	// profileStop finalizes any pprof profiles started in PersistentPreRunE; main
+	// calls it after the command returns. nil when --profile was not set.
+	profileStop profile.StopFunc
 
 	rootCmd = &cobra.Command{
 		Use:           "evolve",
@@ -75,6 +83,22 @@ var (
 				prov.Logger.LogAttrs(cmd.Context(), slog.LevelWarn, "telemetry disabled",
 					slog.Any("error", err))
 			}
+			// Profiling starts last so the CPU profile brackets the command's work,
+			// not the setup above. A bad --profile value (or an unwritable target) is
+			// a real error on a flag the user explicitly set, so it fails the run.
+			kinds, err := profile.Parse(rootFlags.Profile)
+			if err != nil {
+				return err
+			}
+			stop, paths, err := profile.Start(kinds, "")
+			if err != nil {
+				return err
+			}
+			profileStop = stop
+			if len(paths) > 0 {
+				opts.Log.LogAttrs(cmd.Context(), slog.LevelInfo, "profiling enabled",
+					slog.Any("files", paths))
+			}
 			return nil
 		},
 	}
@@ -92,6 +116,12 @@ func init() {
 	pf.BoolVarP(&rootFlags.Verbose, "verbose", "v", false, "enable debug logging")
 	pf.StringVar(&opts.TelemetryDir, "telemetry-dir", "",
 		"write OpenTelemetry traces/metrics/logs as JSON to this directory (default: off; overrides OTEL_* env vars)")
+	// --profile is a developer diagnostic: write pprof profiles for the run.
+	// StringSlice accepts both repeated flags and comma-separated lists; profile.Parse
+	// resolves cpu/memory/all. Hidden so it stays off the user-facing help and docs.
+	pf.StringSliceVar(&rootFlags.Profile, "profile", nil,
+		"write pprof profiles for the run: cpu, memory, or all (repeatable or comma-separated)")
+	_ = pf.MarkHidden("profile")
 }
 
 func main() {
@@ -99,6 +129,16 @@ func main() {
 	defer stop()
 
 	err := rootCmd.ExecuteContext(ctx)
+
+	// Finalize profiling first so the profile captures the command, not the
+	// telemetry flush below. Like that flush, it lives here rather than in
+	// PersistentPostRunE because a RunE error skips PostRun and os.Exit skips defers.
+	if profileStop != nil {
+		if perr := profileStop(); perr != nil {
+			opts.Log.LogAttrs(ctx, slog.LevelWarn, "profiling did not finalize cleanly",
+				slog.Any("error", perr))
+		}
+	}
 
 	exitCode := 0
 	switch {
