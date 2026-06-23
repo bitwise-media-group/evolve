@@ -17,6 +17,11 @@ updates:
 
   - package-ecosystem: gomod
     directory: /tools
+    # The pinned tools sit in `tool (...)` directives, so every require entry
+    # is `// indirect`. Dependabot only updates direct deps by default, so allow
+    # indirect ones too or these updates would never fire.
+    allow:
+      - dependency-type: all
     cooldown:
       default-days: 7
     commit-message:
