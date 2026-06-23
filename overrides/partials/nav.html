@@ -1,0 +1,31 @@
+<!--
+ Copyright 2026 Bitwise Media Group Ltd
+ SPDX-License-Identifier: MIT
+-->
+
+{#- overrides/partials/nav.html — primary drawer nav. Drops the stock logo from the drawer title and renders the site
+name as the same multicolor "EVOLVE" wordmark as the header (overrides/partials/header.html). Styling lives in
+docs/stylesheets/extra.css (.ev-headmark). -#} {% import "partials/nav-item.html" as item with context %} {% set class =
+"md-nav md-nav--primary" %} {% if "navigation.tabs" in features %} {% set class = class ~ " md-nav--lifted" %} {% endif
+%} {% if "toc.integrate" in features %} {% set class = class ~ " md-nav--integrated" %} {% endif %}
+<nav class="{{ class }}" aria-label="{{ lang.t('nav') }}" data-md-level="0">
+    <label class="md-nav__title" for="__drawer">
+        <a
+            href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
+            title="{{ config.site_name | e }}"
+            class="ev-headmark"
+            aria-label="{{ config.site_name }}"
+        >
+            <span style="color: var(--ev-blue)">E</span><span style="color: var(--ev-green)">V</span
+            ><span style="color: var(--ev-cyan)">O</span><span style="color: var(--ev-magenta)">L</span
+            ><span style="color: var(--ev-orange)">V</span><span style="color: var(--ev-purple)">E</span>
+        </a>
+    </label>
+    {% if config.repo_url %}
+    <div class="md-nav__source">{% include "partials/source.html" %}</div>
+    {% endif %}
+    <ul class="md-nav__list" data-md-scrollfix>
+        {% for nav_item in nav.items %} {% set path = "__nav_" ~ loop.index %} {{ item.render(nav_item, path, 1) }} {%
+        endfor %}
+    </ul>
+</nav>

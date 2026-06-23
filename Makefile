@@ -66,6 +66,9 @@ go_tools: tools/go.mod tools/go.sum
 	@ mkdir -p "$(TOOLS_BIN)"
 	@ go build -modfile=tools/go.mod -o "$(TOOLS_BIN)/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
+sync: pyproject.toml uv.lock
+	@ uv run sync
+
 # Platform build-tag matrix. The host GOOS only compiles its own files, so the
 # linters skip every other platform's build-constrained source (the sandbox_*.go /
 # proc_*.go split in internal/runner). Vetting/linting under each GOOS in turn
@@ -142,10 +145,11 @@ run: build ## build and run locally (override args via ARGS=...)
 	@ ./evolve $(ARGS)
 
 .PHONY: docs
-docs: build ## regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)
+docs: build sync ## regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)
 	@ ./evolve docs --out docs/cli --format markdown
 	@ ./evolve docs --out docs/man --format man
 	@ ./evolve docs --out docs/config --format config
+	@ uv run zensical build
 
 # --skip=sign: cosign keyless signing needs the GitHub Actions OIDC token, so
 # it only works in the release workflow — locally it would fail or prompt.
@@ -156,3 +160,7 @@ snapshot: ## build local snapshot (binaries, no publish, no signing)
 .PHONY: release
 release: ## build and publish a release (needs a vX.Y.Z tag + creds)
 	@ go tool -modfile=tools/go.mod goreleaser release --clean
+
+.PHONY: serve
+serve: sync ## serve the docs site locally
+	@ uv run zensical serve

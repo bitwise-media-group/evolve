@@ -1,0 +1,733 @@
+/* ============================================================
+   Evolve docs — cyberdream theme for Zensical / Material
+   Palette: https://github.com/scottmckendry/cyberdream.nvim
+   Dark  -> Material "slate" scheme
+   Light -> Material "default" scheme
+   ============================================================ */
+
+/* ---------- DARK (slate) ---------- */
+[data-md-color-scheme="slate"] {
+    --md-default-bg-color: #16181a;
+    --md-default-bg-color--light: #1e2124;
+    --md-default-fg-color: #ffffff;
+    --md-default-fg-color--light: #c7ccd4;
+    --md-default-fg-color--lighter: #7b8496;
+    --md-default-fg-color--lightest: rgba(255, 255, 255, 0.09);
+
+    --md-primary-fg-color: #16181a;
+    --md-primary-fg-color--light: #1e2124;
+    --md-primary-fg-color--dark: #101214;
+    --md-primary-bg-color: #ffffff;
+    --md-primary-bg-color--light: #c7ccd4;
+
+    --md-accent-fg-color: #5ef1ff;
+    --md-accent-fg-color--transparent: rgba(94, 241, 255, 0.1);
+    --md-typeset-a-color: #5ea1ff;
+
+    --md-code-bg-color: #101214;
+    --md-code-fg-color: #c7ccd4;
+    --md-code-hl-comment-color: #7b8496;
+    --md-code-hl-keyword-color: #ff5ef1;
+    --md-code-hl-string-color: #5eff6c;
+    --md-code-hl-number-color: #ffbd5e;
+    --md-code-hl-function-color: #5ea1ff;
+    --md-code-hl-constant-color: #bd5eff;
+    --md-code-hl-name-color: #c7ccd4;
+    --md-code-hl-operator-color: #5ef1ff;
+    --md-code-hl-punctuation-color: #7b8496;
+
+    --md-footer-bg-color: #101214;
+    --md-footer-bg-color--dark: #0c0e10;
+
+    /* cyberdream neon ramp */
+    --ev-blue: #5ea1ff;
+    --ev-green: #5eff6c;
+    --ev-cyan: #5ef1ff;
+    --ev-red: #ff6e5e;
+    --ev-yellow: #f1ff5e;
+    --ev-magenta: #ff5ef1;
+    --ev-pink: #ff5ea0;
+    --ev-orange: #ffbd5e;
+    --ev-purple: #bd5eff;
+    --ev-bg: #16181a;
+    --ev-alt: #1e2124;
+    --ev-fg: #ffffff;
+    --ev-muted: #9aa3b2;
+    --ev-grey: #7b8496;
+    --ev-line: rgba(255, 255, 255, 0.09);
+    --ev-line-2: rgba(255, 255, 255, 0.17);
+    --ev-code: #101214;
+    --ev-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+/* ---------- LIGHT (default) ---------- */
+[data-md-color-scheme="default"] {
+    --md-default-bg-color: #ffffff;
+    --md-default-fg-color: #16181a;
+    --md-default-fg-color--light: #3a4048;
+    --md-default-fg-color--lighter: #5b6472;
+    --md-default-fg-color--lightest: rgba(16, 24, 26, 0.12);
+
+    --md-primary-fg-color: #ffffff;
+    --md-primary-fg-color--light: #f2f3f4;
+    --md-primary-fg-color--dark: #eaeaea;
+    --md-primary-bg-color: #16181a;
+    --md-primary-bg-color--light: #3a4048;
+
+    --md-accent-fg-color: #008c99;
+    --md-accent-fg-color--transparent: rgba(0, 140, 153, 0.1);
+    --md-typeset-a-color: #0057d1;
+
+    --md-code-bg-color: #f4f5f6;
+    --md-code-fg-color: #16181a;
+    --md-code-hl-comment-color: #5b6472;
+    --md-code-hl-keyword-color: #d100bf;
+    --md-code-hl-string-color: #008b0c;
+    --md-code-hl-number-color: #c66e00;
+    --md-code-hl-function-color: #0057d1;
+    --md-code-hl-constant-color: #8a14e6;
+    --md-code-hl-operator-color: #008c99;
+
+    --md-footer-bg-color: #16181a;
+    --md-footer-bg-color--dark: #101214;
+
+    --ev-blue: #0057d1;
+    --ev-green: #008b0c;
+    --ev-cyan: #008c99;
+    --ev-red: #d11500;
+    --ev-yellow: #8a6f00;
+    --ev-magenta: #d100bf;
+    --ev-pink: #f40064;
+    --ev-orange: #c66e00;
+    --ev-purple: #8a14e6;
+    --ev-bg: #ffffff;
+    --ev-alt: #f2f3f4;
+    --ev-fg: #16181a;
+    --ev-muted: #5b6472;
+    --ev-grey: #5b6472;
+    --ev-line: rgba(16, 24, 26, 0.12);
+    --ev-line-2: rgba(16, 24, 26, 0.22);
+    --ev-code: #f4f5f6;
+    --ev-shadow: 0 24px 60px rgba(16, 24, 26, 0.16);
+}
+
+/* ===== Header: flat, with the cyberdream neon underline ===== */
+.md-header {
+    box-shadow: none;
+    border-bottom: 1px solid var(--ev-line);
+    position: relative;
+}
+.md-header[data-md-state="shadow"],
+.md-header--shadow {
+    box-shadow: none;
+}
+.md-header::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 3px;
+    background: linear-gradient(
+        90deg,
+        var(--ev-blue),
+        var(--ev-green),
+        var(--ev-cyan),
+        var(--ev-magenta),
+        var(--ev-orange),
+        var(--ev-purple)
+    );
+}
+.md-header__title {
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+
+/* Header wordmark: "EVOLVE" in the hero's per-letter neon (overrides/partials/header.html) */
+.ev-headmark {
+    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: inherit;
+}
+.ev-headmark:hover {
+    opacity: 0.85;
+}
+[dir="ltr"] .md-search__input {
+    border-radius: 8px;
+}
+
+/* Active nav + links pick up the neon accent */
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+    color: var(--md-accent-fg-color);
+}
+.md-typeset .md-typeset__table {
+    border-color: var(--ev-line);
+}
+
+/* Tag / admonition flourish */
+.md-typeset .admonition,
+.md-typeset details {
+    border-left-width: 2px;
+}
+
+/* ============================================================
+   LANDING PAGE  (.ev) — injected by overrides/home.html
+   ============================================================ */
+.ev {
+    --ev-mono: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    --ev-sans: var(--md-text-font-family, "Hanken Grotesk", system-ui, sans-serif);
+    font-family: var(--ev-sans);
+    color: var(--ev-fg);
+    line-height: 1.55;
+}
+.ev * {
+    box-sizing: border-box;
+}
+.ev a {
+    text-decoration: none;
+}
+
+/* HERO */
+.ev-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 74px 40px 44px;
+}
+.ev-hero__grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.6;
+    background-image:
+        linear-gradient(var(--ev-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--ev-line) 1px, transparent 1px);
+    background-size: 46px 46px;
+    -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, #000 30%, transparent 72%);
+    mask-image: radial-gradient(120% 80% at 50% 0%, #000 30%, transparent 72%);
+}
+.ev-hero__inner {
+    position: relative;
+    max-width: 920px;
+    margin: 0 auto;
+}
+.ev-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 24px;
+    font-family: var(--ev-mono);
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--ev-cyan);
+    border: 1px solid color-mix(in oklab, var(--ev-cyan) 40%, transparent);
+    background: color-mix(in oklab, var(--ev-cyan) 9%, transparent);
+    padding: 5px 11px;
+    border-radius: 999px;
+}
+.ev-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ev-green);
+    animation: ev-pulse 1.6s ease-in-out infinite;
+}
+.ev-wordmark {
+    font-family: var(--ev-mono);
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -2px;
+    font-size: clamp(56px, 9vw, 118px);
+    margin: 0 0 18px;
+}
+.ev-tagline {
+    font-size: clamp(24px, 3.2vw, 34px);
+    font-weight: 700;
+    line-height: 1.18;
+    letter-spacing: -0.5px;
+    margin: 0 0 16px;
+    max-width: 760px;
+}
+.ev-lede {
+    font-size: 18px;
+    color: var(--ev-muted);
+    max-width: 660px;
+    margin: 0 0 30px;
+    text-wrap: pretty;
+}
+
+/* terminal */
+.ev-term {
+    max-width: 560px;
+    margin: 0 0 26px;
+    overflow: hidden;
+    background: var(--ev-code);
+    border: 1px solid var(--ev-line-2);
+    border-radius: 12px;
+    font-family: var(--ev-mono);
+    box-shadow: var(--ev-shadow);
+}
+.ev-term__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 13px;
+    border-bottom: 1px solid var(--ev-line);
+}
+.ev-term__bar i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+}
+.ev-term__bar i:nth-child(1) {
+    background: var(--ev-red);
+}
+.ev-term__bar i:nth-child(2) {
+    background: var(--ev-yellow);
+}
+.ev-term__bar i:nth-child(3) {
+    background: var(--ev-green);
+}
+.ev-term__bar span {
+    margin-left: 8px;
+    font-size: 11.5px;
+    color: var(--ev-grey);
+}
+.ev-term__body {
+    padding: 14px 15px;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ev-term__line code {
+    font-family: var(--ev-mono);
+    color: var(--ev-fg);
+    background: none;
+    white-space: nowrap;
+}
+.ev-term__line .ev-p {
+    color: var(--ev-green);
+}
+.ev-cursor {
+    display: inline-block;
+    width: 9px;
+    height: 17px;
+    background: var(--ev-cyan);
+    margin-left: 3px;
+    vertical-align: -3px;
+    animation: ev-blink 1.1s step-end infinite;
+}
+
+/* buttons */
+.ev-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 13px;
+}
+.ev-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--ev-mono);
+    font-size: 14px;
+    padding: 13px 22px;
+    border-radius: 10px;
+}
+.ev-btn--primary {
+    background: var(--md-accent-fg-color);
+    color: var(--ev-bg);
+    font-weight: 700;
+}
+.ev-btn--ghost {
+    background: transparent;
+    color: var(--ev-fg);
+    font-weight: 600;
+    border: 1px solid var(--ev-line-2);
+}
+.ev-btn--ghost::before {
+    content: "★";
+    color: var(--ev-yellow);
+}
+
+/* TUI screenshot */
+.ev-shot {
+    padding: 18px 40px 24px;
+    max-width: 1180px;
+    margin: 0 auto;
+}
+.ev-shot__frame {
+    background: var(--ev-alt);
+    border: 1px solid var(--ev-line-2);
+    border-radius: 16px;
+    padding: 9px;
+    box-shadow: var(--ev-shadow);
+}
+.ev-shot__bar {
+    height: 3px;
+    border-radius: 99px;
+    margin: 2px 6px 9px;
+    opacity: 0.85;
+    background: linear-gradient(
+        90deg,
+        var(--ev-blue),
+        var(--ev-green),
+        var(--ev-cyan),
+        var(--ev-magenta),
+        var(--ev-orange),
+        var(--ev-purple)
+    );
+}
+.ev-shot__frame img {
+    width: 100%;
+    display: block;
+    border-radius: 9px;
+}
+.ev-shot__cap {
+    font-family: var(--ev-mono);
+    font-size: 12.5px;
+    color: var(--ev-grey);
+    text-align: center;
+    margin: 13px 2px 0;
+}
+.ev-shot__cap b {
+    font-weight: 700;
+}
+
+/* marquee */
+.ev-marquee {
+    overflow: hidden;
+    border-top: 1px solid var(--ev-line);
+    border-bottom: 1px solid var(--ev-line);
+    padding: 18px 0 14px;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+}
+.ev-marquee__track {
+    display: flex;
+    width: max-content;
+    gap: 34px;
+    white-space: nowrap;
+    font-family: var(--ev-mono);
+    font-size: 14px;
+    animation: ev-marquee 38s linear infinite;
+}
+.ev-marquee__track .sep {
+    color: var(--ev-grey);
+}
+
+/* sections */
+.ev-section {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 42px 40px;
+}
+.ev-eyebrow {
+    font-family: var(--ev-mono);
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--ev-grey);
+    margin: 0 0 6px;
+}
+.ev-lead {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin: 0 0 30px;
+    max-width: 640px;
+}
+
+/* stats */
+.ev-stats {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 44px 40px 18px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+    font-family: var(--ev-mono);
+}
+.ev-stat {
+    background: var(--ev-alt);
+    border: 1px solid var(--ev-line);
+    border-radius: 12px;
+    padding: 18px;
+}
+.ev-stat b {
+    display: block;
+    font-size: 30px;
+    font-weight: 800;
+}
+.ev-stat small {
+    display: block;
+    font-size: 12px;
+    color: var(--ev-grey);
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* feature cards */
+.ev-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 16px;
+}
+.ev-card {
+    background: var(--ev-alt);
+    border: 1px solid var(--ev-line);
+    border-top: 2px solid var(--accent, var(--ev-blue));
+    border-radius: 13px;
+    padding: 24px;
+}
+.ev-card h3 {
+    font-family: var(--ev-mono);
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0 0 8px;
+}
+.ev-card p {
+    font-size: 14.5px;
+    color: var(--ev-muted);
+    margin: 0;
+    text-wrap: pretty;
+}
+.ev-card p code {
+    font-family: var(--ev-mono);
+    color: var(--ev-fg);
+    background: none;
+    padding: 0;
+}
+.ev-glyph {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    margin-bottom: 16px;
+}
+
+/* works-with */
+.ev-two {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+}
+.ev-panel {
+    background: var(--ev-alt);
+    border: 1px solid var(--ev-line);
+    border-radius: 13px;
+    padding: 24px;
+}
+.ev-panel h3 {
+    font-family: var(--ev-mono);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    color: var(--ev-grey);
+    margin: 0 0 16px;
+}
+.ev-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    font-family: var(--ev-mono);
+    font-size: 13px;
+}
+.ev-chip {
+    border: 1px solid color-mix(in oklab, currentColor 45%, transparent);
+    background: color-mix(in oklab, currentColor 9%, transparent);
+    border-radius: 7px;
+    padding: 6px 11px;
+}
+
+/* config code */
+.ev-codecard {
+    background: var(--ev-code);
+    border: 1px solid var(--ev-line-2);
+    border-radius: 13px;
+    overflow: hidden;
+    box-shadow: var(--ev-shadow);
+    max-width: 760px;
+}
+.ev-codecard__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--ev-line);
+    font-family: var(--ev-mono);
+}
+.ev-codecard__bar i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+}
+.ev-codecard__bar i:nth-child(1) {
+    background: var(--ev-red);
+}
+.ev-codecard__bar i:nth-child(2) {
+    background: var(--ev-yellow);
+}
+.ev-codecard__bar i:nth-child(3) {
+    background: var(--ev-green);
+}
+.ev-codecard__bar span {
+    margin-left: 8px;
+    font-size: 11.5px;
+    color: var(--ev-grey);
+}
+.ev-codecard pre {
+    margin: 0;
+    padding: 18px 20px;
+    font-family: var(--ev-mono);
+    font-size: 13.5px;
+    line-height: 1.85;
+    overflow-x: auto;
+    color: var(--ev-fg);
+}
+.ev-codecard .c {
+    color: var(--ev-grey);
+}
+.ev-codecard .k {
+    color: var(--ev-cyan);
+}
+.ev-codecard .s {
+    color: var(--ev-green);
+}
+.ev-codecard .n {
+    color: var(--ev-orange);
+}
+.ev-codecard .b {
+    color: var(--ev-purple);
+}
+
+/* quickstart */
+.ev-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+.ev-step {
+    background: var(--ev-alt);
+    border: 1px solid var(--ev-line);
+    border-radius: 13px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+}
+.ev-step__num {
+    font-family: var(--ev-mono);
+    font-weight: 800;
+    font-size: 13px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    border: 1px solid color-mix(in oklab, currentColor 45%, transparent);
+}
+.ev-step h3 {
+    font-family: var(--ev-mono);
+    font-size: 15px;
+    margin: 0 0 6px;
+    color: var(--ev-fg);
+}
+.ev-step p {
+    font-size: 14px;
+    color: var(--ev-muted);
+    margin: 0 0 12px;
+}
+.ev-step code {
+    display: block;
+    margin-top: auto;
+    font-family: var(--ev-mono);
+    font-size: 13px;
+    background: var(--ev-code);
+    border: 1px solid var(--ev-line);
+    border-radius: 7px;
+    padding: 8px 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Copy-to-clipboard button reuses zensical's .md-code__nav / .md-code__button
+   styling; the wrapper just provides the positioning context and pins the
+   command to the card bottom (the margin-top:auto moves off the code). */
+.ev-step .ev-cmd {
+    position: relative;
+    margin-top: auto;
+}
+.ev-step .ev-cmd code {
+    margin-top: 0;
+    padding-right: 40px;
+}
+
+/* Shell code-fence accents. codecolor.js cycles a data-ev-accent per `sh`
+   block through the four brand colours; the command text takes the accent
+   while comments stay at zensical's muted comment colour for contrast. */
+.language-sh.highlight[data-ev-accent="magenta"] code {
+    color: var(--ev-magenta);
+}
+.language-sh.highlight[data-ev-accent="green"] code {
+    color: var(--ev-green);
+}
+.language-sh.highlight[data-ev-accent="cyan"] code {
+    color: var(--ev-cyan);
+}
+.language-sh.highlight[data-ev-accent="orange"] code {
+    color: var(--ev-orange);
+}
+.language-sh.highlight[data-ev-accent] .c,
+.language-sh.highlight[data-ev-accent] .c1,
+.language-sh.highlight[data-ev-accent] .ch,
+.language-sh.highlight[data-ev-accent] .cm,
+.language-sh.highlight[data-ev-accent] .cs,
+.language-sh.highlight[data-ev-accent] .sd {
+    color: var(--md-code-hl-comment-color);
+}
+
+/* keyframes */
+@keyframes ev-blink {
+    0%,
+    49% {
+        opacity: 1;
+    }
+    50%,
+    100% {
+        opacity: 0;
+    }
+}
+@keyframes ev-marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+@keyframes ev-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ev-marquee__track,
+    .ev-dot,
+    .ev-cursor {
+        animation: none !important;
+    }
+}
+
+/* On the home page, let the injected hero own the width */
+.md-content--home .md-content__inner {
+    display: none;
+}

@@ -12,6 +12,13 @@
 # vanity-tags is left at its default (false): evolve is a versioned Go binary whose
 # consumers pin exact vX.Y.Z tags, not floating v1 / v1.1 majors.
 #
+# The `docs` job is independent of the release: on every push to main (and manual
+# dispatch) it builds the Zensical documentation site and publishes it to GitHub
+# Pages via the Actions deployment (not a gh-pages branch). It is here, alongside
+# the release pipeline, because both react to main moving; the reusable release
+# workflow exposes no release_created output to gate on, so docs simply track the
+# tip of main.
+#
 # The reusable workflow is pinned to a full commit SHA (tag in the comment) so a
 # moved tag can never change what runs; Dependabot keeps the pin fresh.
 name: Release
@@ -22,28 +29,78 @@ on:
   # allow cutting a release manually from the Actions tab
   workflow_dispatch:
 
-# ceiling for the reusable workflow's release-please + goreleaser jobs. GitHub
-# resolves a reusable workflow's permissions as the union of every job and ignores
-# `if:`, so the caller must grant the goreleaser job's id-token / attestations /
-# artifact-metadata even though those are only realized on the goreleaser path.
-permissions:
-  # create the release/tag and upload assets
-  contents: write
-  # release-please creates pr labels via the issues api
-  issues: write
-  # release-please opens the release pull request
-  pull-requests: write
-  # cosign keyless signing
-  id-token: write
-  # github build-provenance attestation
-  attestations: write
-  # artifact storage record for the attestation
-  artifact-metadata: write
+permissions: {}
 
 jobs:
   release:
     uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@e37b7f61bbd233ae77aad81c967d08ad49220b8f # v2.0.0
+    # ceiling for the reusable workflow's release-please + goreleaser jobs. GitHub
+    # resolves a reusable workflow's permissions as the union of every job and ignores
+    # `if:`, so the caller must grant the goreleaser job's id-token / attestations /
+    # artifact-metadata even though those are only realized on the goreleaser path.
+    permissions:
+      # create the release/tag and upload assets
+      contents: write
+      # release-please creates pr labels via the issues api
+      issues: write
+      # release-please opens the release pull request
+      pull-requests: write
+      # cosign keyless signing
+      id-token: write
+      # github build-provenance attestation
+      attestations: write
+      # artifact storage record for the attestation
+      artifact-metadata: write
     secrets:
       # PAT with write access to bitwise-media-group/homebrew-tap — the default
       # GITHUB_TOKEN cannot push the cask to another repository.
       homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+  # Build the Zensical site and publish it to GitHub Pages through the Actions
+  # deployment. The committed docs/ already carries the generated CLI + config
+  # reference (make docs), so this only re-renders the static site from source and
+  # uploads it — no Go build needed. Its own job-level permissions override the
+  # workflow ceiling above, which exists for the reusable release job.
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      # check out the source to build the site
+      contents: read
+      # publish the GitHub Pages deployment
+      pages: write
+      # OIDC token the deploy-pages action exchanges for the Pages deploy
+      id-token: write
+    # serialize Pages deployments; never cancel an in-flight publish
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+
+      # uv run resolves the locked deps (uv.lock) and the .python-version toolchain
+      # on demand, then Zensical renders docs/ into ./site.
+      - name: Build site
+        run: uv run zensical build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

@@ -1,0 +1,287 @@
+<!--
+ Copyright 2026 Bitwise Media Group Ltd
+ SPDX-License-Identifier: MIT
+-->
+{# overrides/home.html Custom landing for Evolve. Injected full-bleed between the (cyberdream-skinned) Material header
+and the page body via the `tabs` block. The normal article `content` block is emptied; index.md sets `hide: [navigation,
+toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
+<div class="ev">
+    <!-- HERO -->
+    <header class="ev-hero">
+        <div class="ev-hero__grid"></div>
+        <div class="ev-hero__inner">
+            <div class="ev-kicker"><span class="ev-dot"></span>MULTI-TIER PLUGIN EVAL CLI</div>
+            <h1 class="ev-wordmark">
+                <span style="color: var(--ev-blue)">E</span><span style="color: var(--ev-green)">V</span
+                ><span style="color: var(--ev-cyan)">O</span><span style="color: var(--ev-magenta)">L</span
+                ><span style="color: var(--ev-orange)">V</span><span style="color: var(--ev-purple)">E</span>
+            </h1>
+            <p class="ev-tagline">Evaluate coding-agent plugins, across every model.</p>
+            <p class="ev-lede">
+                Evolve validates plugin structure, checks whether skills trigger on the right prompts, and runs
+                behavioral eval suites in throwaway workspaces — across Anthropic, OpenAI, Google, Cursor, Copilot and
+                Antigravity. It writes committed Markdown + JSON rollups for review and CI, all from one Go binary.
+            </p>
+            <div class="ev-term">
+                <div class="ev-term__bar"><i></i><i></i><i></i><span>zsh — install</span></div>
+                <div class="ev-term__body">
+                    <div class="ev-term__line">
+                        <code><span class="ev-p">$</span> brew install --cask bitwise-media-group/tap/evolve</code>
+                    </div>
+                    <div class="ev-term__line">
+                        <code><span class="ev-p">$</span> evolve run all<span class="ev-cursor"></span></code>
+                    </div>
+                </div>
+            </div>
+            <div class="ev-cta">
+                <a class="ev-btn ev-btn--primary" href="{{ 'getting-started/' | url }}">Get started →</a>
+                <a class="ev-btn ev-btn--ghost" href="{{ config.repo_url }}">Star on GitHub</a>
+            </div>
+        </div>
+    </header>
+    <!-- TUI -->
+    <section class="ev-shot">
+        <div class="ev-shot__frame">
+            <div class="ev-shot__bar"></div>
+            <img
+                src="{{ 'assets/dashboard.png' | url }}"
+                alt="The Evolve TUI dashboard showing execution tree, rollups, runs and details"
+            />
+        </div>
+        <p class="ev-shot__cap">
+            The Evolve live dashboard — <b style="color: var(--ev-magenta)">[1] execution tree</b> ·
+            <b style="color: var(--ev-green)">[2] rollup</b> · <b style="color: var(--ev-cyan)">[3] runs</b> ·
+            <b style="color: var(--ev-orange)">[4] details</b>, streaming as agents finish.
+        </p>
+    </section>
+    <!-- MARQUEE -->
+    {# Provider/model ids (mirrors internal/model). Rendered twice so the translateX(-50%) scroll in extra.css loops
+    seamlessly; aria-hidden because it is decorative and would otherwise be announced twice. #} {% set ev_marquee = [
+    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"], ["anthropic/claude-opus-4-8",
+    "magenta"], ["anthropic/claude-fable-5", "magenta"], ["openai/gpt-5.2", "green"], ["openai/gpt-5.3-codex", "green"],
+    ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"], ["openai/gpt-5.4", "green"],
+    ["openai/gpt-5.5", "green"], ["google/gemini-3-flash-preview", "cyan"], ["google/gemini-3.1-flash-lite", "cyan"],
+    ["google/gemini-3.1-pro-preview", "cyan"], ["google/gemini-3.1-pro", "cyan"], ["google/gemini-3.5-flash", "cyan"],
+    ["cursor/composer-2.5", "orange"] ] %}
+    <div class="ev-marquee" aria-hidden="true">
+        <div class="ev-marquee__track">
+            {% for i in [1, 2] %}{% for m in ev_marquee %}<span style="color: var(--ev-{{ m[1] }})">{{ m[0] }}</span
+            ><span class="sep">·</span>{% endfor %}{% endfor %}
+        </div>
+    </div>
+    <!-- STATS -->
+    <section class="ev-stats">
+        <div class="ev-stat"><b>2,058</b><small>EVALS IN SUITE</small></div>
+        <div class="ev-stat"><b style="color: var(--ev-green)">1,213 ✓</b><small>PASSED</small></div>
+        <div class="ev-stat"><b style="color: var(--ev-red)">367 ✕</b><small>FAILED</small></div>
+        <div class="ev-stat"><b style="color: var(--ev-orange)">$87.78</b><small>SPENT THIS RUN</small></div>
+    </section>
+    <!-- FEATURES -->
+    <section class="ev-section">
+        <h2 class="ev-eyebrow">// WHAT EVOLVE DOES</h2>
+        <p class="ev-lead">One CLI for evaluating coding-agent plugins across every model.</p>
+        <div class="ev-cards">
+            <div class="ev-card" style="--accent: var(--ev-blue)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-blue) 16%, transparent)">
+                    <span style="width: 16px; height: 16px; background: var(--ev-blue); border-radius: 3px"></span>
+                </div>
+                <h3>Multi-tier by design</h3>
+                <p>
+                    Static checks, trigger-accuracy evals and behavioral evals in one pass.
+                    <code>evolve run all</code> runs check → triggers → evals → report.
+                </p>
+            </div>
+            <div class="ev-card" style="--accent: var(--ev-green)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-green) 16%, transparent)">
+                    <span
+                        style="width: 18px; height: 18px; background: var(--ev-green); transform: rotate(45deg)"
+                    ></span>
+                </div>
+                <h3>Every model</h3>
+                <p>
+                    Anthropic, OpenAI, Google, Cursor, Copilot and Antigravity — each driven through its own harness
+                    CLI. Pick a single model or a whole provider with <code>--model</code>.
+                </p>
+            </div>
+            <div class="ev-card" style="--accent: var(--ev-magenta)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-magenta) 16%, transparent)">
+                    <span
+                        style="width: 17px; height: 17px; border: 3px solid var(--ev-magenta); border-radius: 50%"
+                    ></span>
+                </div>
+                <h3>Trigger accuracy</h3>
+                <p>
+                    Tier 1 runs each trigger prompt several times and records whether the expected skill activated —
+                    scored per model.
+                </p>
+            </div>
+            <div class="ev-card" style="--accent: var(--ev-orange)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-orange) 16%, transparent)">
+                    <span style="width: 3px; height: 9px; background: var(--ev-orange)"></span
+                    ><span style="width: 3px; height: 15px; background: var(--ev-orange)"></span
+                    ><span style="width: 3px; height: 12px; background: var(--ev-orange)"></span>
+                </div>
+                <h3>Behavioral evals</h3>
+                <p>
+                    Tier 2 runs behavioral cases in throwaway workspaces, graded by deterministic assertions — files,
+                    regexes, commands — and an optional LLM judge.
+                </p>
+            </div>
+            <div class="ev-card" style="--accent: var(--ev-cyan)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-cyan) 16%, transparent)">
+                    <span
+                        style="width: 16px; height: 16px; border: 3px solid var(--ev-cyan); border-radius: 3px"
+                    ></span>
+                </div>
+                <h3>Deterministic reports</h3>
+                <p>
+                    Committed Markdown + JSON rollups, deterministic to the byte. <code>--strict</code> and
+                    <code>report --check</code> gate CI on pass-rate thresholds.
+                </p>
+            </div>
+            <div class="ev-card" style="--accent: var(--ev-purple)">
+                <div class="ev-glyph" style="background: color-mix(in oklab, var(--ev-purple) 16%, transparent)">
+                    <span
+                        style="font-family: var(--ev-mono); font-weight: 800; color: var(--ev-purple); font-size: 18px"
+                        >&gt;_</span
+                    >
+                </div>
+                <h3>One Go binary</h3>
+                <p>
+                    Install once, run against any plugin repo. Auto-detects marketplace, multi and single layouts —
+                    terminal-native, no services.
+                </p>
+            </div>
+        </div>
+    </section>
+    <!-- WORKS WITH -->
+    <section class="ev-section ev-two">
+        <div class="ev-panel">
+            <h3>HARNESSES</h3>
+            <div class="ev-chips">
+                <span class="ev-chip" style="color: var(--ev-orange)">claude</span>
+                <span class="ev-chip" style="color: var(--ev-purple)">codex</span>
+                <span class="ev-chip" style="color: var(--ev-pink)">gemini</span>
+                <span class="ev-chip" style="color: var(--ev-blue)">copilot</span>
+                <span class="ev-chip" style="color: var(--ev-green)">agy</span>
+            </div>
+        </div>
+        <div class="ev-panel">
+            <h3>PROVIDERS</h3>
+            <div class="ev-chips">
+                <span class="ev-chip" style="color: var(--ev-blue)">anthropic</span>
+                <span class="ev-chip" style="color: var(--ev-green)">openai</span>
+                <span class="ev-chip" style="color: var(--ev-cyan)">google</span>
+                <span class="ev-chip" style="color: var(--ev-magenta)">cursor</span>
+            </div>
+        </div>
+    </section>
+    <!-- CONFIG -->
+    <section class="ev-section">
+        <h2 class="ev-eyebrow">// CONFIGURE ONCE</h2>
+        <p class="ev-lead" style="font-size: 22px">
+            Configure once in a <code style="font-family: var(--ev-mono); color: var(--ev-cyan)">.evolve.yaml</code> at
+            your repo root.
+        </p>
+        <div class="ev-codecard">
+            <div class="ev-codecard__bar"><i></i><i></i><i></i><span>.evolve.yaml</span></div>
+            <pre><span class="c"># .evolve.yaml — optional, at the repo root</span>
+<span class="k">layout</span>: <span class="s">marketplace</span>
+<span class="k">models</span>:
+  - <span class="s">anthropic</span>
+  - <span class="s">cursor/composer-2.5</span>
+<span class="k">harnesses</span>:
+  - <span class="s">claude</span>
+  - <span class="s">codex</span>
+<span class="k">results_format</span>: <span class="s">json</span>
+<span class="k">max_turns</span>: <span class="n">12</span>
+<span class="k">stale_results</span>: <span class="s">keep</span>
+<span class="k">report</span>:
+  <span class="k">thresholds</span>:
+    <span class="k">triggers_min_pass_rate</span>: <span class="n">0.8</span>
+    <span class="k">evals_min_pass_rate</span>: <span class="n">0.9</span></pre>
+        </div>
+    </section>
+    <!-- QUICKSTART -->
+    <section class="ev-section">
+        <h2 class="ev-eyebrow">// THREE COMMANDS TO YOUR FIRST RUN</h2>
+        <div class="ev-steps">
+            <div class="ev-step">
+                <div class="ev-step__num" style="color: var(--ev-blue)">01</div>
+                <h3>Install</h3>
+                <p>Homebrew cask, or build from source with go install.</p>
+                <div class="ev-cmd">
+                    <code style="color: var(--ev-green)">$ brew install --cask bitwise-media-group/tap/evolve</code>
+                    <div class="md-code__nav">
+                        <button
+                            class="md-code__button"
+                            type="button"
+                            data-md-type="copy"
+                            title="Copy to clipboard"
+                            aria-label="Copy to clipboard"
+                        ></button>
+                    </div>
+                </div>
+            </div>
+            <div class="ev-step">
+                <div class="ev-step__num" style="color: var(--ev-magenta)">02</div>
+                <h3>Check</h3>
+                <p>Confirm harnesses, credentials and counting APIs.</p>
+                <div class="ev-cmd">
+                    <code style="color: var(--ev-cyan)">$ evolve doctor</code>
+                    <div class="md-code__nav">
+                        <button
+                            class="md-code__button"
+                            type="button"
+                            data-md-type="copy"
+                            title="Copy to clipboard"
+                            aria-label="Copy to clipboard"
+                        ></button>
+                    </div>
+                </div>
+            </div>
+            <div class="ev-step">
+                <div class="ev-step__num" style="color: var(--ev-orange)">03</div>
+                <h3>Run</h3>
+                <p>Launch the run and watch the TUI stream live.</p>
+                <div class="ev-cmd">
+                    <code style="color: var(--ev-orange)">$ evolve run all</code>
+                    <div class="md-code__nav">
+                        <button
+                            class="md-code__button"
+                            type="button"
+                            data-md-type="copy"
+                            title="Copy to clipboard"
+                            aria-label="Copy to clipboard"
+                        ></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+<script>
+    // Wire the landing-page copy buttons. Delegated on document so it survives
+    // instant navigation; scoped to .ev-cmd so it never touches zensical's own
+    // code-block copy buttons. Strips the leading "$ " prompt, then reuses
+    // zensical's own snackbar element and the button focus-outline so the
+    // feedback matches the native code-block copy button exactly.
+    document.addEventListener("click", function (e) {
+        var btn = e.target.closest(".ev-cmd .md-code__button");
+        if (!btn) return;
+        var code = btn.closest(".ev-cmd").querySelector("code");
+        if (!code) return;
+        navigator.clipboard.writeText(code.textContent.replace(/^\s*\$\s+/, "")).then(function () {
+            btn.focus(); // accent focus-outline, same as the native button
+            var dialog = document.querySelector("[data-md-component=dialog]");
+            if (!dialog) return;
+            (dialog.querySelector(".md-dialog__inner") || dialog).textContent = "Copied to clipboard";
+            dialog.classList.add("md-dialog--active");
+            window.clearTimeout(dialog.evResetTimer);
+            dialog.evResetTimer = window.setTimeout(function () {
+                dialog.classList.remove("md-dialog--active");
+            }, 2000);
+        });
+    });
+</script>
+{% endblock %} {% block content %}{% endblock %}
