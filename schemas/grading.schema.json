@@ -32,11 +32,12 @@
         "passed": { "type": ["boolean", "null"] },
         "evidence": { "type": "string" },
         "source": { "enum": ["expectation", "assertion"] },
-        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "llm"] },
+        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "tool_call", "llm"] },
         "path": { "type": "string" },
         "pattern": { "type": "string" },
         "run": { "type": "string" },
         "cwd": { "type": "string" },
+        "tool": { "type": "string" },
         "requires": { "type": "string" },
         "expect_exit": { "type": "integer" }
       },

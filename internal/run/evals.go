@@ -498,6 +498,9 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 	output, usage := evalRunner.ParseEvalOutput(res.Stdout)
 	output = ansi.Strip(output)
 
+	// Tool calls drive tool_call assertions and the execution metrics below.
+	toolCalls := observedToolCalls(sel.Harness, res.Stdout)
+
 	// Grade assertions; buffer the verdict lines so concurrent evals don't
 	// interleave their output.
 	graded := make([]results.GradedAssertion, len(c.Assertions))
@@ -511,6 +514,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 			ExpectedOutput: c.ExpectedOutput,
 			Timeout:        timeout,
 			JudgeModel:     opts.JudgeModel,
+			ToolCalls:      toolCalls,
 		})
 		source := "assertion"
 		if a.FromExpectation {
@@ -552,6 +556,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 	if result.Measured != nil {
 		result.Timing.TotalTokens = result.Measured.TotalTokens()
 	}
+	result.ExecutionMetrics = toolMetrics(toolCalls)
 	item := ItemResult{
 		Index: index, Label: c.ID, Status: status,
 		Metrics:       evalItemMetrics(&runSeconds, result.Measured, result.Summary),
@@ -614,6 +619,36 @@ func headLines(s string, n int) string {
 		return strings.Join(parts[:n], "\n") + "\n…"
 	}
 	return s
+}
+
+// observedToolCalls returns the agent's tool invocations from the run output,
+// or nil when the harness cannot report them (a tool_call assertion then skips
+// and execution metrics stay absent). A reporter that observed zero calls
+// yields a non-nil empty slice, so the assertion fails rather than skips.
+func observedToolCalls(h harness.Harness, stdout []byte) []model.ToolCall {
+	r, ok := h.(harness.ToolCallReporter)
+	if !ok {
+		return nil
+	}
+	if calls := r.ParseToolCalls(stdout); calls != nil {
+		return calls
+	}
+	return []model.ToolCall{}
+}
+
+// toolMetrics summarizes observed tool calls into per-tool counts, or nil when
+// the harness reported none (nil calls), leaving execution metrics absent
+// rather than claiming a measured zero.
+func toolMetrics(calls []model.ToolCall) *results.ExecutionMetrics {
+	if calls == nil {
+		return nil
+	}
+	counts := map[string]int{}
+	for _, tc := range calls {
+		counts[tc.Name]++
+	}
+	total := len(calls)
+	return &results.ExecutionMetrics{ToolCalls: counts, TotalToolCalls: new(total)}
 }
 
 // retainArtifacts records a finished run's workspace and writes its full output

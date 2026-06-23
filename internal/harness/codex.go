@@ -114,6 +114,62 @@ func (c *Codex) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 	return strings.Join(texts, "\n"), usage
 }
 
+// ParseToolCalls returns the tool invocations in the codex event stream, in
+// observed order. Tool names are codex's native item types: a shell command
+// surfaces as "command_execution" (its `command` is the matchable argument) and
+// an edit as "file_change" (its `changes` list the paths). These two are pinned
+// to captured `codex exec --json` output; mcp_tool_call and function_call are
+// documented codex tool items not present in the capture, so they surface under
+// their item type with the whole item JSON as arguments rather than guessing the
+// field layout. Only completed items count, so each call is reported once.
+func (c *Codex) ParseToolCalls(stdout []byte) []model.ToolCall {
+	var calls []model.ToolCall
+	for line := range strings.SplitSeq(string(stdout), "\n") {
+		var event struct {
+			Type string          `json:"type"`
+			Item json.RawMessage `json:"item"`
+		}
+		if json.Unmarshal([]byte(line), &event) != nil || event.Type != "item.completed" {
+			continue
+		}
+		var item struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(event.Item, &item) != nil {
+			continue
+		}
+		if tc, ok := codexToolCall(item.Type, event.Item); ok {
+			calls = append(calls, tc)
+		}
+	}
+	return calls
+}
+
+// codexToolCall maps one completed codex item to a tool call, or ok=false when
+// the item is not a tool invocation (agent_message, reasoning, …). See
+// ParseToolCalls for which item types are pinned versus handled defensively.
+func codexToolCall(itemType string, raw json.RawMessage) (model.ToolCall, bool) {
+	switch itemType {
+	case "command_execution":
+		var it struct {
+			Command string `json:"command"`
+		}
+		_ = json.Unmarshal(raw, &it)
+		input, _ := json.Marshal(it.Command) // match the invocation, not its output
+		return model.ToolCall{Name: itemType, Input: input}, true
+	case "file_change":
+		var it struct {
+			Changes json.RawMessage `json:"changes"`
+		}
+		_ = json.Unmarshal(raw, &it)
+		return model.ToolCall{Name: itemType, Input: it.Changes}, true
+	case "mcp_tool_call", "function_call":
+		return model.ToolCall{Name: itemType, Input: raw}, true
+	default:
+		return model.ToolCall{}, false
+	}
+}
+
 // ReportsUsage reports that codex reports token usage (cost is computed from
 // pricing).
 func (c *Codex) ReportsUsage() bool { return true }

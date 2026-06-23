@@ -303,6 +303,11 @@ func assertionLine(a evalspec.Assertion) string {
 		return "output lacks /" + a.Pattern + "/"
 	case "command":
 		return "command: " + a.Run
+	case "tool_call":
+		if a.Pattern != "" {
+			return "tool /" + a.Tool + "/ with args /" + a.Pattern + "/"
+		}
+		return "tool /" + a.Tool + "/"
 	case "llm":
 		return a.Text
 	default:

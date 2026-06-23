@@ -35,11 +35,15 @@ type TriggersFile struct {
 // Assertion is one graded condition of a behavioral eval. In the authored
 // assertions array a bare string is shorthand for {type: "llm", text: ...}.
 type Assertion struct {
-	Type       string `json:"type"`
-	Path       string `json:"path,omitempty"`
-	Pattern    string `json:"pattern,omitempty"`
-	Run        string `json:"run,omitempty"`
-	Cwd        string `json:"cwd,omitempty"`
+	Type    string `json:"type"`
+	Path    string `json:"path,omitempty"`
+	Pattern string `json:"pattern,omitempty"`
+	Run     string `json:"run,omitempty"`
+	Cwd     string `json:"cwd,omitempty"`
+	// Tool is a regex matched against an observed tool name for a tool_call
+	// assertion (an MCP tool surfaces as "mcp__<server>__<tool>"); Pattern, when
+	// set, is matched against the call's JSON-serialized arguments.
+	Tool       string `json:"tool,omitempty"`
 	Requires   string `json:"requires,omitempty"`
 	ExpectExit *int   `json:"expect_exit,omitempty"`
 	Text       string `json:"text,omitempty"`
@@ -50,7 +54,7 @@ type Assertion struct {
 }
 
 // AssertionTypes is the closed set of supported assertion kinds.
-var AssertionTypes = []string{"file_exists", "file_absent", "regex", "not_regex", "command", "llm"}
+var AssertionTypes = []string{"file_exists", "file_absent", "regex", "not_regex", "command", "tool_call", "llm"}
 
 // FileRef is one input fixture staged into the eval workspace. It is
 // authored as a path relative to the evals file's directory; a leading
@@ -280,6 +284,17 @@ func validateAssertion(a Assertion, label string) []string {
 	case "command":
 		if a.Run == "" {
 			problems = append(problems, label+": missing run")
+		}
+	case "tool_call":
+		if a.Tool == "" {
+			problems = append(problems, label+": missing tool")
+		} else if _, err := regexp.Compile(a.Tool); err != nil {
+			problems = append(problems, fmt.Sprintf("%s: invalid tool: %v", label, err))
+		}
+		if a.Pattern != "" {
+			if _, err := regexp.Compile(a.Pattern); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: invalid pattern: %v", label, err))
+			}
 		}
 	case "llm":
 		if a.Text == "" {

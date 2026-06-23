@@ -57,6 +57,10 @@ type Options struct {
 	ExpectedOutput string        // the eval author's success description, judge context only
 	Timeout        time.Duration // shared by command assertions and the judge
 	JudgeModel     string        // "" = DefaultJudgeModel
+	// ToolCalls are the agent's observed tool invocations; nil when the harness
+	// cannot report them (a tool_call assertion is then skipped), a non-nil
+	// empty slice when it reported zero (the assertion fails).
+	ToolCalls []model.ToolCall
 }
 
 // Assertion grades one assertion. passed is tri-state: nil means skipped
@@ -145,6 +149,9 @@ func Assertion(ctx context.Context, a evalspec.Assertion, opts Options) (passed 
 		combined := string(res.Stdout) + res.StderrTail
 		return &verdict, fmt.Sprintf("exit %d: %s", res.ExitCode, tail(combined, 200))
 
+	case "tool_call":
+		return gradeToolCall(a, opts.ToolCalls)
+
 	case "llm":
 		verdict, evidence := judge(ctx, a.Text, opts)
 		return &verdict, evidence
@@ -152,6 +159,44 @@ func Assertion(ctx context.Context, a evalspec.Assertion, opts Options) (passed 
 
 	f := false
 	return &f, "unknown assertion type: " + a.Type
+}
+
+// gradeToolCall passes when some observed tool call's name matches a.Tool and,
+// when a.Pattern is set, its JSON-serialized arguments match that too. nil calls
+// means the harness cannot report tool calls (the assertion is skipped); a
+// non-nil empty slice means it reported none (the assertion fails).
+func gradeToolCall(a evalspec.Assertion, calls []model.ToolCall) (*bool, string) {
+	if calls == nil {
+		return nil, "skipped: harness does not report tool calls"
+	}
+	nameRE, err := regexp.Compile(a.Tool)
+	if err != nil {
+		f := false
+		return &f, fmt.Sprintf("invalid tool pattern: %v", err)
+	}
+	var argsRE *regexp.Regexp
+	if a.Pattern != "" {
+		if argsRE, err = regexp.Compile(a.Pattern); err != nil {
+			f := false
+			return &f, fmt.Sprintf("invalid pattern: %v", err)
+		}
+	}
+	for _, tc := range calls {
+		if !nameRE.MatchString(tc.Name) {
+			continue
+		}
+		if argsRE != nil && !argsRE.MatchString(string(tc.Input)) {
+			continue
+		}
+		verdict := true
+		evidence := tc.Name
+		if len(tc.Input) > 0 {
+			evidence += " " + truncate(string(tc.Input), 120)
+		}
+		return &verdict, evidence
+	}
+	f := false
+	return &f, "no tool_call matched /" + a.Tool + "/"
 }
 
 // judge asks the claude CLI for a verdict; any failure to obtain a parseable
@@ -235,6 +280,11 @@ func Describe(a evalspec.Assertion) string {
 			exit = *a.ExpectExit
 		}
 		return fmt.Sprintf("command `%s` exits %d", a.Run, exit)
+	case "tool_call":
+		if a.Pattern != "" {
+			return "agent called tool /" + a.Tool + "/ with args /" + a.Pattern + "/"
+		}
+		return "agent called tool /" + a.Tool + "/"
 	case "llm":
 		return a.Text
 	}

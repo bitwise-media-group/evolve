@@ -46,3 +46,20 @@ func TestEvalRunnerCapability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolCallReporterCapability pins which harnesses can report tool calls
+// from their eval output. Claude and Codex (whose output carries tool
+// invocations) implement it; the envelope/text harnesses and Gemini do not, so
+// a tool_call assertion against them is skipped.
+func TestToolCallReporterCapability(t *testing.T) {
+	want := map[string]bool{
+		model.HarnessClaude: true, model.HarnessCodex: true, model.HarnessGemini: false,
+		model.HarnessCursor: false, model.HarnessCopilot: false, model.HarnessAntigravity: false,
+	}
+	for _, h := range All() {
+		_, isReporter := h.(ToolCallReporter)
+		if isReporter != want[h.ID()] {
+			t.Errorf("%s ToolCallReporter = %v, want %v", h.ID(), isReporter, want[h.ID()])
+		}
+	}
+}

@@ -71,11 +71,12 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "llm"] },
+        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "tool_call", "llm"] },
         "path": { "type": "string" },
         "pattern": { "type": "string" },
         "run": { "type": "string" },
         "cwd": { "type": "string" },
+        "tool": { "type": "string" },
         "requires": { "type": "string" },
         "expect_exit": { "type": "integer" },
         "text": { "type": "string" }
@@ -93,6 +94,10 @@
         {
           "if": { "properties": { "type": { "const": "command" } } },
           "then": { "required": ["run"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "tool_call" } } },
+          "then": { "required": ["tool"] }
         },
         {
           "if": { "properties": { "type": { "const": "llm" } } },

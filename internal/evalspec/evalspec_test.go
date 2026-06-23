@@ -239,6 +239,28 @@ func TestValidateCatchesProblems(t *testing.T) {
 	}
 }
 
+func TestValidateToolCall(t *testing.T) {
+	good := []Eval{{ID: "ok", Prompt: "p", Assertions: []Assertion{
+		{Type: "tool_call", Tool: "Write"},
+		{Type: "tool_call", Tool: `mcp__github__.*`, Pattern: "issue"},
+	}}}
+	if problems := ValidateEvals(good); len(problems) != 0 {
+		t.Errorf("valid tool_call evals produced problems: %v", problems)
+	}
+
+	bad := []Eval{{ID: "bad", Prompt: "p", Assertions: []Assertion{
+		{Type: "tool_call"},                             // missing tool
+		{Type: "tool_call", Tool: "("},                  // invalid tool regex
+		{Type: "tool_call", Tool: "Bash", Pattern: "("}, // invalid args pattern
+	}}}
+	problems := strings.Join(ValidateEvals(bad), "\n")
+	for _, want := range []string{"missing tool", "invalid tool", "invalid pattern"} {
+		if !strings.Contains(problems, want) {
+			t.Errorf("problems missing %q:\n%s", want, problems)
+		}
+	}
+}
+
 // TestIntegerAndStringIDsCollide pins the normalization rule: 1 and "1" are
 // the same id after loading.
 func TestIntegerAndStringIDsCollide(t *testing.T) {

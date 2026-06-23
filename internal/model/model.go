@@ -4,6 +4,7 @@
 package model
 
 import (
+	"encoding/json"
 	"math"
 	"runtime"
 )
@@ -57,6 +58,15 @@ type Usage struct {
 	CacheCreationTokens *int
 	OutputTokens        *int
 	CostUSD             *float64
+}
+
+// ToolCall is one tool invocation observed in a harness's structured run output.
+// Name is the invoked tool name — an MCP tool surfaces as "mcp__<server>__<tool>"
+// under Claude and as the bare function name elsewhere. Input is the raw JSON
+// arguments exactly as the CLI emitted them, or nil when reported without args.
+type ToolCall struct {
+	Name  string
+	Input json.RawMessage
 }
 
 // DefaultMaxTurns is the agent-turn ceiling for a behavioral eval when neither

@@ -48,6 +48,20 @@ type EvalRunner interface {
 	RuntimeError(stdout []byte, exitCode int, timedOut bool) string
 }
 
+// ToolCallReporter is the optional capability of extracting the tool calls an
+// agent made from the CLI's structured run output. Harnesses implement it only
+// when their output carries tool invocations (Claude, Codex); envelope/text
+// harnesses (Cursor, Copilot, Antigravity) cannot, so a tool_call assertion
+// against them is skipped. Gemini will gain it for free once its EvalRunner
+// lands — its ScanLine already parses the tool name and parameters.
+type ToolCallReporter interface {
+	// ParseToolCalls returns every tool invocation in the CLI's full stdout, in
+	// the order observed. A non-nil empty slice means the run reported zero
+	// calls (a tool_call assertion then fails); nil is reserved for harnesses
+	// that cannot report tool calls at all (the assertion is skipped).
+	ParseToolCalls(stdout []byte) []model.ToolCall
+}
+
 // harnessOrder is the deterministic preference order used to pick a harness for
 // a model when several eligible harnesses support it and the model's preferred
 // harness is not eligible.

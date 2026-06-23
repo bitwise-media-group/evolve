@@ -5,6 +5,7 @@ package grade
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,6 +118,37 @@ func TestCommandAssertions(t *testing.T) {
 		passed, evidence := Assertion(context.Background(), tt.a, o)
 		if boolish(passed) != tt.want {
 			t.Errorf("%+v = (%s, %q), want %s", tt.a, boolish(passed), evidence, tt.want)
+		}
+	}
+}
+
+func TestToolCallAssertions(t *testing.T) {
+	calls := []model.ToolCall{
+		{Name: "Write", Input: json.RawMessage(`{"file_path":"foo.txt","content":"hello"}`)},
+		{Name: "Bash", Input: json.RawMessage(`{"command":"terraform plan"}`)},
+		{Name: "mcp__github__create_issue", Input: json.RawMessage(`{"title":"bug"}`)},
+	}
+	tests := []struct {
+		name      string
+		toolCalls []model.ToolCall
+		a         evalspec.Assertion
+		want      string
+	}{
+		{"name match", calls, evalspec.Assertion{Type: "tool_call", Tool: "Write"}, "pass"},
+		{"name miss", calls, evalspec.Assertion{Type: "tool_call", Tool: "Edit"}, "fail"},
+		{"name+args match", calls, evalspec.Assertion{Type: "tool_call", Tool: "Bash", Pattern: "terraform"}, "pass"},
+		{"args miss", calls, evalspec.Assertion{Type: "tool_call", Tool: "Bash", Pattern: "kubectl"}, "fail"},
+		{"mcp match", calls, evalspec.Assertion{Type: "tool_call", Tool: `mcp__github__.*`}, "pass"},
+		{"invalid tool regex", calls, evalspec.Assertion{Type: "tool_call", Tool: "("}, "fail"},
+		{"nil tool calls -> skip", nil, evalspec.Assertion{Type: "tool_call", Tool: "Write"}, "skip"},
+		{"empty non-nil -> fail", []model.ToolCall{}, evalspec.Assertion{Type: "tool_call", Tool: "Write"}, "fail"},
+	}
+	for _, tt := range tests {
+		o := opts(t, "")
+		o.ToolCalls = tt.toolCalls
+		passed, evidence := Assertion(context.Background(), tt.a, o)
+		if boolish(passed) != tt.want {
+			t.Errorf("%s: %+v = (%s, %q), want %s", tt.name, tt.a, boolish(passed), evidence, tt.want)
 		}
 	}
 }

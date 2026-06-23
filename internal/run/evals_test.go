@@ -6,6 +6,7 @@ package run
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +99,16 @@ func (f *fakeEvalProvider) RuntimeError(stdout []byte, _ int, _ bool) string {
 	return ""
 }
 
+// toolReportingProvider is a fakeEvalProvider that also implements
+// harness.ToolCallReporter, returning a fixed set of calls regardless of
+// stdout — enough to exercise tool_call grading and metrics population.
+type toolReportingProvider struct {
+	fakeEvalProvider
+	calls []model.ToolCall
+}
+
+func (p *toolReportingProvider) ParseToolCalls([]byte) []model.ToolCall { return p.calls }
+
 type countingEvalProvider struct{ fakeEvalProvider }
 
 func (c *countingEvalProvider) CountTokens(_ context.Context, _, text string) (int, error) {
@@ -161,6 +172,47 @@ func evalRepoFixture(t *testing.T) *layout.Repo {
 		t.Fatal(err)
 	}
 	return repo
+}
+
+// evalRepoWithToolCall is evalRepoFixture pared to one file_exists plus one
+// tool_call assertion, exercising the tool_call grade path end to end.
+func evalRepoWithToolCall(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
+	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\ndescription: x. Use when testing.\nlicense: MIT\n---\nbody\n")
+	write("evals/solo-skill/evals.json", `{"skill_name": "solo-skill", "evals": [{
+		"id": "basic",
+		"prompt": "create the file",
+		"assertions": [
+			{"type": "file_exists", "path": "created.txt"},
+			{"type": "tool_call", "tool": "Write"}
+		]
+	}]}`)
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// firstEvalResult loads the single committed result for the solo-skill fixture.
+func firstEvalResult(t *testing.T, repo *layout.Repo) results.EvalResult {
+	t.Helper()
+	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	entry := file.Evals["fake/model-1"]
+	if entry == nil || len(entry.Results) == 0 {
+		t.Fatalf("no results: %+v", entry)
+	}
+	return entry.Results[0]
 }
 
 func evalOptions(t *testing.T, repo *layout.Repo, p fakeHarness) EvalOptions {
@@ -241,6 +293,55 @@ func TestEvalsGradesEval(t *testing.T) {
 	}
 	if entry.Summary.Measured == nil || *entry.Summary.Passed != 1 {
 		t.Errorf("summary = %+v", entry.Summary)
+	}
+}
+
+func TestEvalsToolCallReporting(t *testing.T) {
+	// A reporter harness: the tool_call assertion passes and per-tool execution
+	// metrics are recorded.
+	repo := evalRepoWithToolCall(t)
+	rp := &toolReportingProvider{
+		fakeEvalProvider: fakeEvalProvider{reportsUsage: true},
+		calls: []model.ToolCall{
+			{Name: "Write", Input: json.RawMessage(`{"file_path":"created.txt"}`)},
+			{Name: "Write", Input: json.RawMessage(`{"file_path":"other.txt"}`)},
+			{Name: "Bash", Input: json.RawMessage(`{"command":"ls"}`)},
+		},
+	}
+	opts := evalOptions(t, repo, rp)
+	var out bytes.Buffer
+	opts.Stdout = &out
+	if _, err := Evals(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	r := firstEvalResult(t, repo)
+	if tc := r.Expectations[1]; tc.Passed == nil || !*tc.Passed {
+		t.Errorf("tool_call expectation = %+v, want pass", tc)
+	}
+	if r.ExecutionMetrics == nil {
+		t.Fatal("ExecutionMetrics = nil, want populated")
+	}
+	if r.ExecutionMetrics.ToolCalls["Write"] != 2 || r.ExecutionMetrics.ToolCalls["Bash"] != 1 {
+		t.Errorf("tool counts = %+v, want Write:2 Bash:1", r.ExecutionMetrics.ToolCalls)
+	}
+	if r.ExecutionMetrics.TotalToolCalls == nil || *r.ExecutionMetrics.TotalToolCalls != 3 {
+		t.Errorf("total = %v, want 3", r.ExecutionMetrics.TotalToolCalls)
+	}
+
+	// A non-reporter harness: the tool_call assertion skips (not fails) and no
+	// execution metrics are recorded.
+	repo2 := evalRepoWithToolCall(t)
+	opts2 := evalOptions(t, repo2, &fakeEvalProvider{reportsUsage: true})
+	opts2.Stdout = &out
+	if _, err := Evals(context.Background(), opts2); err != nil {
+		t.Fatal(err)
+	}
+	r2 := firstEvalResult(t, repo2)
+	if tc := r2.Expectations[1]; tc.Passed != nil || !strings.Contains(tc.Evidence, "skipped") {
+		t.Errorf("tool_call expectation = %+v, want skipped", tc)
+	}
+	if r2.ExecutionMetrics != nil {
+		t.Errorf("ExecutionMetrics = %+v, want nil for non-reporter", r2.ExecutionMetrics)
 	}
 }
 
