@@ -2,12 +2,17 @@
 /evolve
 /dist/
 /.bin/
+/site/
+/.cache/
 
 # coverage (make test)
 /coverage/
 
 # node stuff
 /node_modules/
+
+# python stuff
+/.venv/
 
 # claude
 /.claude/plans/

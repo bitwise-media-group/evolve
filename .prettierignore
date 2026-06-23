@@ -1,7 +1,9 @@
 # Generated reports and golden files keep their exact bytes.
 /e2e/
-/docs/
+/docs/cli/
+/docs/man/
 /schemas/
+/site/
 
 # claude
 /.claude

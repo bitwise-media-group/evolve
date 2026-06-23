@@ -1,35 +1,86 @@
 # Copyright 2026 Bitwise Media Group Ltd
 # SPDX-License-Identifier: MIT
 
-# Keep module deps, pinned dev tools, npm lint tools, and SHA-pinned actions fresh.
+# Keep module deps, pinned dev tools, npm lint tools, uv docs tooling, and SHA-pinned actions fresh.
 version: 2
 updates:
   - package-ecosystem: gomod
-    directories: ["/", "/tools"]
-    commit-message:
-      include: scope
-      prefix: build
-      prefix-development: build
-    schedule:
-      interval: weekly
-    groups:
-      go-deps:
-        patterns: ["*"]
-
-  - package-ecosystem: npm
     directory: /
+    cooldown:
+      default-days: 7
+    commit-message:
+      include: scope
+      prefix: deps
+      prefix-development: deps
+    schedule:
+      interval: daily
+
+  - package-ecosystem: gomod
+    directory: /tools
+    cooldown:
+      default-days: 7
     commit-message:
       include: scope
       prefix: build
       prefix-development: build
     schedule:
-      interval: weekly
+      interval: daily
+    groups:
+      tools:
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
+    schedule:
+      interval: daily
     commit-message:
-      include: scope
-      prefix: build
+      prefix: deps
       prefix-development: build
+      include: scope
+    cooldown:
+      default-days: 7
+      # our own actions ship straight through — no cooldown wait
+      exclude:
+        - bitwise-media-group/*
+    groups:
+      actions:
+        patterns:
+          - actions/*
+      github:
+        patterns:
+          - github/*
+      bitwise-media-group:
+        patterns:
+          - bitwise-media-group/*
+
+  - package-ecosystem: npm
+    directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    cooldown:
+      default-days: 7
+    groups:
+      dev-tooling:
+        patterns:
+          - "*"
+
+  # uv project deps (pyproject.toml + uv.lock) — currently just zensical, which
+  # builds and publishes the documentation site. Treated as build tooling.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    cooldown:
+      default-days: 7
+    groups:
+      docs-tooling:
+        patterns:
+          - "*"

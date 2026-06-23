@@ -77,6 +77,8 @@ linters:
     paths:
       - node_modules
       - e2e
+      - site
+      - .venv
 formatters:
   enable:
     - gofmt
@@ -86,3 +88,5 @@ formatters:
     paths:
       - node_modules
       - e2e
+      - site
+      - .venv

@@ -23,6 +23,8 @@ ignores:
   - ".claude/**"
   - "e2e/**"
   - "dist/**"
+  - ".venv/**"
+  - "site/**"
   # generated command reference — cobra's output, not house prose.
   - "docs/cli/**"
   # generated configuration reference — evolve docs --format config.
