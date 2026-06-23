@@ -200,6 +200,7 @@ type dashboardModel struct {
 	runSel       int
 	runFollow    bool
 	detailScroll int  // scroll offset into the Details result body
+	rollupScroll int  // scroll offset into the active Rollup tab's rows
 	confirmQuit  bool // the quit-confirmation dialog is showing
 
 	// Execution-pane browse state. Only live while paneExecution is focused;
@@ -577,52 +578,83 @@ func (d *dashboardModel) handleKey(msg tea.KeyPressMsg) bool {
 	return false
 }
 
-// paneKey routes a key to the active pane: Rollup switches tabs, Runs moves the
-// selection, Details scrolls the result.
+// paneKey routes a key to the active pane's handler: Rollup switches tabs and
+// scrolls its rows, Runs moves the selection, Details scrolls the result.
 func (d *dashboardModel) paneKey(key string) {
 	switch d.focus {
 	case paneExecution:
 		d.execKey(key)
 	case paneRollup:
-		switch key {
-		case "left", "h":
-			d.tab = (d.tab + tabCount - 1) % tabCount
-		case "right", "l":
-			d.tab = (d.tab + 1) % tabCount
-		}
+		d.rollupKey(key)
 	case paneRuns:
-		switch key {
-		case "up", "k":
-			d.moveRun(-1)
-		case "down", "j":
-			d.moveRun(1)
-		case "g", "home":
-			d.runTop()
-		case "G", "end":
-			d.runBottom()
-		case "ctrl+d", "pgdown":
-			d.moveRun(d.runPageStep())
-		case "ctrl+u", "pgup":
-			d.moveRun(-d.runPageStep())
-		case "enter", " ", "space":
-			d.detailScroll = 0
-			d.setFocus(paneDetails)
-		}
+		d.runsKey(key)
 	case paneDetails:
-		switch key {
-		case "up", "k":
-			d.scrollDetailBy(-1)
-		case "down", "j":
-			d.scrollDetailBy(1)
-		case "g", "home":
-			d.detailScroll = 0
-		case "G", "end":
-			d.detailScroll = d.maxDetailScroll()
-		case "ctrl+d", "pgdown":
-			d.scrollDetailBy(d.detailPageStep())
-		case "ctrl+u", "pgup":
-			d.scrollDetailBy(-d.detailPageStep())
-		}
+		d.detailsKey(key)
+	}
+}
+
+// rollupKey switches the rollup tab (resetting the scroll, since the row set
+// changes) and scrolls the active tab's rows when they overflow the pane.
+func (d *dashboardModel) rollupKey(key string) {
+	switch key {
+	case "left", "h":
+		d.tab = (d.tab + tabCount - 1) % tabCount
+		d.rollupScroll = 0
+	case "right", "l":
+		d.tab = (d.tab + 1) % tabCount
+		d.rollupScroll = 0
+	case "up", "k":
+		d.scrollRollupBy(-1)
+	case "down", "j":
+		d.scrollRollupBy(1)
+	case "g", "home":
+		d.rollupScroll = 0
+	case "G", "end":
+		d.rollupScroll = d.maxRollupScroll()
+	case "ctrl+d", "pgdown":
+		d.scrollRollupBy(d.rollupPageStep())
+	case "ctrl+u", "pgup":
+		d.scrollRollupBy(-d.rollupPageStep())
+	}
+}
+
+// runsKey moves the shared selection within the execution log, or jumps to Details
+// on the selected run.
+func (d *dashboardModel) runsKey(key string) {
+	switch key {
+	case "up", "k":
+		d.moveRun(-1)
+	case "down", "j":
+		d.moveRun(1)
+	case "g", "home":
+		d.runTop()
+	case "G", "end":
+		d.runBottom()
+	case "ctrl+d", "pgdown":
+		d.moveRun(d.runPageStep())
+	case "ctrl+u", "pgup":
+		d.moveRun(-d.runPageStep())
+	case "enter", " ", "space":
+		d.detailScroll = 0
+		d.setFocus(paneDetails)
+	}
+}
+
+// detailsKey scrolls the Details result body.
+func (d *dashboardModel) detailsKey(key string) {
+	switch key {
+	case "up", "k":
+		d.scrollDetailBy(-1)
+	case "down", "j":
+		d.scrollDetailBy(1)
+	case "g", "home":
+		d.detailScroll = 0
+	case "G", "end":
+		d.detailScroll = d.maxDetailScroll()
+	case "ctrl+d", "pgdown":
+		d.scrollDetailBy(d.detailPageStep())
+	case "ctrl+u", "pgup":
+		d.scrollDetailBy(-d.detailPageStep())
 	}
 }
 
@@ -777,6 +809,27 @@ func (d dashboardModel) selectedField(get func(*caseState) string) string {
 		return get(c)
 	}
 	return ""
+}
+
+// ── Rollup pane: the scrollable tab rows ────────────────────────────────────
+
+func (d *dashboardModel) scrollRollupBy(delta int) {
+	d.rollupScroll = clampInt(d.rollupScroll+delta, 0, d.maxRollupScroll())
+}
+
+// maxRollupScroll is how far the active tab's rows can scroll given the row count
+// and the rollup pane's height (its content height less the pinned header row).
+func (d dashboardModel) maxRollupScroll() int {
+	_, rollupH, _, _ := d.rightDims()
+	rowsH := max(rollupH-2-1, 1)
+	return max(0, len(d.rollupRows())-rowsH)
+}
+
+// rollupPageStep is half the rollup pane's visible height, so ctrl+d/ctrl+u page
+// by roughly a half-screen of rows.
+func (d dashboardModel) rollupPageStep() int {
+	_, rollupH, _, _ := d.rightDims()
+	return max((rollupH-2)/2, 1)
 }
 
 // ── Details pane: the scrollable result ─────────────────────────────────────

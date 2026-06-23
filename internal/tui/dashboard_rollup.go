@@ -250,13 +250,16 @@ func (d dashboardModel) renderTabs(w, h int) string {
 		b.WriteString(mutedStyle.Render(clip("  "+d.emptyTabHint(), w)))
 		return b.String()
 	}
+	// The header pins to the top row; the rest of the pane scrolls the rows, with
+	// ▲/▼ indicators when the list overflows (see scrollWindow).
+	rowsH := max(h-1, 1)
+	lines := make([]string, len(rows))
 	for i, r := range rows {
-		if i >= h-1 {
-			break
-		}
-		b.WriteString("\n")
-		b.WriteString(d.rollupLine(r, w))
+		lines[i] = d.rollupLine(r, w)
 	}
+	scroll := clampInt(d.rollupScroll, 0, max(0, len(lines)-rowsH))
+	b.WriteString("\n")
+	b.WriteString(scrollWindow(lines, scroll, rowsH))
 	return b.String()
 }
 

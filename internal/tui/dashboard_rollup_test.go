@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
@@ -153,5 +155,75 @@ func TestRollupImprovementsBaselineBasis(t *testing.T) {
 	d.tab = tabRegressions
 	if r := d.rollupRows(); len(r) != 0 {
 		t.Errorf("regressions = %+v, want none", r)
+	}
+}
+
+// TestRollupSkillsScrolls verifies the Skills tab scrolls when its rows overflow
+// the pane: down/up move by a row, g/G jump to the ends (revealing the last row),
+// scrolling clamps at the bounds, and switching tabs resets the offset.
+func TestRollupSkillsScrolls(t *testing.T) {
+	cat := manySkillCatalog(t, 12)
+	models, _ := soloModels() // both models → 24 (skill, model) rows
+	d := dashFromFilter(cat, models, nil, plan.PriorMetrics{})
+	d.w, d.h = 100, 40
+
+	// Focus the Rollup pane so its keys are live, and show the full Skills table.
+	d.handleKey(runeKey("2"))
+	d.tab = tabSkills
+
+	w, rollupH, _, _ := d.rightDims()
+	render := func() string { return d.renderTabs(w, rollupH-2) }
+	if d.maxRollupScroll() < 2 {
+		t.Skipf("pane too tall to scroll: maxRollupScroll = %d", d.maxRollupScroll())
+	}
+
+	// At the top: the first skill shows, the last is below the fold with a ▼ marker.
+	if got := render(); !strings.Contains(got, "Sk00") || strings.Contains(got, "Sk11") {
+		t.Errorf("top view should show Sk00 and hide Sk11:\n%s", got)
+	}
+	if got := render(); !strings.Contains(got, "below") {
+		t.Errorf("overflowing top view should carry a ▼ indicator:\n%s", got)
+	}
+
+	// G jumps to the bottom: offset pins to the max and the last skill becomes visible.
+	d.handleKey(runeKey("G"))
+	if d.rollupScroll != d.maxRollupScroll() {
+		t.Errorf("rollupScroll = %d after G, want max %d", d.rollupScroll, d.maxRollupScroll())
+	}
+	if got := render(); !strings.Contains(got, "Sk11") || !strings.Contains(got, "above") {
+		t.Errorf("bottom view should show Sk11 with a ▲ indicator:\n%s", got)
+	}
+
+	// Scrolling down at the bottom clamps — the offset does not run past the end.
+	d.handleKey(runeKey("j"))
+	if d.rollupScroll != d.maxRollupScroll() {
+		t.Errorf("rollupScroll = %d after down at bottom, want clamped to %d", d.rollupScroll, d.maxRollupScroll())
+	}
+
+	// g returns to the top; one down step advances by exactly one row.
+	d.handleKey(runeKey("g"))
+	if d.rollupScroll != 0 {
+		t.Errorf("rollupScroll = %d after g, want 0", d.rollupScroll)
+	}
+	d.handleKey(runeKey("j"))
+	if d.rollupScroll != 1 {
+		t.Errorf("rollupScroll = %d after one down, want 1", d.rollupScroll)
+	}
+	// Scrolling up at the top clamps at zero.
+	d.handleKey(runeKey("k"))
+	d.handleKey(runeKey("k"))
+	if d.rollupScroll != 0 {
+		t.Errorf("rollupScroll = %d after up at top, want 0", d.rollupScroll)
+	}
+
+	// ctrl+d pages down by the pane height; switching tabs resets the offset so the
+	// next tab opens at the top rather than inheriting a stale scroll.
+	d.handleKey(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	if d.rollupScroll == 0 {
+		t.Error("ctrl+d should page the rollup down")
+	}
+	d.handleKey(runeKey("h")) // switch tab (left)
+	if d.rollupScroll != 0 {
+		t.Errorf("rollupScroll = %d after tab switch, want reset to 0", d.rollupScroll)
 	}
 }

@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -66,6 +67,22 @@ func evalOnlyCatalog(t *testing.T) []plan.SkillCatalog {
 		ResultsDir: t.TempDir(),
 		Evals:      []evalspec.Eval{{ID: "e1"}, {ID: "e2"}},
 	}}
+}
+
+// manySkillCatalog is n evals-only skills under one plugin, titled "Sk00".."SkNN",
+// for tests that need the Rollup pane's Skills tab to overflow a short pane so its
+// rows scroll.
+func manySkillCatalog(t *testing.T, n int) []plan.SkillCatalog {
+	t.Helper()
+	cat := make([]plan.SkillCatalog, n)
+	for i := range cat {
+		cat[i] = plan.SkillCatalog{
+			Plugin: "solo", Skill: fmt.Sprintf("skill-%02d", i), Title: fmt.Sprintf("Sk%02d", i),
+			ResultsDir: t.TempDir(),
+			Evals:      []evalspec.Eval{{ID: "e1"}, {ID: "e2"}},
+		}
+	}
+	return cat
 }
 
 // testSession builds a form session over cat with the fake harness available,

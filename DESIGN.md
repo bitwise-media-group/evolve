@@ -178,12 +178,13 @@ The dashboard is split across two files: `dashboard.go` holds the state, message
 - The view is a title bar (run stats on the left; a run-wide progress bar over the Rollup column on the right, with
   percent-complete at its end), a blank separator row, then the body and a footer of key hints. The body is the left
   execution pane (a plugin → skill → model → case tree, every level carrying the same right-aligned rollup columns)
-  beside a right column of a tabbed "Rollup" (Summary / Providers / Plugins / Skills), the Runs log, and an "Executing"
-  detail pane (in-flight cases plus the highlighted case's authored spec). The progress bar rides the title bar rather
-  than taking its own row, so the two panes stay top-aligned. The Execution pane always scrolls the whole tree to keep
-  the highlight on-screen (centred, clamped at the ends) — the same focused or not — so leaving the pane never makes
-  other nodes disappear. Only the expansion differs by mode: live-status collapse while unfocused, the user's overrides
-  while focused.
+  beside a right column of a tabbed "Rollup" (Improvements / Regressions / Skills, switched with `[←→]`/`[h]` and — when
+  the rows overflow the pane — scrolled with `[↑↓]`/`[jk]`, `[g]`/`[G]`, and `[^d]`/`[^u]` over a pinned header), the
+  Runs log, and an "Executing" detail pane (in-flight cases plus the highlighted case's authored spec). The progress bar
+  rides the title bar rather than taking its own row, so the two panes stay top-aligned. The Execution pane always
+  scrolls the whole tree to keep the highlight on-screen (centred, clamped at the ends) — the same focused or not — so
+  leaving the pane never makes other nodes disappear. Only the expansion differs by mode: live-status collapse while
+  unfocused, the user's overrides while focused.
 - `now func() time.Time` is injected so elapsed-time rendering is deterministic under test.
 
 ### Rendering primitives and tests

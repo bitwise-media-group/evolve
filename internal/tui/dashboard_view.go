@@ -105,7 +105,7 @@ func (d dashboardModel) footerHints() string {
 	case paneExecution:
 		keys = "[↑↓]/[jk] move · [→] expand · [←]/[h] collapse · [enter] open run · [g]/[G] top/bottom"
 	case paneRollup:
-		keys = "[←→]/[hl] switch tabs"
+		keys = "[←→]/[hl] switch tabs · [↑↓]/[jk] scroll · [g]/[G] top/bottom · [^d]/[^u] page down/up"
 	case paneRuns:
 		keys = "[↑↓]/[jk] scroll · [enter] open run · [g]/[G] top/bottom · [^d]/[^u] page down/up"
 	default:
