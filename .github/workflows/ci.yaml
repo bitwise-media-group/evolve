@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 # Continuous integration — thin caller for the org's reusable ci workflow. It runs
-# the canonical Makefile gates (lint, build, test) as one parallel job each, then a
-# Codecov upload from coverage/cobertura-coverage.xml (emitted by `make test`).
+# the canonical Makefile gates (lint, build, test) as one parallel job each, then
+# Codecov uploads from coverage/cobertura-coverage.xml (coverage) and
+# coverage/junit.xml (test results) — both emitted by `make test`.
 # `make lint` carries all check-mode static analysis — go vet, govulncheck,
 # golangci-lint, prettier --check, markdownlint, addlicense. The Go version comes
 # from go.mod and the Node version from .node-version.

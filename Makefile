@@ -114,13 +114,18 @@ lint: node_modules go_tools ## lint the go code (across the LINT_GOOS build-tag 
 	@ npm run lint
 	@ npm run format:check
 
-# -covermode=atomic is the race-safe counter mode `-race` requires. gocover-cobertura
-# is pinned in tools/go.mod and run via `go tool` — no `go install` of an @latest tool.
-# Coverage lands in coverage/ where the reusable CI workflow uploads it to Codecov.
+# -covermode=atomic is the race-safe counter mode `-race` requires. gotestsum runs
+# the suite, streams human-readable output, and writes a JUnit report in one pass
+# (propagating the test exit code, which a bare `go test | …` pipe would swallow);
+# gocover-cobertura turns the profile into Cobertura XML. Both are pinned in
+# tools/go.mod and run via `go tool` — no `go install` of an @latest tool. Coverage
+# (cobertura-coverage.xml) and test results (junit.xml) land in coverage/ where the
+# reusable CI workflow uploads them to Codecov.
 .PHONY: test
 test: ## run the unit tests (+ fuzz seed corpora)
 	@ mkdir -p coverage
-	@ go test -race -covermode=atomic -coverprofile=coverage/coverage.out ./...
+	@ go tool -modfile=tools/go.mod gotestsum --junitfile coverage/junit.xml -- \
+		-race -covermode=atomic -coverprofile=coverage/coverage.out ./...
 	@ go tool -modfile=tools/go.mod gocover-cobertura <coverage/coverage.out >coverage/cobertura-coverage.xml
 
 .PHONY: fuzz
