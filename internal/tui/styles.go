@@ -77,4 +77,8 @@ var (
 			Border(lipgloss.RoundedBorder()).BorderForeground(colFaint)
 	buttonActive = lipgloss.NewStyle().Padding(0, 2).Bold(true).Foreground(colWhite).
 			Background(colBlue).Border(lipgloss.RoundedBorder()).BorderForeground(colBlue)
+	// buttonReady tints the RUN button green once a run is queued but the button is
+	// not focused, so readiness reads at a glance without the focused blue fill.
+	buttonReady = lipgloss.NewStyle().Padding(0, 2).Bold(true).Foreground(colGreen).
+			Border(lipgloss.RoundedBorder()).BorderForeground(colGreen)
 )

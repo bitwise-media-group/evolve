@@ -134,18 +134,23 @@ model, constructs the dashboard, and `tea.Batch`es dispatching the request with 
 
 ### Selection form
 
-`formModel` (`form.go`) is a four-region screen: a left column stacking a **filters** pane (the new/modified/failed
-toggles), a **harnesses** pane, and a **models** pane, beside a large plugin → skill → case **tree**. All selection
-state lives in `plan.Session` (`internal/plan/session.go`): the form navigates and routes each key press to a Session
-receiver (`SetNewFilter`/`SetModifiedFilter`/`SetFailedFilter`, `EnableHarness`, `EnableModel`, `SetCases`), then
-renders every pane by querying the Session. `tree.go` is now pure structure and navigation — it holds no selection state
-— and the flat regions use a minimal `list` (`list.go`). The Session holds the per-(model, case) categories
-(`run.CaseReasons`) the filters act on, derives the queued baseline from the active filters, and resolves the whole
-state into a `plan.Plan` through the same `plan.Build` the engine runs. A case renders as force-on (`☑`), force-off
-(`☐`), or one of the auto states — queued for all (`◉`), some (`◷`), or none (`○`) of its applicable enabled models; a
-harness off PATH and a model unsupported by the enabled harnesses render disabled. `request()` returns a
-`tui.RunRequest` carrying the Session's enabled selections and resolved `plan.Selection`; the engine and dashboard
-re-`Build` from those, so the form preview, the dashboard, and the engine cannot drift.
+`formModel` (`form.go`) is a five-region screen: a left column stacking a **filters** pane (the new/modified/failed
+toggles), a **harnesses** pane, and a **models** pane, beside a large plugin → skill → case **tree**, plus a
+tab-reachable **button row** (CANCEL / RUN, navigated with `←`/`→` and fired with `enter`). The models pane prefixes
+each vendor's models with a provider **header row** that toggles the whole group (tri-state box) on top of the
+individual model toggles. The panes carry the dashboard's cyberdream accent borders, mirrored horizontally
+(Filters/Harnesses/Models green/teal/orange down the left, the tree pink on the right) with the same always-bright
+titles and border-only dimming when unfocused. All selection state lives in `plan.Session` (`internal/plan/session.go`):
+the form navigates and routes each key press to a Session receiver
+(`SetNewFilter`/`SetModifiedFilter`/`SetFailedFilter`, `EnableHarness`, `EnableModel`, `SetCases`), then renders every
+pane by querying the Session. `tree.go` is now pure structure and navigation — it holds no selection state — and the
+flat regions use a minimal `list` (`list.go`). The Session holds the per-(model, case) categories (`run.CaseReasons`)
+the filters act on, derives the queued baseline from the active filters, and resolves the whole state into a `plan.Plan`
+through the same `plan.Build` the engine runs. A case renders as force-on (`☑`), force-off (`☐`), or one of the auto
+states — queued for all (`◉`), some (`◷`), or none (`○`) of its applicable enabled models; a harness off PATH and a
+model unsupported by the enabled harnesses render disabled. `request()` returns a `tui.RunRequest` carrying the
+Session's enabled selections and resolved `plan.Selection`; the engine and dashboard re-`Build` from those, so the form
+preview, the dashboard, and the engine cannot drift.
 
 ### Live dashboard
 

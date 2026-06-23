@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
@@ -22,13 +23,22 @@ const (
 	actionCancel
 )
 
-// The form's four focusable regions.
+// The form's focusable regions: the four selection panes plus the button row,
+// reached by tab from the tree. The 1/2/3/4 jump keys map to the first four, so
+// paneButtons must stay last (before paneCount).
 const (
 	paneFilters = iota
 	paneHarness
 	paneModels
 	paneTree
+	paneButtons
 	paneCount
+)
+
+// The two buttons in the paneButtons region.
+const (
+	btnCancel = iota
+	btnRun
 )
 
 // Case-marker and selection glyphs. Markers identify the tier; the selection
@@ -53,12 +63,13 @@ type formModel struct {
 	session *plan.Session
 	cat     []plan.SkillCatalog
 
-	filters list
-	harness list
-	models  list
-	tree    tree
-	focus   int
-	w, h    int
+	filters  list
+	harness  list
+	models   list
+	tree     tree
+	focus    int
+	btnFocus int // which button is selected while focus == paneButtons
+	w, h     int
 }
 
 func newForm(session *plan.Session, cat []plan.SkillCatalog, evalFilter string) formModel {
@@ -75,7 +86,19 @@ func newForm(session *plan.Session, cat []plan.SkillCatalog, evalFilter string) 
 	for _, h := range session.Harnesses() {
 		f.harness.items = append(f.harness.items, listItem{label: h.Harness.Name(), id: h.Harness.ID()})
 	}
+	// Models arrive provider-grouped in registry order; emit a header row at each
+	// provider boundary so a whole vendor can be toggled at once.
+	lastProv := ""
 	for _, m := range session.Models() {
+		if m.ProviderID != lastProv {
+			lastProv = m.ProviderID
+			name := m.ProviderID
+			if p, ok := model.ProviderByID(m.ProviderID); ok {
+				name = p.Name
+			}
+			f.models.items = append(f.models.items,
+				listItem{label: name, id: "provider:" + m.ProviderID, group: m.ProviderID, header: true})
+		}
 		f.models.items = append(f.models.items, listItem{label: m.Name, id: m.Key()})
 	}
 	// --eval forces every non-matching eval off so the run is scoped to it.
@@ -136,9 +159,9 @@ func (f formModel) valid() bool { return f.session.AnyQueued() }
 func (f formModel) update(key string) (formModel, formAction) {
 	switch key {
 	case "tab":
-		f.focus = (f.focus + 1) % paneCount
+		f.cycleFocus(1)
 	case "shift+tab":
-		f.focus = (f.focus + paneCount - 1) % paneCount
+		f.cycleFocus(-1)
 	case "1":
 		f.focus = paneFilters
 	case "2":
@@ -152,13 +175,9 @@ func (f formModel) update(key string) (formModel, formAction) {
 	case "down", "j":
 		f.moveCursor(1)
 	case "left", "h":
-		if f.focus == paneTree {
-			f.tree.expand(false)
-		}
+		f.horizontal(false)
 	case "right", "l":
-		if f.focus == paneTree {
-			f.tree.expand(true)
-		}
+		f.horizontal(true)
 	case "]":
 		if f.focus == paneTree {
 			f.tree.expandLevel()
@@ -172,6 +191,9 @@ func (f formModel) update(key string) (formModel, formAction) {
 	case "G", "end":
 		f.toEnd(false)
 	case " ", "space", "enter":
+		if f.focus == paneButtons {
+			return f, f.pressButton()
+		}
 		f.toggle()
 	case "r":
 		if f.valid() {
@@ -181,6 +203,41 @@ func (f formModel) update(key string) (formModel, formAction) {
 		return f, actionCancel
 	}
 	return f, actionNone
+}
+
+// cycleFocus advances the focused region by delta (wrapping), defaulting the
+// button row to RUN whenever it gains focus.
+func (f *formModel) cycleFocus(delta int) {
+	f.focus = (f.focus + delta + paneCount) % paneCount
+	if f.focus == paneButtons {
+		f.btnFocus = btnRun
+	}
+}
+
+// horizontal handles left/right in the focused region: folding in the tree,
+// selecting between the two buttons in the button row.
+func (f *formModel) horizontal(open bool) {
+	switch f.focus {
+	case paneTree:
+		f.tree.expand(open)
+	case paneButtons:
+		f.btnFocus = btnCancel
+		if open {
+			f.btnFocus = btnRun
+		}
+	}
+}
+
+// pressButton resolves enter/space on the focused button. RUN is inert until a
+// run is queued.
+func (f formModel) pressButton() formAction {
+	if f.btnFocus == btnCancel {
+		return actionCancel
+	}
+	if f.valid() {
+		return actionRun
+	}
+	return actionNone
 }
 
 // moveCursor advances the focused region's cursor.
@@ -242,8 +299,12 @@ func (f *formModel) toggle() {
 			f.session.EnableHarness(it.id, !f.session.HarnessEnabled(it.id))
 		}
 	case paneModels:
-		if it, ok := f.models.current(); ok && f.modelRunnable(it.id) {
-			f.session.EnableModel(it.id, !f.session.ModelEnabled(it.id))
+		if it, ok := f.models.current(); ok {
+			if it.header {
+				f.toggleProvider(it.group)
+			} else if f.modelRunnable(it.id) {
+				f.session.EnableModel(it.id, !f.session.ModelEnabled(it.id))
+			}
 		}
 	case paneTree:
 		if i := f.tree.currentNode(); i >= 0 {
@@ -287,6 +348,32 @@ func (f formModel) modelRunnable(key string) bool {
 	return false
 }
 
+// toggleProvider enables every runnable model under a provider, or disables them
+// all when they are already enabled — the group analogue of EnableModel.
+func (f *formModel) toggleProvider(provID string) {
+	on, total := f.providerState(provID)
+	enable := on < total
+	for _, m := range f.session.Models() {
+		if m.ProviderID == provID && f.session.ModelRunnable(m) {
+			f.session.EnableModel(m.Key(), enable)
+		}
+	}
+}
+
+// providerState counts how many of a provider's runnable models are enabled, for
+// the header row's tri-state box.
+func (f formModel) providerState(provID string) (on, total int) {
+	for _, m := range f.session.Models() {
+		if m.ProviderID == provID && f.session.ModelRunnable(m) {
+			total++
+			if f.session.ModelEnabled(m.Key()) {
+				on++
+			}
+		}
+	}
+	return on, total
+}
+
 // request turns the current Session state into a RunRequest: the enabled
 // (model, harness) selections and the resolved plan.Selection. The engine and
 // dashboard re-Build from these — the same inputs the Session's Plan() uses — so
@@ -307,28 +394,70 @@ func (f formModel) view() string {
 	harnessH := min(len(f.harness.items)+2, max(paneH/3, 5))
 	modelsH := max(paneH-filtersH-harnessH, 4)
 
+	// Accents mirror the dashboard horizontally: its right column becomes our left
+	// column (green/teal/orange top-to-bottom) and its single tall left pane becomes
+	// our tall right pane (pink). The title stays bright and only the border dims
+	// when a pane is unfocused — same as the dashboard.
 	cw := panelContentWidth(leftW)
 	filters := panel(1, "Filters", "", "",
-		f.renderFilters(cw, filtersH-2), f.focus == paneFilters, leftW, filtersH)
+		f.renderFilters(cw, filtersH-2), f.focus == paneFilters, leftW, filtersH, accentRollup)
 	harness := panel(2, "Harnesses", "", "",
-		f.renderHarness(cw, harnessH-2), f.focus == paneHarness, leftW, harnessH)
+		f.renderHarness(cw, harnessH-2), f.focus == paneHarness, leftW, harnessH, accentRuns)
 	models := panel(3, "Models", f.modelCount(), "",
-		f.renderModels(cw, modelsH-2), f.focus == paneModels, leftW, modelsH)
+		f.renderModels(cw, modelsH-2), f.focus == paneModels, leftW, modelsH, accentDetails)
 	left := lipgloss.JoinVertical(lipgloss.Left, filters, harness, models)
 
-	right := panel(4, "Plugins / Skills / Cases", "", "",
-		f.renderTree(panelContentWidth(rightW), paneH-2), f.focus == paneTree, rightW, paneH)
+	// A glyph legend sits directly under the tree pane: one row when it fits the pane
+	// width, two when it does not. On a short terminal it is dropped so the tree keeps
+	// usable height. The height is recomputed every render, so resize re-flows it.
+	legendBody, legendH := f.legend(rightW)
+	treeH := paneH
+	showLegend := paneH >= 13
+	if showLegend {
+		treeH = paneH - legendH
+	}
+	tree := panel(4, "Plugins / Skills / Cases", "", "",
+		f.renderTree(panelContentWidth(rightW), treeH-2), f.focus == paneTree, rightW, treeH, accentExec)
+	right := tree
+	if showLegend {
+		legend := panel(0, "Legend", "", "", legendBody, false, rightW, legendH, accentExec)
+		right = lipgloss.JoinVertical(lipgloss.Left, tree, legend)
+	}
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 
-	runBtn := buttonStyle.Render("r  RUN")
-	if f.valid() {
-		runBtn = buttonActive.Render("r  RUN")
-	}
-	buttons := lipgloss.JoinHorizontal(lipgloss.Top, buttonStyle.Render("esc  CANCEL"), "  ", runBtn)
-	hint := footerHint.Render("1/2/3/4 pane · ↑↓/jk move · ←→/hl fold · space toggle · g/G ends")
-	footer := lipgloss.JoinVertical(lipgloss.Left, buttons, hint)
+	footer := lipgloss.JoinVertical(lipgloss.Left, f.buttons(), f.hint())
 
 	return lipgloss.JoinVertical(lipgloss.Left, panes, footer)
+}
+
+// buttons renders the right-aligned CANCEL / RUN pair. The focused button takes
+// the blue fill; RUN tints green when a run is queued and greys out when nothing
+// is, so it reads as disabled even while focused.
+func (f formModel) buttons() string {
+	cancel := "CANCEL [esc]"
+	cancelBtn := buttonStyle.Render(cancel)
+	if f.focus == paneButtons && f.btnFocus == btnCancel {
+		cancelBtn = buttonActive.Render(cancel)
+	}
+
+	run := "RUN [r]"
+	runBtn := buttonStyle.Render(run)
+	switch {
+	case f.valid() && f.focus == paneButtons && f.btnFocus == btnRun:
+		runBtn = buttonActive.Render(run)
+	case f.valid():
+		runBtn = buttonReady.Render(run)
+	}
+
+	row := lipgloss.JoinHorizontal(lipgloss.Top, cancelBtn, "  ", runBtn)
+	return lipgloss.PlaceHorizontal(max(f.w, 1), lipgloss.Right, row)
+}
+
+// hint is the footer key legend, clipped to the window width.
+func (f formModel) hint() string {
+	return footerHint.Render(clip(
+		"[tab] pane · [↑↓]/[jk] move · [←→]/[hl] fold · [space] toggle · [g]/[G] ends · [r] run · [esc] cancel",
+		max(f.w, 1)))
 }
 
 func (f formModel) modelCount() string {
@@ -338,7 +467,7 @@ func (f formModel) modelCount() string {
 			on++
 		}
 	}
-	return countLabel(on, len(f.models.items))
+	return countLabel(on, len(f.session.Models()))
 }
 
 // renderFilters draws the new/modified/failed checkboxes.
@@ -362,16 +491,34 @@ func (f formModel) renderHarness(w, h int) string {
 		})
 }
 
-// renderModels draws the model rows, greying any not runnable under the enabled
-// harnesses.
+// renderModels draws the model rows under per-provider header rows: a header
+// carries a tri-state box for its whole vendor; model rows are indented beneath
+// it and greyed when not runnable under the enabled harnesses.
 func (f formModel) renderModels(w, h int) string {
 	return renderRows(f.models.items, f.models.cursor, f.focus == paneModels, w, h,
 		func(it listItem) string {
-			if !f.modelRunnable(it.id) {
-				return mutedStyle.Render("[·] " + it.label + " (uns.)")
+			if it.header {
+				on, total := f.providerState(it.group)
+				return providerGlyph(on, total) + " " + headerDetailsStyle.Render(it.label)
 			}
-			return checkGlyph(f.session.ModelEnabled(it.id)) + " " + it.label
+			if !f.modelRunnable(it.id) {
+				return "  " + mutedStyle.Render("[·] "+it.label+" (uns.)")
+			}
+			return "  " + checkGlyph(f.session.ModelEnabled(it.id)) + " " + it.label
 		})
+}
+
+// providerGlyph renders a provider header's tri-state box: all runnable models
+// enabled, some, or none.
+func providerGlyph(on, total int) string {
+	switch {
+	case total > 0 && on == total:
+		return passStyle.Render("[x]")
+	case on > 0:
+		return errStyle.Render("[~]")
+	default:
+		return mutedStyle.Render("[ ]")
+	}
 }
 
 // renderRows draws a flat list with a cursor marker, scrolled to keep the cursor
@@ -448,6 +595,30 @@ func (f formModel) renderTree(w, h int) string {
 	return b.String()
 }
 
+// legend builds the glyph-legend body for a pane of outer width w, returning the
+// content and the panel height it needs: a single content row (height 3) when all
+// seven entries fit the pane width, two rows (height 4) otherwise.
+func (f formModel) legend(w int) (body string, h int) {
+	items := []string{
+		legendItem(caseMarker(plan.KindTriggers), "trigger"),
+		legendItem(caseMarker(plan.KindEvals), "eval"),
+		legendItem(selGlyph(plan.SelForceOn), "forced on"),
+		legendItem(selGlyph(plan.SelForceOff), "forced off"),
+		legendItem(selGlyph(plan.SelAutoAll), "auto (all run)"),
+		legendItem(selGlyph(plan.SelAutoPartial), "auto (some run)"),
+		legendItem(selGlyph(plan.SelAutoNone), "auto (none run)"),
+	}
+	if one := strings.Join(items, "   "); lipgloss.Width(one) <= panelContentWidth(w) {
+		return one, 3
+	}
+	return strings.Join(items[:4], "   ") + "\n" + strings.Join(items[4:], "   "), 4
+}
+
+// legendItem pairs a (pre-styled) glyph with a muted label.
+func legendItem(glyph, label string) string {
+	return glyph + " " + mutedStyle.Render(label)
+}
+
 // checkGlyph renders an on/off checkbox.
 func checkGlyph(on bool) string {
 	if on {
@@ -489,7 +660,9 @@ func triggerLabel(tr evalspec.Trigger) string {
 	if tr.ShouldTrigger {
 		mark = "+"
 	}
-	return fmt.Sprintf("%s %s", mark, truncate(tr.Query, 70))
+	// renderTree clips each row to the live pane width, so the full query is kept
+	// here and only ellipsized when it actually overflows (re-extending on resize).
+	return fmt.Sprintf("%s %s", mark, tr.Query)
 }
 
 func evalLabel(ev evalspec.Eval) string {

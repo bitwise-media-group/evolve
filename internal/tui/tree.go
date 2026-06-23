@@ -3,7 +3,11 @@
 
 package tui
 
-import "github.com/bitwise-media-group/evolve/internal/plan"
+import (
+	"slices"
+
+	"github.com/bitwise-media-group/evolve/internal/plan"
+)
 
 // treeNode is one row in the selection form's plugin → skill → case tree. The
 // tree is pure structure and navigation: selection state lives in the
@@ -148,13 +152,7 @@ func (t *tree) expandWhere(pred func(plan.CaseRef) bool) {
 		if t.nodes[i].leaf || len(t.nodes[i].children) == 0 {
 			continue
 		}
-		open := false
-		for _, cr := range t.caseLeaves(i) {
-			if pred(cr) {
-				open = true
-				break
-			}
-		}
+		open := slices.ContainsFunc(t.caseLeaves(i), pred)
 		t.nodes[i].expanded = open
 	}
 	t.cursor = 0

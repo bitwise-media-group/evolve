@@ -5,10 +5,14 @@ package tui
 
 // listItem is one row in a flat selection list (filters, harnesses, models). Its
 // display state (checked, disabled, annotation) is derived from the plan.Session
-// at render time, so only its stable identity lives here.
+// at render time, so only its stable identity lives here. A header row groups the
+// rows beneath it (the models list uses one per provider); toggling it selects or
+// deselects the whole group rather than a single unit.
 type listItem struct {
-	label string
-	id    string // filter key / harness id / model key
+	label  string
+	id     string // filter key / harness id / model key
+	header bool   // group header row (e.g. a provider); toggles the whole group
+	group  string // header rows -> the group id (provider id) they own
 }
 
 // list is a flat, navigable selection list; selection state is owned by the
