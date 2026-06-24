@@ -12,7 +12,12 @@
     "layout": {
       "description": "Repository layout: auto, marketplace, multi, or single.",
       "type": "string",
-      "enum": ["auto", "marketplace", "multi", "single"],
+      "enum": [
+        "auto",
+        "marketplace",
+        "multi",
+        "single"
+      ],
       "default": "auto"
     },
     "models": {
@@ -36,11 +41,18 @@
     "results_format": {
       "description": "Format for committed results files and the EVALUATION rollup: json, jsonc, or yaml.",
       "type": "string",
-      "enum": ["json", "jsonc", "yaml"],
+      "enum": [
+        "json",
+        "jsonc",
+        "yaml"
+      ],
       "default": "json"
     },
     "telemetry": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
         "dir": {
           "description": "Directory for the OpenTelemetry JSON exporter (traces.json, metrics.json, logs.json); the --telemetry-dir flag overrides it and both win over OTEL_* env vars.",
@@ -64,7 +76,10 @@
       "type": "string"
     },
     "sandbox": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
         "enabled": {
           "description": "Confine agent writes with an OS sandbox (sandbox-exec on macOS, bubblewrap on Linux); --no-sandbox overrides for one run.",
@@ -82,7 +97,10 @@
       "additionalProperties": false
     },
     "checks": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
         "license": {
           "description": "License every SKILL.md must declare; when unset, skills must not declare one.",
@@ -97,6 +115,16 @@
           "description": "Maximum SKILL.md line count.",
           "type": "integer",
           "default": 500
+        },
+        "ideal_skill_lines": {
+          "description": "Ideal SKILL.md line count for the advisory size signal (full at or below; zero at the cap).",
+          "type": "integer",
+          "default": 200
+        },
+        "signals": {
+          "description": "Emit the advisory skill-quality signals after run checks; the --no-signals flag forces them off.",
+          "type": "boolean",
+          "default": true
         },
         "require_codex_manifest": {
           "description": "Require .codex-plugin/plugin.json beside Claude's manifest.",
@@ -117,10 +145,16 @@
       "additionalProperties": false
     },
     "report": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "properties": {
         "thresholds": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "properties": {
             "triggers_min_pass_rate": {
               "description": "Minimum triggers pass rate (0-1); report --check exits 1 below it.",
@@ -170,7 +204,9 @@
     "model": {
       "description": "One model in a provider's matrix.",
       "type": "object",
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
         "id": {
           "description": "Model id passed to the runner CLI (required).",

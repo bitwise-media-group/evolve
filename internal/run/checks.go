@@ -33,6 +33,8 @@ type CheckConfig struct {
 	RequireCodexManifest bool   // require .codex-plugin/plugin.json beside Claude's
 	ForbidHooks          bool   // forbid a hooks/ directory in plugins
 	Marketplace          bool   // validate marketplace manifests (marketplace layout only)
+
+	Signals SignalConfig // tunables for the non-blocking skill-quality signals
 }
 
 // DefaultCheckConfig mirrors the rules hard-coded in run_checks.py, except
@@ -48,6 +50,7 @@ func DefaultCheckConfig() CheckConfig {
 		RequireCodexManifest: true,
 		ForbidHooks:          true,
 		Marketplace:          true,
+		Signals:              DefaultSignalConfig(),
 	}
 }
 

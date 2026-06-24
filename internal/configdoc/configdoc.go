@@ -100,6 +100,14 @@ func Schema() []Option {
 			Doc: "Maximum SKILL.md line count.",
 		},
 		{
+			Key: "checks.ideal_skill_lines", Type: "int", Value: checks.Signals.IdealSkillLines,
+			Doc: "Ideal SKILL.md line count for the advisory size signal (full at or below; zero at the cap).",
+		},
+		{
+			Key: "checks.signals", Type: "bool", Value: checks.Signals.Enabled,
+			Doc: "Emit the advisory skill-quality signals after run checks; the --no-signals flag forces them off.",
+		},
+		{
 			Key: "checks.require_codex_manifest", Type: "bool", Value: checks.RequireCodexManifest,
 			Doc: "Require .codex-plugin/plugin.json beside Claude's manifest.",
 		},

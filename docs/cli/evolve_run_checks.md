@@ -12,6 +12,7 @@ evolve run checks [flags]
   -h, --help             help for checks
       --license string   license every SKILL.md must declare; overrides checks.license (default: the field is forbidden)
       --no-marketplace   skip marketplace manifest validation
+      --no-signals       skip the advisory skill-quality signals
 ```
 
 ### Options inherited from parent commands

@@ -30,6 +30,12 @@ func (o *Options) ChecksConfig() run.CheckConfig {
 	if v.IsSet("checks.max_skill_lines") {
 		cfg.MaxSkillLines = v.GetInt("checks.max_skill_lines")
 	}
+	if v.IsSet("checks.ideal_skill_lines") {
+		cfg.Signals.IdealSkillLines = v.GetInt("checks.ideal_skill_lines")
+	}
+	if v.IsSet("checks.signals") {
+		cfg.Signals.Enabled = v.GetBool("checks.signals")
+	}
 	if v.IsSet("checks.require_codex_manifest") {
 		cfg.RequireCodexManifest = v.GetBool("checks.require_codex_manifest")
 	}

@@ -68,6 +68,14 @@ checks:
   # Maximum SKILL.md line count.
   max_skill_lines: 500
 
+  # Ideal SKILL.md line count for the advisory size signal (full at or
+  # below; zero at the cap).
+  ideal_skill_lines: 200
+
+  # Emit the advisory skill-quality signals after run checks; the
+  # --no-signals flag forces them off.
+  signals: true
+
   # Require .codex-plugin/plugin.json beside Claude's manifest.
   require_codex_manifest: true
 

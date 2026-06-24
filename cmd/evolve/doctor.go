@@ -21,6 +21,9 @@ var doctorCmd = &cobra.Command{
 	Short: "Check each harness (CLI on PATH, credential) and each vendor's counting API",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := opts.ChecksConfig().ValidateSignals(); err != nil {
+			return fmt.Errorf("config: %w", err)
+		}
 		harnesses, err := opts.Harnesses()
 		if err != nil {
 			return err
