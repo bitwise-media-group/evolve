@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/bitwise-media-group/evolve/compare/v0.3.0...v0.3.1) (2026-06-24)
+
+
+### Features
+
+* add tool_call assertion to verify tool and MCP invocations ([34a8885](https://github.com/bitwise-media-group/evolve/commit/34a8885262e3514f71960cdc412861da3f3ab7ef))
+* **tui:** scroll the dashboard rollup pane ([6687789](https://github.com/bitwise-media-group/evolve/commit/6687789e2459a333bcf3706b7bdd933468e3754e))
+
 ## [0.3.0](https://github.com/bitwise-media-group/evolve/compare/v0.2.1...v0.3.0) (2026-06-23)
 
 
