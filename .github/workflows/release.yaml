@@ -12,6 +12,12 @@
 # vanity-tags is left at its default (false): evolve is a versioned Go binary whose
 # consumers pin exact vX.Y.Z tags, not floating v1 / v1.1 majors.
 #
+# app-client-id/app-private-key author the release-please PR as the "FF Merge" App
+# instead of the GITHUB_TOKEN. A GITHUB_TOKEN-authored push fires no workflow_run,
+# so a release PR opened that way never triggers the auto-merge in merge.yaml;
+# authoring it as the App makes the release PR auto-merge once approved and green,
+# like any other.
+#
 # The `docs` job is independent of the release: on every push to main (and manual
 # dispatch) it builds the Zensical documentation site and publishes it to GitHub
 # Pages via the Actions deployment (not a gh-pages branch). It is here, alongside
@@ -33,7 +39,7 @@ permissions: {}
 
 jobs:
   release:
-    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@e37b7f61bbd233ae77aad81c967d08ad49220b8f # v2.0.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@ef97ca56a3a90f9f35556402e0c7478307edcbb9 # v3.0.0
     # ceiling for the reusable workflow's release-please + goreleaser jobs. GitHub
     # resolves a reusable workflow's permissions as the union of every job and ignores
     # `if:`, so the caller must grant the goreleaser job's id-token / attestations /
@@ -51,7 +57,13 @@ jobs:
       attestations: write
       # artifact storage record for the attestation
       artifact-metadata: write
+    with:
+      # author the release PR as the FF Merge App so it can auto-merge (a
+      # GITHUB_TOKEN-authored push fires no workflow_run to trigger the merge)
+      app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
     secrets:
+      # private key for the App that authors the release PR (same App as /merge)
+      app-private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
       # PAT with write access to bitwise-media-group/homebrew-tap — the default
       # GITHUB_TOKEN cannot push the cask to another repository.
       homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

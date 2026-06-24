@@ -34,6 +34,6 @@ permissions:
 
 jobs:
   analyze:
-    uses: bitwise-media-group/github-workflows/.github/workflows/security.yaml@e37b7f61bbd233ae77aad81c967d08ad49220b8f # v2.0.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/security.yaml@ef97ca56a3a90f9f35556402e0c7478307edcbb9 # v3.0.0
     with:
       languages: actions,go

@@ -3,19 +3,22 @@
 
 # Fast-forward merge — thin caller for the org's reusable merge workflow. It drives
 # both fast-forward flows from one caller: a maintainer comments `/merge` to merge
-# an approved, green PR now, or arms it (`/auto-merge` comment or the `auto-merge`
-# label) to merge automatically the moment it is approved and every required check
-# is green. Either way the base branch is fast-forwarded to the PR head: the commit
-# objects are untouched, so the original signature is preserved and release-please
-# sees each Conventional Commit individually.
+# an approved, green PR now, or arms it (`/auto-merge` comment, or the `auto-merge`
+# label by hand) to merge automatically the moment it is approved and every required
+# check is green. Either way the base branch is fast-forwarded to the PR head: the
+# commit objects are untouched, so the original signature is preserved and
+# release-please sees each Conventional Commit individually.
 #
-# All four triggers are routed by event inside the reusable workflow. issue_comment
-# runs in the base-repo context (so `/merge` and `/auto-merge` work even for fork
-# PRs); the label-arm and review paths are same-repo only. The workflow_run list
-# names every workflow that must pass — "Continuous Integration" (ci.yaml) and
-# "Security Analysis" (security.yaml); whichever finishes last triggers the attempt,
-# and ff-merge re-verifies all checks before moving the ref. None of these run PR
-# code; the reusable workflow only mints a token and calls the API.
+# Every trigger is one that does NOT attach a check run to the PR (issue_comment,
+# workflow_run, schedule), so the merge machinery adds no skipped-job clutter to the
+# PR's checks list. The approval signal is carried by the companion
+# merge-review-ack.yaml (its single job is the only check this system adds) and
+# re-enters here via workflow_run. The workflow_run list names every workflow that
+# must pass — "Continuous Integration" (ci.yaml) and "Security Analysis"
+# (security.yaml) — plus "Merge Review Ack"; whichever finishes last triggers the
+# attempt, and ff-merge re-verifies all checks. The schedule sweeps armed PRs as a
+# backstop. None of these run PR code; the reusable workflow only mints a token and
+# calls the API.
 #
 # Org prerequisites (see bitwise-media-group/ff-merge): the FF_MERGE_CLIENT_ID
 # variable + FF_MERGE_PRIVATE_KEY secret, and the "FF Merge" App installed on this
@@ -28,20 +31,21 @@ name: Merge
 on:
   issue_comment:
     types: [created]
-  pull_request:
-    types: [labeled]
-  pull_request_review:
-    types: [submitted]
   workflow_run:
-    workflows: ["Continuous Integration", "Security Analysis"]
+    workflows:
+      - Continuous Integration
+      - Security Analysis
+      - Merge Review Ack
     types: [completed]
+  schedule:
+    - cron: "17 * * * *"
 
 # the App token does the privileged work; the caller grants nothing
 permissions: {}
 
 jobs:
   merge:
-    uses: bitwise-media-group/github-workflows/.github/workflows/merge.yaml@e37b7f61bbd233ae77aad81c967d08ad49220b8f # v2.0.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge.yaml@ef97ca56a3a90f9f35556402e0c7478307edcbb9 # v3.0.0
     with:
       app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
     secrets:

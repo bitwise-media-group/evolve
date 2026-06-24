@@ -1,0 +1,28 @@
+# Copyright 2026 Bitwise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
+# Merge review-ack — required companion to merge.yaml. It carries the approval
+# signal for auto-merge. merge.yaml subscribes to no PR-attached events (to keep the
+# PR's checks list free of skipped-job clutter), but an approval only surfaces as the
+# PR-attached pull_request_review event. This workflow's single job completes on an
+# approving review so its workflow_run(completed) re-enters merge.yaml in base
+# context, where the App token is minted and the fast-forward done. That makes fork
+# and same-repo PRs merge identically on approval, and its job is the only check this
+# merge system adds to a PR. It does no privileged work and needs no secrets.
+#
+# Keep "Merge Review Ack" in merge.yaml's workflow_run list.
+#
+# The reusable workflow is pinned to a full commit SHA (tag in the comment);
+# Dependabot keeps the pin fresh.
+name: Merge Review Ack
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+# does no privileged work; grants nothing
+permissions: {}
+
+jobs:
+  ack:
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge-review-ack.yaml@ef97ca56a3a90f9f35556402e0c7478307edcbb9 # v3.0.0
