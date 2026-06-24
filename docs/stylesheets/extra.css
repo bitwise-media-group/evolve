@@ -145,7 +145,12 @@
 
 /* Header wordmark: "EVOLVE" in the hero's per-letter neon (overrides/partials/header.html) */
 .ev-headmark {
-    font-family: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
+    font-family: var(
+        --md-code-font-family,
+        "JetBrains Mono",
+        ui-monospace,
+        monospace
+    );
     font-weight: 800;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -177,8 +182,18 @@
    LANDING PAGE  (.ev) — injected by overrides/home.html
    ============================================================ */
 .ev {
-    --ev-mono: var(--md-code-font-family, "JetBrains Mono", ui-monospace, monospace);
-    --ev-sans: var(--md-text-font-family, "Hanken Grotesk", system-ui, sans-serif);
+    --ev-mono: var(
+        --md-code-font-family,
+        "JetBrains Mono",
+        ui-monospace,
+        monospace
+    );
+    --ev-sans: var(
+        --md-text-font-family,
+        "Hanken Grotesk",
+        system-ui,
+        sans-serif
+    );
     font-family: var(--ev-sans);
     color: var(--ev-fg);
     line-height: 1.55;
@@ -205,7 +220,11 @@
         linear-gradient(var(--ev-line) 1px, transparent 1px),
         linear-gradient(90deg, var(--ev-line) 1px, transparent 1px);
     background-size: 46px 46px;
-    -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, #000 30%, transparent 72%);
+    -webkit-mask-image: radial-gradient(
+        120% 80% at 50% 0%,
+        #000 30%,
+        transparent 72%
+    );
     mask-image: radial-gradient(120% 80% at 50% 0%, #000 30%, transparent 72%);
 }
 .ev-hero__inner {
@@ -402,8 +421,20 @@
     border-top: 1px solid var(--ev-line);
     border-bottom: 1px solid var(--ev-line);
     padding: 18px 0 14px;
-    -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
-    mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+    -webkit-mask-image: linear-gradient(
+        90deg,
+        transparent,
+        #000 9%,
+        #000 91%,
+        transparent
+    );
+    mask-image: linear-gradient(
+        90deg,
+        transparent,
+        #000 9%,
+        #000 91%,
+        transparent
+    );
 }
 .ev-marquee__track {
     display: flex;
