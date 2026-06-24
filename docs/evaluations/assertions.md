@@ -17,7 +17,11 @@ Every assertion is one entry in an eval's `assertions` array:
     "files": ["files/src/myapp/kv.py"],
     "assertions": [
         { "type": "file_exists", "path": "tests/test_kv.py" },
-        { "type": "regex", "path": "tests/test_kv.py", "pattern": "pytest\\.mark\\.parametrize" }
+        {
+            "type": "regex",
+            "path": "tests/test_kv.py",
+            "pattern": "pytest\\.mark\\.parametrize"
+        }
     ]
 }
 ```
@@ -74,7 +78,11 @@ Passes when `pattern` matches. With a `path`, the pattern is matched against tha
 anchor to line boundaries.
 
 ```json
-{ "type": "regex", "path": "tests/test_kv.py", "pattern": "pytest\\.mark\\.parametrize" }
+{
+    "type": "regex",
+    "path": "tests/test_kv.py",
+    "pattern": "pytest\\.mark\\.parametrize"
+}
 ```
 
 A `path`-less variant checks the agent's own report — for example, that it surfaced the command it ran:
@@ -95,7 +103,11 @@ A `regex` with a `path` whose file is missing fails (there is nothing to match a
 The negation of `regex`: passes when `pattern` does **not** match. Use it to assert an anti-pattern is absent.
 
 ```json
-{ "type": "not_regex", "path": "tests/test_kv.py", "pattern": "unittest|TestCase" }
+{
+    "type": "not_regex",
+    "path": "tests/test_kv.py",
+    "pattern": "unittest|TestCase"
+}
 ```
 
 This guards a pytest suite against stdlib `unittest` leaking in.
@@ -117,7 +129,11 @@ Runs `run` through `/bin/sh -c` in the workspace and passes when the exit code m
 is the strongest deterministic check — it runs the real toolchain over the agent's output.
 
 ```json
-{ "type": "command", "run": "terraform fmt -recursive -check", "requires": "terraform" }
+{
+    "type": "command",
+    "run": "terraform fmt -recursive -check",
+    "requires": "terraform"
+}
 ```
 
 Use `cwd` to run inside a subdirectory of the workspace, and chain a setup step before the check:
@@ -181,7 +197,10 @@ test, so verdicts stay comparable across providers. It reads the assertion text,
 pass/fail verdict with a short evidence quote.
 
 ```json
-{ "type": "llm", "text": "The new tests cover the error paths, not just the happy path." }
+{
+    "type": "llm",
+    "text": "The new tests cover the error paths, not just the happy path."
+}
 ```
 
 | Field  | Required | Meaning                             |
@@ -238,15 +257,31 @@ the part only prose can describe.
     "expectations": ["The agent explains which error paths it parametrized and why."],
     "assertions": [
         { "type": "file_exists", "path": "tests/test_kv.py" },
-        { "type": "regex", "path": "tests/test_kv.py", "pattern": "pytest\\.mark\\.parametrize" },
-        { "type": "regex", "path": "tests/test_kv.py", "pattern": "pytest\\.raises" },
-        { "type": "not_regex", "path": "tests/test_kv.py", "pattern": "unittest|TestCase" },
-        { "type": "command", "run": "python3 -m py_compile tests/test_kv.py", "requires": "python3" }
+        {
+            "type": "regex",
+            "path": "tests/test_kv.py",
+            "pattern": "pytest\\.mark\\.parametrize"
+        },
+        {
+            "type": "regex",
+            "path": "tests/test_kv.py",
+            "pattern": "pytest\\.raises"
+        },
+        {
+            "type": "not_regex",
+            "path": "tests/test_kv.py",
+            "pattern": "unittest|TestCase"
+        },
+        {
+            "type": "command",
+            "run": "python3 -m py_compile tests/test_kv.py",
+            "requires": "python3"
+        }
     ]
 }
 ```
 
-For the surrounding file shape — `triggers`, `evals`, `results`, and the per-case run controls — see
-[Authoring evaluations](index.md). Every field above is validated by the
+For the case around these assertions — the prompt, input `files`/fixtures, and the per-case run controls — see
+[Behavioral evals](evals.md). Every field above is validated by the
 [`evals` JSON Schema](https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json);
 point your editor at it via a `"$schema"` key for completion and inline errors.

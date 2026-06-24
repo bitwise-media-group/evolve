@@ -23,7 +23,10 @@ nav = [
   { "Configuration" = "config/index.md" },
   { "Authoring evaluations" = [
     { "Overview" = "evaluations/index.md" },
+    { "Triggers" = "evaluations/triggers.md" },
+    { "Behavioral evals" = "evaluations/evals.md" },
     { "Assertions" = "evaluations/assertions.md" },
+    { "How evaluations run" = "evaluations/execution.md" },
   ] },
   { "Reference" = "reference.md" },
   { "TUI" = "tui.md" },
