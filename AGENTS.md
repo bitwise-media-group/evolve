@@ -17,7 +17,7 @@ Antigravity) in throwaway workspaces and grades the results.
 cmd/evolve/        CLI: package main, one file per verb (cobra). See "Commands" below.
 internal/          All library code, one package per concern. See "Packages" below.
 docs/              GENERATED, committed (make docs): cli/ (command ref), man/ (man pages),
-                   config/ (configuration.md + schema + annotated example configs).
+                   config/ (index.md + schema + annotated example configs).
 schemas/           JSON Schemas for eval/results/report files (embedded via schemas.go).
 e2e/               SEPARATE Go module: live smoke test + fixture repos/ and golden/ outputs.
 tools/             SEPARATE Go module: pinned dev CLIs (golangci-lint, goreleaser, syft, addlicense).

@@ -249,8 +249,8 @@ Common settings:
 - `report.thresholds.*`
 - `providers.<name>.models`
 
-Read [docs/config/configuration.md](docs/config/configuration.md) for the full generated configuration reference and
-annotated example configs.
+Read [docs/config/index.md](docs/config/index.md) for the full generated configuration reference and annotated example
+configs.
 
 ## Development
 
@@ -290,4 +290,4 @@ security/     code-scanning and security notes
   and the TUI guide.
 - [DESIGN.md](DESIGN.md) for architecture, engine boundaries, and TUI wiring.
 - [docs/cli/evolve.md](docs/cli/evolve.md) for generated command documentation.
-- [docs/config/configuration.md](docs/config/configuration.md) for the full config surface.
+- [docs/config/index.md](docs/config/index.md) for the full config surface.
