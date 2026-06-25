@@ -85,3 +85,5 @@ thresholds:
 ```sh
 evolve report --check --min-triggers-pass-rate 0.95 --min-evals-pass-rate 0.90
 ```
+
+[Reviewing reports](reports.md) walks through the report layout, every table and its columns, and the threshold gate.

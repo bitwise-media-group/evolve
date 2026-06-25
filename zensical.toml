@@ -28,7 +28,9 @@ nav = [
     { "Behavioral evals" = "evaluations/evals.md" },
     { "Assertions" = "evaluations/assertions.md" },
     { "How evaluations run" = "evaluations/execution.md" },
+    { "Results" = "evaluations/results.md" },
   ] },
+  { "Reviewing reports" = "reports.md" },
   { "Reference" = "reference.md" },
   { "TUI" = "tui.md" },
 ]

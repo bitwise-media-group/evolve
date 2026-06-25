@@ -36,8 +36,9 @@ your editor at the schemas in [`schemas/`](https://github.com/bitwise-media-grou
 
 One committed `results.<ext>` per skill stores both eval kinds, keyed by `provider/model-id`. A sweep rewrites only the
 entries it ran, so diffs stay scoped. Output is deterministic — sorted keys, fixed field order, rounded floats, trailing
-newline — so reports re-render identically as the live matrix moves. [How evaluations run](execution.md#writing-results)
-covers the write step in detail.
+newline — so reports re-render identically as the live matrix moves. [Results](results.md) covers the stored file in
+full and [Reviewing reports](../reports.md) the rendered `EVALUATION.md` / rollup;
+[How evaluations run](execution.md#writing-results) covers the write step.
 
 !!! tip "Reruns & resuming"
 
