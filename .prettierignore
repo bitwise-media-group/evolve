@@ -6,6 +6,9 @@
 /schemas/
 /site/
 
+# Report-viewer SPA: a self-contained sub-project with its own toolchain.
+/internal/web/ui/
+
 # claude
 /.claude
 

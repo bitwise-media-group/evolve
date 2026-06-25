@@ -1,0 +1,53 @@
+/* Cyberdream palette mirrored from docs/stylesheets/extra.css so the viewer
+   matches the documentation site. Keyed on data-ev-scheme (slate = dark,
+   default = light); slate is the default when the attribute is absent. */
+
+:root,
+[data-ev-scheme="slate"] {
+  --ev-blue: #5ea1ff;
+  --ev-green: #5eff6c;
+  --ev-cyan: #5ef1ff;
+  --ev-red: #ff6e5e;
+  --ev-yellow: #f1ff5e;
+  --ev-magenta: #ff5ef1;
+  --ev-pink: #ff5ea0;
+  --ev-orange: #ffbd5e;
+  --ev-purple: #bd5eff;
+  --ev-bg: #16181a;
+  --ev-alt: #1e2124;
+  --ev-fg: #ffffff;
+  --ev-muted: #9aa3b2;
+  --ev-grey: #7b8496;
+  --ev-line: rgba(255, 255, 255, 0.09);
+  --ev-line-2: rgba(255, 255, 255, 0.17);
+  --ev-code: #101214;
+  --ev-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  --ev-row-hover: rgba(255, 255, 255, 0.04);
+}
+
+[data-ev-scheme="default"] {
+  --ev-blue: #0057d1;
+  --ev-green: #008b0c;
+  --ev-cyan: #008c99;
+  --ev-red: #d11500;
+  --ev-yellow: #8a6f00;
+  --ev-magenta: #d100bf;
+  --ev-pink: #f40064;
+  --ev-orange: #c66e00;
+  --ev-purple: #8a14e6;
+  --ev-bg: #ffffff;
+  --ev-alt: #f2f3f4;
+  --ev-fg: #16181a;
+  --ev-muted: #5b6472;
+  --ev-grey: #5b6472;
+  --ev-line: rgba(16, 24, 26, 0.12);
+  --ev-line-2: rgba(16, 24, 26, 0.22);
+  --ev-code: #f4f5f6;
+  --ev-shadow: 0 24px 60px rgba(16, 24, 26, 0.16);
+  --ev-row-hover: rgba(16, 24, 26, 0.04);
+}
+
+:root {
+  --ev-font: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  --ev-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}

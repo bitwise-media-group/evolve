@@ -6,6 +6,13 @@ LICENSE_IGNORE := $(foreach pattern,$(shell cat .licenseignore 2>/dev/null),-ign
 APP_PKG := ./cmd/evolve
 MODULE  := $(shell go list -m)
 
+# Report-viewer SPA: built into internal/web/ui/dist and embedded by `build` via
+# -tags withui. dist/ is git-ignored (a built bundle, like site/); the ui target
+# rebuilds it only when the UI sources change.
+UI_DIR  := internal/web/ui
+UI_SRCS := $(UI_DIR)/package.json $(UI_DIR)/package-lock.json $(UI_DIR)/index.html \
+	$(UI_DIR)/vite.config.ts $(UI_DIR)/tsconfig.json $(shell find $(UI_DIR)/src -type f 2>/dev/null)
+
 # Version metadata stamped into the binary via -ldflags. GoReleaser injects the
 # same vars at the same import path ($(MODULE)/internal/version) on tagged releases.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -141,9 +148,18 @@ smoke: ## real `evolve run all` on the marketplace fixture (SMOKE_MODEL=claude-h
 	@ command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
 	@ SMOKE_MODEL=$(SMOKE_MODEL) go -C e2e test -v -count=1 -run '^TestSmoke$$' .
 
+# Build the embedded report-viewer SPA. The file target reruns npm only when the
+# UI sources change; `ui` is the phony entrypoint.
+$(UI_DIR)/dist/index.html: $(UI_SRCS)
+	@ npm --prefix $(UI_DIR) ci --no-fund --no-audit
+	@ npm --prefix $(UI_DIR) run build
+
+.PHONY: ui
+ui: $(UI_DIR)/dist/index.html ## build the embedded report-viewer SPA (internal/web/ui/dist)
+
 .PHONY: build
-build: ## build the binary (./evolve) with version ldflags
-	@ CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o evolve $(APP_PKG)
+build: ui ## build the binary (./evolve) with the embedded report viewer
+	@ CGO_ENABLED=0 go build -tags withui -trimpath -ldflags "$(LDFLAGS)" -o evolve $(APP_PKG)
 
 .PHONY: run
 run: build ## build and run locally (override args via ARGS=...)

@@ -28,9 +28,10 @@ security/          Committed code-scanning notes.
 
 Generated/build outputs not to edit by hand: `make docs` writes `docs/cli/`, `docs/man/`, and the `docs/config/`
 artifacts (`config.schema.json`, `.evolve.{yaml,jsonc}`, `.includes/reference.md`); plus `dist/` (goreleaser),
-`./evolve` (built binary), `node_modules/` (markdownlint/prettier tooling only). Everything else under `docs/` is the
-authored Zensical site — navigation lives in `zensical.toml`, and `docs/config/index.md` is authored prose that
-snippet-includes the generated config fragments.
+`./evolve` (built binary), `node_modules/` (markdownlint/prettier tooling only), and `internal/web/ui/dist/` (the
+report-viewer SPA bundle, built by `make ui`). Everything else under `docs/` is the authored Zensical site — navigation
+lives in `zensical.toml`, and `docs/config/index.md` is authored prose that snippet-includes the generated config
+fragments.
 
 ## Commands (`cmd/evolve/`)
 
@@ -38,6 +39,8 @@ snippet-includes the generated config fragments.
 
 - `run` (parent) → `run checks`, `run triggers`, `run evals`, `run all` — the eval tiers; `run all` chains them.
 - `report` — regenerate EVALUATION.md / EVALUATION.json from committed results.
+- `view` — serve the committed results as an interactive web report (filter/sort/snapshot), or `--out` a static
+  snapshot.
 - `models`, `doctor`, `version` — list the model matrix, environment diagnostics, version.
 - `docs` (hidden) — regenerate `docs/`.
 - `runui.go` — interactive-TUI gating and the form→engine→dashboard wiring shared by the interactive `run` paths (the
@@ -70,6 +73,10 @@ snippet-includes the generated config fragments.
 - `workspace` — builds the throwaway project dirs each agent session runs in.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.
 - `report` — renders results into EVALUATION.md / EVALUATION.json.
+- `web` — the interactive report viewer: a localhost HTTP server (read-only `/api/results` + an SSE `/events` stream
+  that fires when the results files change) hosting an embedded Vite/React single-page app. `data.go` flattens results
+  into the per-case rows the browser filters/sorts/rolls-up; the SPA source lives in `ui/` (built to `ui/dist` and
+  embedded under `-tags withui`; git-ignored, built by `make ui`). Backs the `view` command.
 - `evalspec` — parses authored triggers/evals definitions.
 - `manifest` — parses plugin/marketplace manifests and SKILL.md frontmatter.
 - `layout` — detects the repo shape (single/multi/marketplace) and enumerates plugins + eval sets.

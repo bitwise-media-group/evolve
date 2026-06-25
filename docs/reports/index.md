@@ -1,7 +1,7 @@
 # Reviewing reports
 
 Reports are the repository-level view over a sweep. `evolve report` reads every committed
-[`results.<ext>`](evaluations/results.md), rolls the entries up across plugins, skills, and models, and renders two
+[`results.<ext>`](../evaluations/results.md), rolls the entries up across plugins, skills, and models, and renders two
 artifacts: a human-readable `EVALUATION.md` and a machine-readable rollup. Nothing is measured here — the report is a
 projection of what the stored results already hold, so it re-renders identically until the results change.
 
@@ -25,7 +25,7 @@ evolve report --check         # also gate on configured thresholds (non-zero exi
 | `--stale-results keep\|drop` | What to do with stored results for models outside the active `models` set (default: prompt on a terminal, else keep). |
 
 The output format follows `--results-format`; switching formats removes the stale rollup from the previous choice. What
-gets written depends on the [repository layout](config/index.md):
+gets written depends on the [repository layout](../config/index.md):
 
 | Layout              | `EVALUATION.md` (repo root)            | `EVALUATION.<format>` (repo root) | Per-plugin `EVALUATION.md`             |
 | ------------------- | -------------------------------------- | --------------------------------- | -------------------------------------- |
@@ -139,7 +139,7 @@ machine-only `baseline` summary and the `previous_delta` / `baseline_delta` obje
 ## Gating on thresholds
 
 `evolve report --check` turns the rollup into a CI gate: it compares the trigger and eval pass rates against the
-thresholds in your [`.evolve` config](config/index.md) (or the `--min-*-pass-rate` overrides) and exits non-zero on a
+thresholds in your [`.evolve` config](../config/index.md) (or the `--min-*-pass-rate` overrides) and exits non-zero on a
 breach, printing each as `FAIL: …`.
 
 ```sh
@@ -147,4 +147,4 @@ evolve report --check --min-triggers-pass-rate 0.95 --min-evals-pass-rate 0.90
 ```
 
 With no threshold configured and no flag passed, `--check` is an error rather than a silent pass. Exit codes follow the
-[reference](reference.md#exit-codes): `0` clean, `1` on a breach, `2` on a usage or runtime error.
+[reference](../reference.md#exit-codes): `0` clean, `1` on a breach, `2` on a usage or runtime error.

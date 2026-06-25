@@ -195,3 +195,33 @@ palette (chosen to degrade on limited terminals) plus the cyberdream accent colo
 and `util.go` the width-aware `truncate`/`clip` helpers. `tui_test.go` exercises the models directly — feeding `KeyMsg`s
 and `Reporter` messages into `Update`/`apply` and asserting on `view()` output — so the whole UI is tested without a
 terminal.
+
+## Web viewer
+
+`internal/web` (the `view` command) is a second presentation of the committed results, for exploration the fixed
+[Markdown report](README.md) cannot give: faceted filtering, column sorting, a cases⇄rollup toggle, and shareable
+snapshots. It is a localhost HTTP server hosting an embedded Vite/React single-page app over a **read-only** API —
+chosen over a static-HTML generator specifically so the page can update live while a run is in progress. The browser
+never launches or controls runs; the API only ever reads.
+
+The data seam is deliberately thin. `BuildDataset` walks the same results files the report does (`layout.EvalSets` +
+`results.LoadDir`) and flattens them into a flat list of per-case `Row`s — one row per trigger query or eval case,
+carrying the plugin/skill/provider/model/type/status the facets filter on. The server ships just that list; the SPA
+derives the facet option lists and the per-model rollup from it, so there is a single source of truth and no server-side
+aggregation to drift from the rows. The rollup-with-deltas in `EVALUATION.json` is intentionally not duplicated here.
+
+Live updates reuse a different seam than the TUI. The dashboard is wired into the engine's `run.Reporter` and sees every
+case as it finishes; the viewer instead polls the results files' mtimes (`watch.go`) and fans a `results-changed` event
+out to connected browsers through an SSE broker (`sse.go`), which refetch `/api/results`. That keeps the viewer fully
+decoupled from the engine — any run, TUI, or CI that rewrites the files refreshes an open page — at the cost of
+per-file-write rather than per-case granularity. A future `evolve run … --web` could attach an in-process web reporter
+for per-case streaming (the engine-coupled path the TUI already uses); v1 ships only the decoupled watch.
+
+The SPA is built to a single self-contained `index.html` (`vite-plugin-singlefile`), which makes both embedding and
+snapshot export trivial. The bundle is embedded behind a build tag (`embed_ui.go`, `-tags withui`): a bare `go build`
+compiles the stub and serves a "not bundled" page, while `make build` and the release pipeline build the UI first and
+embed it — so `git`-clean checkouts and `go vet`/`go test` never need the Node toolchain, only `make build` does.
+Snapshot export (`snapshot.go`, and the client-side `downloadSnapshot`) injects the dataset into that single file as
+`window.__EVOLVE_SNAPSHOT__`; the app reads the global on boot and, when present, runs offline from it with the captured
+filters pre-applied. `<` is escaped in the injected JSON so case text containing `</script>` cannot break out of the
+element.

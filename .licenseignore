@@ -9,5 +9,6 @@ e2e/golden/**
 dist/**
 coverage/**
 site/**
+internal/web/ui/**
 
 commit.sh

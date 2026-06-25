@@ -13,6 +13,10 @@ project_name: evolve
 before:
   hooks:
     - go mod download
+    # Build the embedded report-viewer SPA so the -tags=withui build below can
+    # embed internal/web/ui/dist (git-ignored, like the docs site).
+    - npm --prefix internal/web/ui ci --no-fund --no-audit
+    - npm --prefix internal/web/ui run build
 
 # ^ref: https://goreleaser.com/customization/env/
 env:
@@ -25,6 +29,9 @@ builds:
     binary: evolve
     flags:
       - -trimpath
+    # withui embeds the report-viewer SPA built in the before-hook above.
+    tags:
+      - withui
     ldflags:
       - -s -w
       - -X github.com/bitwise-media-group/evolve/internal/version.Version={{ .Version }}

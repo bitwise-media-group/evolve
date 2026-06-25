@@ -27,6 +27,8 @@ ignores:
   - "dist/**"
   - ".venv/**"
   - "site/**"
+  # report-viewer SPA sub-project (its own toolchain; node_modules/dist live here).
+  - "internal/web/ui/**"
   # generated command reference — cobra's output, not house prose.
   - "docs/cli/**"
   # generated configuration reference — evolve docs --format config.

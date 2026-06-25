@@ -101,5 +101,5 @@ only cases whose authored content changed, and `--failed` reruns only the ones t
 picks up where it left off.
 
 From here, `evolve report` renders the committed results into `EVALUATION.md` / `EVALUATION.json` — see
-[Results](results.md) for the stored file's schema and [Reviewing reports](../reports.md) for every report table and its
-columns and the threshold gate (or the [Reference](../reference.md) for the bare command and flags).
+[Results](results.md) for the stored file's schema and [Reviewing reports](../reports/index.md) for every report table
+and its columns and the threshold gate (or the [Reference](../reference.md) for the bare command and flags).

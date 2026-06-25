@@ -22,4 +22,5 @@ Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals
 * [evolve report](evolve_report.md)	 - Regenerate EVALUATION.md and EVALUATION.json from the stored results
 * [evolve run](evolve_run.md)	 - Run the eval tiers: static checks, trigger accuracy, behavioral evals
 * [evolve version](evolve_version.md)	 - Print the build version
+* [evolve view](evolve_view.md)	 - Browse the stored results in a web browser (filter, sort, snapshot)
 

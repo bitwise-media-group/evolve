@@ -6,7 +6,7 @@ A sweep produces two kinds of artifact, and it helps to keep them straight:
   the raw per-model, per-case outcomes, kept deterministic so it commits and diffs cleanly. This page covers them.
 - **Reports** — `EVALUATION.md` and a machine-readable rollup, _rendered_ from the stored results by `evolve report`.
   Nothing is measured there; the report is a view over what the results files already hold. See
-  [Reviewing reports](../reports.md).
+  [Reviewing reports](../reports/index.md).
 
 | Artifact        | Path                          | Scope      | Written by      |
 | --------------- | ----------------------------- | ---------- | --------------- |
@@ -88,4 +88,4 @@ readable. The deltas themselves are **derived at report time**, not stored.
     `common.schema.json`). Point your editor at them with a `"$schema"` key for validation and completion.
 
 Once the results are written, `evolve report` renders them into the repository's reports — see
-[Reviewing reports](../reports.md).
+[Reviewing reports](../reports/index.md).

@@ -30,7 +30,8 @@ nav = [
     { "How evaluations run" = "evaluations/execution.md" },
     { "Results" = "evaluations/results.md" },
   ] },
-  { "Reviewing reports" = "reports.md" },
+  { "Reviewing reports" = "reports/index.md" },
+  { "Viewing in a Browser" = "reports/viewer.md" },
   { "Reference" = "reference.md" },
   { "TUI" = "tui.md" },
 ]
