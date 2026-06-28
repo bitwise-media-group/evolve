@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -22,17 +23,23 @@ var (
 	semverRE = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 )
 
+// pluginManifests maps a checks.plugin_manifests kind to its manifest path,
+// relative to the plugin directory.
+var pluginManifests = map[string]string{
+	"claude": filepath.Join(".claude-plugin", "plugin.json"),
+	"codex":  filepath.Join(".codex-plugin", "plugin.json"),
+}
+
 // CheckConfig holds the tunable knobs, overridable via the .evolve config so other
 // organizations can run the tool without forking the rules.
 type CheckConfig struct {
-	License              string // required SKILL.md license; "" forbids the field
-	TriggerPattern       string // regex the description must match
-	MaxSkillLines        int    // SKILL.md body cap
-	MaxNameRunes         int    // skill name cap
-	MaxDescriptionRunes  int    // skill description cap
-	RequireCodexManifest bool   // require .codex-plugin/plugin.json beside Claude's
-	ForbidHooks          bool   // forbid a hooks/ directory in plugins
-	Marketplace          bool   // validate marketplace manifests (marketplace layout only)
+	License             string   // required SKILL.md license; "" forbids the field
+	TriggerPattern      string   // regex the description must match
+	MaxSkillLines       int      // SKILL.md body cap
+	MaxNameRunes        int      // skill name cap
+	MaxDescriptionRunes int      // skill description cap
+	PluginManifests     []string // plugin manifests every plugin must ship: "claude" and/or "codex"
+	Marketplace         bool     // validate marketplace manifests (marketplace layout only)
 
 	Signals SignalConfig // tunables for the non-blocking skill-quality signals
 }
@@ -42,15 +49,14 @@ type CheckConfig struct {
 // a license at all.
 func DefaultCheckConfig() CheckConfig {
 	return CheckConfig{
-		License:              "",
-		TriggerPattern:       `Use (when|after|before)`,
-		MaxSkillLines:        500,
-		MaxNameRunes:         64,
-		MaxDescriptionRunes:  1024,
-		RequireCodexManifest: true,
-		ForbidHooks:          true,
-		Marketplace:          true,
-		Signals:              DefaultSignalConfig(),
+		License:             "",
+		TriggerPattern:      `Use (when|after|before)`,
+		MaxSkillLines:       500,
+		MaxNameRunes:        64,
+		MaxDescriptionRunes: 1024,
+		PluginManifests:     []string{"claude", "codex"},
+		Marketplace:         true,
+		Signals:             DefaultSignalConfig(),
 	}
 }
 
@@ -65,6 +71,11 @@ func Checks(repo *layout.Repo, cfg CheckConfig) ([]Finding, error) {
 	triggerRE, err := regexp.Compile(cfg.TriggerPattern)
 	if err != nil {
 		return nil, fmt.Errorf("checks.trigger_pattern: %w", err)
+	}
+	for _, kind := range cfg.PluginManifests {
+		if _, ok := pluginManifests[kind]; !ok {
+			return nil, fmt.Errorf("checks.plugin_manifests: unknown manifest %q (want claude or codex)", kind)
+		}
 	}
 	c := &checker{repo: repo, cfg: cfg, triggerRE: triggerRE}
 
@@ -146,18 +157,56 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 	if dir != c.repo.Root {
 		label = c.repo.Rel(dir)
 	}
+
+	bothManifests := c.checkPluginManifests(dir, label, expectedName)
+
+	// A hooks/ directory only conflicts when both manifests are required.
+	if bothManifests {
+		if info, err := os.Stat(filepath.Join(dir, "hooks")); err == nil && info.IsDir() {
+			c.errf("%s: hooks/ directory is forbidden (Codex and Claude hooks"+
+				"incompatible, hooks forbidden when using both)", label)
+		}
+	}
+
+	skills, _ := filepath.Glob(filepath.Join(dir, "skills", "*", "SKILL.md"))
+	sort.Strings(skills)
+	if len(skills) == 0 {
+		c.errf("%s: no skills under skills/", label)
+	}
+	for _, skillMD := range skills {
+		c.checkSkill(skillMD)
+	}
+}
+
+// checkPluginManifests validates the plugin.json manifests configured in
+// checks.plugin_manifests: presence, JSON shape, name agreement with the
+// directory (or each other), and strict, agreeing semver. It reports whether
+// both the Claude and Codex manifests are required, which gates the hooks/ rule.
+func (c *checker) checkPluginManifests(dir, label, expectedName string) (bothManifests bool) {
 	claudePJ := filepath.Join(dir, ".claude-plugin", "plugin.json")
 	codexPJ := filepath.Join(dir, ".codex-plugin", "plugin.json")
 
-	required := []string{claudePJ}
-	if c.cfg.RequireCodexManifest {
+	// Keep claude before codex so the canonical (semver-checked) manifest is
+	// stable regardless of the configured order.
+	wantClaude := slices.Contains(c.cfg.PluginManifests, "claude")
+	wantCodex := slices.Contains(c.cfg.PluginManifests, "codex")
+	var required []string
+	if wantClaude {
+		required = append(required, claudePJ)
+	}
+	if wantCodex {
 		required = append(required, codexPJ)
 	}
 	manifests := map[string]map[string]any{}
 	for _, pj := range required {
 		if !isFile(pj) {
 			rel, _ := filepath.Rel(dir, pj)
-			c.errf("%s: missing %s", label, filepath.ToSlash(rel))
+			kind := "claude"
+			if pj == codexPJ {
+				kind = "codex"
+			}
+			c.errf("%s: missing %s (remove %q from checks.plugin_manifests to opt out)",
+				label, filepath.ToSlash(rel), kind)
 			continue
 		}
 		v, err := manifest.ReadJSON(pj)
@@ -173,7 +222,7 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 		manifests[pj] = obj
 	}
 
-	if len(manifests) == len(required) {
+	if len(required) > 0 && len(manifests) == len(required) {
 		names := map[string]string{}
 		for pj, obj := range manifests {
 			names[pj] = jsonStr(obj["name"])
@@ -199,7 +248,7 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 		// Versions must agree across manifests and be strict semver. With a
 		// single required manifest the semver check applies to it directly.
 		version := jsonStr(manifests[required[len(required)-1]]["version"])
-		if len(required) == 2 {
+		if wantClaude && wantCodex {
 			claudeVer := jsonStr(manifests[claudePJ]["version"])
 			if claudeVer != version {
 				c.errf("%s: version mismatch (claude=%s codex=%s)", label, claudeVer, version)
@@ -210,21 +259,7 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 		}
 	}
 
-	// Codex default-discovers hooks/hooks.json with a non-Claude schema.
-	if c.cfg.ForbidHooks {
-		if info, err := os.Stat(filepath.Join(dir, "hooks")); err == nil && info.IsDir() {
-			c.errf("%s: hooks/ directory is forbidden (Codex discovers hooks.json with an incompatible schema)", label)
-		}
-	}
-
-	skills, _ := filepath.Glob(filepath.Join(dir, "skills", "*", "SKILL.md"))
-	sort.Strings(skills)
-	if len(skills) == 0 {
-		c.errf("%s: no skills under skills/", label)
-	}
-	for _, skillMD := range skills {
-		c.checkSkill(skillMD)
-	}
+	return wantClaude && wantCodex
 }
 
 func (c *checker) checkSkill(skillMD string) {
@@ -259,7 +294,7 @@ func (c *checker) checkSkill(skillMD string) {
 		c.errf("%s: description longer than %d chars", path, c.cfg.MaxDescriptionRunes)
 	}
 	if !c.triggerRE.MatchString(description) {
-		c.errf("%s: description missing a 'Use when/after/before' trigger phrase", path)
+		c.errf("%s: description missing a 'Use when/after/before' trigger phrase (checks.description_pattern)", path)
 	}
 
 	got, present := fields["license"]
@@ -274,7 +309,7 @@ func (c *checker) checkSkill(skillMD string) {
 
 	if data, err := os.ReadFile(skillMD); err == nil {
 		if lines := len(manifest.SplitLines(string(data))); lines > c.cfg.MaxSkillLines {
-			c.errf("%s: SKILL.md exceeds %d lines (%d)", path, c.cfg.MaxSkillLines, lines)
+			c.errf("%s: SKILL.md exceeds %d lines (%d) (checks.max_skill_lines)", path, c.cfg.MaxSkillLines, lines)
 		}
 	}
 }
@@ -287,7 +322,7 @@ func (c *checker) checkMarketplace() {
 	ordered := []string{claudeMP, codexMP}
 	for _, mp := range ordered {
 		if !isFile(mp) {
-			c.errf("missing %s", c.repo.Rel(mp))
+			c.errf("missing %s (set checks.marketplace: false to opt out)", c.repo.Rel(mp))
 			continue
 		}
 		v, err := manifest.ReadJSON(mp)

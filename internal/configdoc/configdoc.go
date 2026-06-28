@@ -108,12 +108,10 @@ func Schema() []Option {
 			Doc: "Emit the advisory skill-quality signals after run checks; the --no-signals flag forces them off.",
 		},
 		{
-			Key: "checks.require_codex_manifest", Type: "bool", Value: checks.RequireCodexManifest,
-			Doc: "Require .codex-plugin/plugin.json beside Claude's manifest.",
-		},
-		{
-			Key: "checks.forbid_hooks", Type: "bool", Value: checks.ForbidHooks,
-			Doc: "Forbid a hooks/ directory in plugins.",
+			Key: "checks.plugin_manifests", Type: "list of strings", Value: checks.PluginManifests,
+			Doc: "Plugin manifests every plugin must ship: claude (.claude-plugin/plugin.json) and/or " +
+				"codex (.codex-plugin/plugin.json). With both, a hooks/ directory is forbidden " +
+				"(codex and claude hooks.json are incompatible).",
 		},
 		{
 			Key: "checks.marketplace", Type: "bool", Value: checks.Marketplace,

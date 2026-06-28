@@ -18,11 +18,7 @@ func runChecks(t *testing.T, fixture string) []Finding {
 
 func runChecksCfg(t *testing.T, fixture string, cfg CheckConfig) []Finding {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", "..", "e2e", "repos", fixture))
-	if err != nil {
-		t.Fatal(err)
-	}
-	repo, err := layout.Detect(root, layout.Auto)
+	repo, err := layout.Detect(mustAbs(t, fixture), layout.Auto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +52,10 @@ func TestBrokenRepo(t *testing.T) {
 		"marketplace source './plugins/ghost' does not resolve",
 		"marketplaces disagree on plugins",
 		"stray .claude-plugin/plugin.json",
-		"plugins/oops: missing .codex-plugin/plugin.json",
-		"plugins/oops: hooks/ directory is forbidden",
+		"plugins/oops: missing .codex-plugin/plugin.json (remove \"codex\" from checks.plugin_manifests to opt out)",
+		"plugins/oops: hooks/ directory is forbidden (Codex discovers hooks.json with an incompatible schema)",
 		"name 'wrong-name' != directory 'bad-skill'",
-		"description missing a 'Use when/after/before' trigger phrase",
+		"description missing a 'Use when/after/before' trigger phrase (checks.description_pattern)",
 		"license 'MIT' is forbidden",
 		"plugins/vers: version mismatch (claude=0.1.0 codex=0.2)",
 		"plugins/vers: version '0.2' is not strict semver",
@@ -96,6 +92,48 @@ func TestConfiguredLicense(t *testing.T) {
 			t.Errorf("unexpected license finding: %s", f.Message)
 		}
 	}
+}
+
+// TestPluginManifestsOptOut covers dropping a manifest from the required set:
+// without "codex", the broken fixture's missing-codex finding disappears, and
+// so does the hooks/ finding — a hooks/ directory only conflicts when both the
+// Claude and Codex manifests are targeted.
+func TestPluginManifestsOptOut(t *testing.T) {
+	cfg := DefaultCheckConfig()
+	cfg.PluginManifests = []string{"claude"}
+
+	for _, f := range runChecksCfg(t, "broken", cfg) {
+		if strings.Contains(f.Message, ".codex-plugin/plugin.json") {
+			t.Errorf("codex manifest still required: %s", f.Message)
+		}
+		if strings.Contains(f.Message, "hooks/ directory is forbidden") {
+			t.Errorf("hooks still forbidden without codex: %s", f.Message)
+		}
+	}
+}
+
+// TestPluginManifestsUnknown pins that an unrecognized manifest kind is a
+// config error, not a silent no-op.
+func TestPluginManifestsUnknown(t *testing.T) {
+	cfg := DefaultCheckConfig()
+	cfg.PluginManifests = []string{"claude", "windsurf"}
+
+	repo, err := layout.Detect(mustAbs(t, "single"), layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Checks(repo, cfg); err == nil || !strings.Contains(err.Error(), "windsurf") {
+		t.Errorf("want unknown-manifest error naming windsurf, got %v", err)
+	}
+}
+
+func mustAbs(t *testing.T, fixture string) string {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", "e2e", "repos", fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func containsSubstring(haystack []string, substr string) bool {

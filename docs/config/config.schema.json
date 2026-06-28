@@ -126,15 +126,16 @@
           "type": "boolean",
           "default": true
         },
-        "require_codex_manifest": {
-          "description": "Require .codex-plugin/plugin.json beside Claude's manifest.",
-          "type": "boolean",
-          "default": true
-        },
-        "forbid_hooks": {
-          "description": "Forbid a hooks/ directory in plugins.",
-          "type": "boolean",
-          "default": true
+        "plugin_manifests": {
+          "description": "Plugin manifests every plugin must ship: claude (.claude-plugin/plugin.json) and/or codex (.codex-plugin/plugin.json). With both, a hooks/ directory is forbidden (Codex discovers hooks.json with an incompatible schema).",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "claude",
+            "codex"
+          ]
         },
         "marketplace": {
           "description": "Validate marketplace manifests (marketplace layout only).",

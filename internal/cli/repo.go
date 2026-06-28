@@ -36,11 +36,8 @@ func (o *Options) ChecksConfig() run.CheckConfig {
 	if v.IsSet("checks.signals") {
 		cfg.Signals.Enabled = v.GetBool("checks.signals")
 	}
-	if v.IsSet("checks.require_codex_manifest") {
-		cfg.RequireCodexManifest = v.GetBool("checks.require_codex_manifest")
-	}
-	if v.IsSet("checks.forbid_hooks") {
-		cfg.ForbidHooks = v.GetBool("checks.forbid_hooks")
+	if v.IsSet("checks.plugin_manifests") {
+		cfg.PluginManifests = v.GetStringSlice("checks.plugin_manifests")
 	}
 	if v.IsSet("checks.marketplace") {
 		cfg.Marketplace = v.GetBool("checks.marketplace")
