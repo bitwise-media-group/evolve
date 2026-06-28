@@ -30,7 +30,13 @@ evals/<skill>/
 
 Supported formats are `json`, `jsonc`, `yaml` and `yml`; for a given basename, only one matching file may exist. Point
 your editor at the schemas in [`schemas/`](https://github.com/bitwise-media-group/evolve/tree/main/schemas) via a
-`"$schema"` key for validation and completion.
+`"$schema"` key for validation and completion — paste the URL for the file you're authoring:
+
+| Authored file    | Tier   | Schema (link is the value to paste into `"$schema"`)                                                                                               |
+| ---------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `triggers.<ext>` | Tier 1 | [raw.githubusercontent.com/…/triggers.schema.json](https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/triggers.schema.json) |
+| `evals.<ext>`    | Tier 2 | [raw.githubusercontent.com/…/evals.schema.json](https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json)       |
+| `results.<ext>`  | —      | [raw.githubusercontent.com/…/results.schema.json](https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/results.schema.json)   |
 
 ## Results
 
