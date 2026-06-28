@@ -18,8 +18,16 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 	fail when pass rates breach the configured thresholds
 
 .PP
+\fB--cobertura\fP=""
+	also write a Cobertura XML coverage file to this path (overrides report.cobertura)
+
+.PP
 \fB-h\fP, \fB--help\fP[=false]
 	help for report
+
+.PP
+\fB--junit\fP=""
+	also write a JUnit XML test-results file to this path (overrides report.junit)
 
 .PP
 \fB--migrate\fP[=false]
@@ -36,6 +44,10 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 .PP
 \fB--stale-results\fP=""
 	keep|drop stored results for models outside the models restriction (default: prompt on a terminal, else keep)
+
+.PP
+\fB--strict\fP[=false]
+	require the configured model matrix: --check holds every defined model to the thresholds, and --cobertura covers a skill only when every defined model has a current result
 
 
 .SH OPTIONS INHERITED FROM PARENT COMMANDS

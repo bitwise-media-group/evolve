@@ -102,7 +102,23 @@
       // Model keys (provider/model-id) the thresholds apply to.
       // Default: unset — every model with stored results.
       // "models": ["anthropic/claude-fable-5"],
-    }
+    },
+
+    // Path for a JUnit XML test-results file (one testcase per eval/trigger
+    // case per model); the --junit flag overrides it.
+    // Default: unset — no JUnit file written.
+    // "junit": "coverage/junit.xml",
+
+    // Path for a Cobertura XML coverage file marking each skill covered by a
+    // current eval result; the --cobertura flag overrides it.
+    // Default: unset — no Cobertura file written.
+    // "cobertura": "coverage/cobertura-coverage.xml",
+
+    // Require the configured model matrix: report --check holds every defined
+    // model to the thresholds, and the Cobertura output covers a skill only
+    // when every defined model has a current result. The --strict flag
+    // overrides it.
+    "strict": false
   }
 
   // Per-provider overrides: providers.<name>.models replaces that provider's

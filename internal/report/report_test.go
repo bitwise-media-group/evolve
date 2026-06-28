@@ -311,6 +311,17 @@ func TestCheckThresholds(t *testing.T) {
 	if got := Check(summary, Thresholds{TriggersMinPassRate: new(0.4)}); len(got) != 0 {
 		t.Errorf("breaches = %v, want none at 40%%", got)
 	}
+
+	// Strict holds every Defined model to the threshold, so a configured model
+	// with no results breaches where the default gate (above, at 40%) passes.
+	strict := Check(summary, Thresholds{
+		TriggersMinPassRate: new(0.4),
+		Strict:              true,
+		Defined:             []string{"anthropic/claude-fable-5", "openai/gpt-5.5"},
+	})
+	if len(strict) != 1 || !strings.Contains(strict[0], "openai/gpt-5.5") {
+		t.Errorf("strict breaches = %v, want one missing-results breach for openai/gpt-5.5", strict)
+	}
 }
 
 // multiSkillRepo builds a single-plugin repo with two skills (aaa-skill,

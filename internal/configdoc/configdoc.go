@@ -132,6 +132,24 @@ func Schema() []Option {
 			Fallback: "every model with stored results",
 			Doc:      "Model keys (provider/model-id) the thresholds apply to.",
 		},
+		{
+			Key: "report.junit", Type: "string", Example: "coverage/junit.xml",
+			Fallback: "no JUnit file written",
+			Doc: "Path for a JUnit XML test-results file (one testcase per eval/trigger case per model); " +
+				"the --junit flag overrides it.",
+		},
+		{
+			Key: "report.cobertura", Type: "string", Example: "coverage/cobertura-coverage.xml",
+			Fallback: "no Cobertura file written",
+			Doc: "Path for a Cobertura XML coverage file marking each skill covered by a current eval result; " +
+				"the --cobertura flag overrides it.",
+		},
+		{
+			Key: "report.strict", Type: "bool", Value: false,
+			Doc: "Require the configured model matrix: report --check holds every defined model to the thresholds, " +
+				"and the Cobertura output covers a skill only when every defined model has a current result. " +
+				"The --strict flag overrides it.",
+		},
 	}
 }
 

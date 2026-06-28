@@ -10,11 +10,14 @@ evolve report [flags]
 
 ```
       --check                          fail when pass rates breach the configured thresholds
+      --cobertura string               also write a Cobertura XML coverage file to this path (overrides report.cobertura)
   -h, --help                           help for report
+      --junit string                   also write a JUnit XML test-results file to this path (overrides report.junit)
       --migrate                        upgrade stored results files to the latest schema before generating the reports
       --min-evals-pass-rate float      minimum eval pass rate (0..1) for --check
       --min-triggers-pass-rate float   minimum trigger pass rate (0..1) for --check
       --stale-results string           keep|drop stored results for models outside the models restriction (default: prompt on a terminal, else keep)
+      --strict                         require the configured model matrix: --check holds every defined model to the thresholds, and --cobertura covers a skill only when every defined model has a current result
 ```
 
 ### Options inherited from parent commands

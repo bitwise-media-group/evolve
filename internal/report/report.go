@@ -37,6 +37,14 @@ type Options struct {
 	// dropped from the tables and listed in the "Excluded models" note. Nil means
 	// no filtering — every model with stored results is reported.
 	ActiveModels map[string]bool
+
+	// JUnitPath and CoberturaPath, when non-empty, emit the matching CI artifact
+	// alongside the EVALUATION files. Coverage is the per-skill data the Cobertura
+	// profile renders (the caller computes it via run.Coverage); it is required
+	// only when CoberturaPath is set.
+	JUnitPath     string
+	CoberturaPath string
+	Coverage      []SkillCoverage
 }
 
 // Summary is the machine-readable rollup written to EVALUATION.<format>.
@@ -160,6 +168,17 @@ func Generate(opts Options) (*Summary, error) {
 			}
 		}
 	}
+	if opts.JUnitPath != "" {
+		if err := writeXMLFile(opts.JUnitPath, renderJUnitXML(loaded)); err != nil {
+			return nil, err
+		}
+	}
+	if opts.CoberturaPath != "" {
+		data := renderCoberturaXML(opts.Coverage, coberturaTimestamp(summary.LatestRun))
+		if err := writeXMLFile(opts.CoberturaPath, data); err != nil {
+			return nil, err
+		}
+	}
 	return summary, nil
 }
 
@@ -167,7 +186,14 @@ func Generate(opts Options) (*Summary, error) {
 type Thresholds struct {
 	TriggersMinPassRate *float64
 	EvalsMinPassRate    *float64
-	Models              []string // model keys; empty = all models with results
+	Models              []string // model keys; empty = all models with results (or Defined under Strict)
+
+	// Strict requires the thresholds to be met for every Defined model, so a
+	// configured model with no stored results is a breach (not silently passed).
+	// It applies only when Models is empty — an explicit threshold-models list
+	// always wins.
+	Strict  bool
+	Defined []string // the configured model matrix; the Strict denominator
 }
 
 // Check returns the breaches; an empty slice means the gate passes. A
@@ -200,8 +226,14 @@ func Check(summary *Summary, th Thresholds) []string {
 		}
 		keys := th.Models
 		if len(keys) == 0 {
-			for key := range totals[kind] {
-				keys = append(keys, key)
+			if th.Strict {
+				// Hold every configured model to the threshold, so a defined model
+				// with no stored results breaches rather than passing by absence.
+				keys = append(keys, th.Defined...)
+			} else {
+				for key := range totals[kind] {
+					keys = append(keys, key)
+				}
 			}
 			sort.Strings(keys)
 		}
@@ -598,4 +630,13 @@ func maxStr(a, b string) string {
 
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// writeXMLFile writes a CI artifact, creating its parent directory (the
+// `coverage/` convention puts these in a dir that may not exist yet).
+func writeXMLFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }

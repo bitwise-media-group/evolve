@@ -21,3 +21,6 @@
 | `report.thresholds.triggers_min_pass_rate` | float | unset — no gate | Minimum triggers pass rate (0-1); report --check exits 1 below it. |
 | `report.thresholds.evals_min_pass_rate` | float | unset — no gate | Minimum evals pass rate (0-1); report --check exits 1 below it. |
 | `report.thresholds.models` | list of strings | unset — every model with stored results | Model keys (provider/model-id) the thresholds apply to. |
+| `report.junit` | string | unset — no JUnit file written | Path for a JUnit XML test-results file (one testcase per eval/trigger case per model); the --junit flag overrides it. |
+| `report.cobertura` | string | unset — no Cobertura file written | Path for a Cobertura XML coverage file marking each skill covered by a current eval result; the --cobertura flag overrides it. |
+| `report.strict` | bool | `false` | Require the configured model matrix: report --check holds every defined model to the thresholds, and the Cobertura output covers a skill only when every defined model has a current result. The --strict flag overrides it. |
