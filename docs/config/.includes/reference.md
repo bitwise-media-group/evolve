@@ -16,7 +16,7 @@
 | `checks.max_skill_lines` | int | `500` | Maximum SKILL.md line count. |
 | `checks.ideal_skill_lines` | int | `200` | Ideal SKILL.md line count for the advisory size signal (full at or below; zero at the cap). |
 | `checks.signals` | bool | `true` | Emit the advisory skill-quality signals after run checks; the --no-signals flag forces them off. |
-| `checks.plugin_manifests` | list of strings | `["claude","codex"]` | Plugin manifests every plugin must ship: claude (.claude-plugin/plugin.json) and/or codex (.codex-plugin/plugin.json). With both, a hooks/ directory is forbidden (Codex discovers hooks.json with an incompatible schema). |
+| `checks.plugin_manifests` | list of strings | `["claude","codex"]` | Plugin manifests every plugin must ship: claude (.claude-plugin/plugin.json) and/or codex (.codex-plugin/plugin.json). With both, a hooks/ directory is forbidden (codex and claude hooks.json are incompatible). |
 | `checks.marketplace` | bool | `true` | Validate marketplace manifests (marketplace layout only). |
 | `report.thresholds.triggers_min_pass_rate` | float | unset — no gate | Minimum triggers pass rate (0-1); report --check exits 1 below it. |
 | `report.thresholds.evals_min_pass_rate` | float | unset — no gate | Minimum evals pass rate (0-1); report --check exits 1 below it. |
