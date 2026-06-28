@@ -5,6 +5,7 @@ package run
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,6 +29,14 @@ var (
 var pluginManifests = map[string]string{
 	"claude": filepath.Join(".claude-plugin", "plugin.json"),
 	"codex":  filepath.Join(".codex-plugin", "plugin.json"),
+}
+
+// compatibleManifests reports whether the given plugin manifest kinds can
+// coexist in one plugin. Claude and Codex both auto-discover hooks/hooks.json
+// with mutually incompatible schemas, so a plugin cannot ship both — today
+// that is the only conflict, so any other combination is compatible.
+func compatibleManifests(kinds []string) bool {
+	return !slices.Contains(kinds, "claude") || !slices.Contains(kinds, "codex")
 }
 
 // CheckConfig holds the tunable knobs, overridable via the .evolve config so other
@@ -72,9 +81,11 @@ func Checks(repo *layout.Repo, cfg CheckConfig) ([]Finding, error) {
 	if err != nil {
 		return nil, fmt.Errorf("checks.trigger_pattern: %w", err)
 	}
+	known := slices.Sorted(maps.Keys(pluginManifests))
 	for _, kind := range cfg.PluginManifests {
 		if _, ok := pluginManifests[kind]; !ok {
-			return nil, fmt.Errorf("checks.plugin_manifests: unknown manifest %q (want claude or codex)", kind)
+			return nil, fmt.Errorf("checks.plugin_manifests: unknown manifest %q (want one of %s)",
+				kind, strings.Join(known, ", "))
 		}
 	}
 	c := &checker{repo: repo, cfg: cfg, triggerRE: triggerRE}
@@ -158,13 +169,14 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 		label = c.repo.Rel(dir)
 	}
 
-	bothManifests := c.checkPluginManifests(dir, label, expectedName)
+	manifests := c.checkPluginManifests(dir, label, expectedName)
 
-	// A hooks/ directory only conflicts when both manifests are required.
-	if bothManifests {
+	// A hooks/ directory only conflicts when the required manifests are
+	// incompatible: their agents discover hooks.json with clashing schemas.
+	if !compatibleManifests(manifests) {
 		if info, err := os.Stat(filepath.Join(dir, "hooks")); err == nil && info.IsDir() {
-			c.errf("%s: hooks/ directory is forbidden (Codex and Claude hooks"+
-				"incompatible, hooks forbidden when using both)", label)
+			c.errf("%s: hooks/ directory is forbidden (incompatible hooks schemas across the "+
+				"required plugin manifests: %s)", label, strings.Join(manifests, ", "))
 		}
 	}
 
@@ -178,33 +190,29 @@ func (c *checker) checkPlugin(dir, expectedName string) {
 	}
 }
 
+// loadedManifest is a present, parsed plugin manifest paired with the kind it
+// was required as ("claude", "codex", …).
+type loadedManifest struct {
+	kind string
+	path string // absolute, for repo-relative finding paths
+	obj  map[string]any
+}
+
 // checkPluginManifests validates the plugin.json manifests configured in
 // checks.plugin_manifests: presence, JSON shape, name agreement with the
-// directory (or each other), and strict, agreeing semver. It reports whether
-// both the Claude and Codex manifests are required, which gates the hooks/ rule.
-func (c *checker) checkPluginManifests(dir, label, expectedName string) (bothManifests bool) {
-	claudePJ := filepath.Join(dir, ".claude-plugin", "plugin.json")
-	codexPJ := filepath.Join(dir, ".codex-plugin", "plugin.json")
+// directory (or each other), and strict, agreeing semver. It returns the
+// required manifest kinds so the caller can judge their compatibility.
+// The set of manifests is driven entirely by the config list and
+// the pluginManifests map, so adding a kind needs no changes here.
+func (c *checker) checkPluginManifests(dir, label, expectedName string) (kinds []string) {
+	// Sort the kinds so findings are stable regardless of config ordering.
+	kinds = slices.Clone(c.cfg.PluginManifests)
 
-	// Keep claude before codex so the canonical (semver-checked) manifest is
-	// stable regardless of the configured order.
-	wantClaude := slices.Contains(c.cfg.PluginManifests, "claude")
-	wantCodex := slices.Contains(c.cfg.PluginManifests, "codex")
-	var required []string
-	if wantClaude {
-		required = append(required, claudePJ)
-	}
-	if wantCodex {
-		required = append(required, codexPJ)
-	}
-	manifests := map[string]map[string]any{}
-	for _, pj := range required {
+	var present []loadedManifest
+	for _, kind := range kinds {
+		rel := pluginManifests[kind]
+		pj := filepath.Join(dir, rel)
 		if !isFile(pj) {
-			rel, _ := filepath.Rel(dir, pj)
-			kind := "claude"
-			if pj == codexPJ {
-				kind = "codex"
-			}
 			c.errf("%s: missing %s (remove %q from checks.plugin_manifests to opt out)",
 				label, filepath.ToSlash(rel), kind)
 			continue
@@ -219,47 +227,58 @@ func (c *checker) checkPluginManifests(dir, label, expectedName string) (bothMan
 			c.errf("%s: manifest is not a JSON object", c.repo.Rel(pj))
 			continue
 		}
-		manifests[pj] = obj
+		present = append(present, loadedManifest{kind: kind, path: pj, obj: obj})
 	}
 
-	if len(required) > 0 && len(manifests) == len(required) {
+	// Cross-manifest agreement only holds when every required manifest is present.
+	if len(kinds) > 0 && len(present) == len(kinds) {
+		c.checkManifestAgreement(label, expectedName, present)
+	}
+
+	return kinds
+}
+
+// checkManifestAgreement validates names and versions across the required
+// manifests: each must name the plugin directory (or, for single-plugin repos,
+// they must agree on a kebab-case name), and every version must be strict semver
+// and agree with the others.
+func (c *checker) checkManifestAgreement(label, expectedName string, present []loadedManifest) {
+	if expectedName != "" {
+		for _, m := range present {
+			if name := jsonStr(m.obj["name"]); name != expectedName {
+				c.errf("%s: name '%s' != directory '%s'", c.repo.Rel(m.path), name, expectedName)
+			}
+		}
+	} else {
 		names := map[string]string{}
-		for pj, obj := range manifests {
-			names[pj] = jsonStr(obj["name"])
+		for _, m := range present {
+			names[m.path] = jsonStr(m.obj["name"])
 		}
-		if expectedName != "" {
-			for _, pj := range required {
-				if name := names[pj]; name != expectedName {
-					c.errf("%s: name '%s' != directory '%s'", c.repo.Rel(pj), name, expectedName)
-				}
-			}
-		} else {
-			unique := uniqueSorted(names)
-			if len(unique) > 1 {
-				c.errf("%s: manifests disagree on plugin name: %v", label, unique)
-			}
-			for _, name := range unique {
-				if !nameRE.MatchString(name) {
-					c.errf("%s: plugin name '%s' not kebab-case", label, name)
-				}
-			}
+		unique := uniqueSorted(names)
+		if len(unique) > 1 {
+			c.errf("%s: manifests disagree on plugin name: %v", label, unique)
 		}
-
-		// Versions must agree across manifests and be strict semver. With a
-		// single required manifest the semver check applies to it directly.
-		version := jsonStr(manifests[required[len(required)-1]]["version"])
-		if wantClaude && wantCodex {
-			claudeVer := jsonStr(manifests[claudePJ]["version"])
-			if claudeVer != version {
-				c.errf("%s: version mismatch (claude=%s codex=%s)", label, claudeVer, version)
+		for _, name := range unique {
+			if !nameRE.MatchString(name) {
+				c.errf("%s: plugin name '%s' not kebab-case", label, name)
 			}
-		}
-		if !semverRE.MatchString(version) {
-			c.errf("%s: version '%s' is not strict semver", label, version)
 		}
 	}
 
-	return wantClaude && wantCodex
+	// Versions must agree across manifests and each be strict semver.
+	versions := map[string]string{}
+	pairs := make([]string, 0, len(present))
+	for _, m := range present {
+		v := jsonStr(m.obj["version"])
+		versions[m.path] = v
+		pairs = append(pairs, m.kind+"="+v)
+		if !semverRE.MatchString(v) {
+			c.errf("%s: version '%s' is not strict semver", label, v)
+		}
+	}
+	if len(uniqueSorted(versions)) > 1 {
+		c.errf("%s: version mismatch (%s)", label, strings.Join(pairs, " "))
+	}
 }
 
 func (c *checker) checkSkill(skillMD string) {

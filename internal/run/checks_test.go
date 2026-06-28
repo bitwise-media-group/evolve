@@ -53,7 +53,7 @@ func TestBrokenRepo(t *testing.T) {
 		"marketplaces disagree on plugins",
 		"stray .claude-plugin/plugin.json",
 		"plugins/oops: missing .codex-plugin/plugin.json (remove \"codex\" from checks.plugin_manifests to opt out)",
-		"plugins/oops: hooks/ directory is forbidden (Codex discovers hooks.json with an incompatible schema)",
+		"plugins/oops: hooks/ directory is forbidden (incompatible hooks schemas across the required plugin manifests: claude, codex)",
 		"name 'wrong-name' != directory 'bad-skill'",
 		"description missing a 'Use when/after/before' trigger phrase (checks.description_pattern)",
 		"license 'MIT' is forbidden",
