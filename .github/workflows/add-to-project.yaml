@@ -1,3 +1,6 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
 # MANAGED FILE — do not edit in a consuming repo.
 #
 # This is the canonical caller that `org-config.sh workflows-sync` fans out to
@@ -5,10 +8,10 @@
 # here in github-settings and re-run the sync; a hand-edit in a consuming repo is
 # overwritten on the next sync.
 #
-# When an issue is opened it is added to the shared org "Roadmap" project so every
-# repo's issues collect in one board. The reusable workflow mints a short-lived
-# "Project Sync" GitHub App token (org projects write; issues/PRs read) — GITHUB_TOKEN
-# cannot write an org-level project — and hands it to actions/add-to-project.
+# When an issue or pull request is opened it is added to the shared org "Roadmap"
+# project so every repo's work collects in one board. The reusable workflow mints a
+# short-lived "Project Sync" GitHub App token (org projects write; issues/PRs read) —
+# GITHUB_TOKEN cannot write an org-level project — and hands it to actions/add-to-project.
 #
 # Org prerequisites: the "Project Sync" App installed on all repositories, exposed as
 # the ADD_TO_PROJECT_CLIENT_ID variable + ADD_TO_PROJECT_PRIVATE_KEY secret.
@@ -17,6 +20,12 @@ name: Add to Project
 
 on:
   issues:
+    types: [opened]
+  # pull_request_target, not pull_request, so PRs opened from forks are captured too:
+  # a fork's pull_request event runs without secrets, so minting the App token would
+  # fail. Safe here because the reusable workflow never checks out PR code — it only
+  # adds the item to the board.
+  pull_request_target:
     types: [opened]
 
 # the App token does the privileged work; the caller grants nothing
