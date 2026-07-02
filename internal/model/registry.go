@@ -57,6 +57,13 @@ func builtins() []Model {
 			Preferred: HarnessClaude,
 		},
 		{
+			// Sticker rate; an introductory $2/$10 per MTok applies through 2026-08-31.
+			ID: "anthropic/claude-sonnet-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5",
+			InputUSD: usd(3.00), OutputUSD: usd(15.00),
+			Supported: map[string]string{HarnessClaude: "claude-sonnet-5"},
+			Preferred: HarnessClaude,
+		},
+		{
 			ID: "anthropic/claude-opus-4-8", ProviderID: ProviderAnthropic, Name: "Claude Opus 4.8",
 			InputUSD: usd(5.00), OutputUSD: usd(25.00),
 			Supported: map[string]string{HarnessClaude: "claude-opus-4-8"},
