@@ -10,7 +10,9 @@ site_description = "A CLI tool for evaluating coding-agent plugins with a multi-
 site_url = "https://oss.bitwisemedia.uk/evolve/"
 repo_url = "https://github.com/bitwise-media-group/evolve"
 repo_name = "bitwise-media-group/evolve"
-copyright = "© 2026 Bitwise Media Group Ltd"
+# The `#__consent` link re-opens the cookie consent dialog so visitors can
+# change their choice at any time (see [project.extra.consent] below).
+copyright = '© 2026 Bitwise Media Group Ltd — <a href="#__consent">Change cookie settings</a>'
 
 # Paths are relative to docs_dir (default: "docs")
 extra_css = ["stylesheets/extra.css"]
@@ -79,9 +81,40 @@ scheme = "slate"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to system preference"
 
+# Preference storage (the cookie-consent choice, colour palette, …) is keyed
+# by this scope, which defaults to the site's own subpath. Every site under
+# oss.bitwisemedia.uk sets "/" so one consent answer applies domain-wide.
+[project.extra]
+scope = "/"
+
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/bitwise-media-group/evolve"
+
+# Google Analytics 4. https://zensical.org/docs/setup/analytics/#configuration
+# The analytics snippet only renders when `property` is non-empty, so the build
+# stays clean until the measurement ID is available. Loading is also gated on
+# the visitor accepting the `analytics` cookie in the consent dialog below.
+[project.extra.analytics]
+provider = "google"
+property = "G-Y34HV8TX89"
+
+# Cookie consent / GDPR. https://zensical.org/docs/setup/data-privacy/
+# Re-openable any time via the "Change cookie settings" footer link (copyright,
+# above). The `analytics` toggle controls Google Analytics; `github` controls
+# the repo/social API calls Material makes for the GitHub integration.
+[project.extra.consent]
+title = "Cookie consent"
+description = """
+We use cookies to recognise your repeated visits and preferences, and to \
+measure whether visitors find what they're looking for. With your consent, \
+you're helping us make this site better.
+"""
+actions = ["accept", "reject", "manage"]
+
+[project.extra.consent.cookies]
+analytics = "Google Analytics"
+github = "GitHub"
 
 # Markdown extensions. Declaring this section replaces Zensical's built-in
 # defaults wholesale, so the block below mirrors them verbatim and adds
