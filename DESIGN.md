@@ -200,7 +200,7 @@ terminal.
 
 `internal/web` (the `view` command) is a second presentation of the committed results, for exploration the fixed
 [Markdown report](README.md) cannot give: faceted filtering, column sorting, a cases⇄rollup toggle, and shareable
-snapshots. It is a localhost HTTP server hosting an embedded Vite/React single-page app over a **read-only** API —
+snapshots. It is a localhost HTTP server hosting an embedded Vite/Preact single-page app over a **read-only** API —
 chosen over a static-HTML generator specifically so the page can update live while a run is in progress. The browser
 never launches or controls runs; the API only ever reads.
 

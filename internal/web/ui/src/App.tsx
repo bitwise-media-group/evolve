@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import type { Dataset } from "./types";
 import {
   clearFacet,

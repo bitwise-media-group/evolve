@@ -1,7 +1,7 @@
 // The rollup view: one row per (plugin, skill, model, tier) with pass/fail/error
 // tallies and aggregate cost/time, each expandable to its member cases.
 
-import { useState } from "react";
+import { useState } from "preact/hooks";
 import { rollup, type RollupGroup } from "../rollup";
 import type { Row } from "../types";
 import { cost, dur, pct } from "../format";

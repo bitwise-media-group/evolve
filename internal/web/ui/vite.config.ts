@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 // The Go server (`evolve view`) hosts the read-only API. For `npm run dev`, run
@@ -13,7 +13,7 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const apiTarget = process.env.VITE_API_TARGET || "http://127.0.0.1:8099";
 
 export default defineConfig({
-  plugins: [react(), viteSingleFile()],
+  plugins: [preact(), viteSingleFile()],
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -74,7 +74,7 @@ fragments.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.
 - `report` — renders results into EVALUATION.md / EVALUATION.json.
 - `web` — the interactive report viewer: a localhost HTTP server (read-only `/api/results` + an SSE `/events` stream
-  that fires when the results files change) hosting an embedded Vite/React single-page app. `data.go` flattens results
+  that fires when the results files change) hosting an embedded Vite/Preact single-page app. `data.go` flattens results
   into the per-case rows the browser filters/sorts/rolls-up; the SPA source lives in `ui/` (built to `ui/dist` and
   embedded under `-tags withui`; git-ignored, built by `make ui`). Backs the `view` command.
 - `evalspec` — parses authored triggers/evals definitions.
