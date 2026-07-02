@@ -43,7 +43,7 @@ func Providers() []Provider {
 // canonical vendor model as an extra Supported entry.
 func builtins() []Model {
 	return []Model{
-		// Anthropic — driven by Claude Code, several also by Copilot.
+		// Anthropic — driven by Claude Code, all also by Copilot.
 		{
 			ID: "anthropic/claude-haiku-4-5", ProviderID: ProviderAnthropic, Name: "Claude Haiku 4.5",
 			InputUSD: usd(1.00), OutputUSD: usd(5.00),
@@ -60,19 +60,19 @@ func builtins() []Model {
 			// Sticker rate; an introductory $2/$10 per MTok applies through 2026-08-31.
 			ID: "anthropic/claude-sonnet-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5",
 			InputUSD: usd(3.00), OutputUSD: usd(15.00),
-			Supported: map[string]string{HarnessClaude: "claude-sonnet-5"},
+			Supported: map[string]string{HarnessClaude: "claude-sonnet-5", HarnessCopilot: "claude-sonnet-5"},
 			Preferred: HarnessClaude,
 		},
 		{
 			ID: "anthropic/claude-opus-4-8", ProviderID: ProviderAnthropic, Name: "Claude Opus 4.8",
 			InputUSD: usd(5.00), OutputUSD: usd(25.00),
-			Supported: map[string]string{HarnessClaude: "claude-opus-4-8"},
+			Supported: map[string]string{HarnessClaude: "claude-opus-4-8", HarnessCopilot: "claude-opus-4.8"},
 			Preferred: HarnessClaude,
 		},
 		{
 			ID: "anthropic/claude-fable-5", ProviderID: ProviderAnthropic, Name: "Claude Fable 5",
 			InputUSD: usd(10.00), OutputUSD: usd(50.00),
-			Supported: map[string]string{HarnessClaude: "claude-fable-5"},
+			Supported: map[string]string{HarnessClaude: "claude-fable-5", HarnessCopilot: "claude-fable-5"},
 			Preferred: HarnessClaude,
 		},
 
@@ -86,25 +86,20 @@ func builtins() []Model {
 		{
 			ID: "openai/gpt-5.4-mini", ProviderID: ProviderOpenAI, Name: "GPT-5.4 Mini",
 			InputUSD: usd(0.75), OutputUSD: usd(4.50),
-			Supported: map[string]string{HarnessCodex: "gpt-5.4-mini"},
+			Supported: map[string]string{HarnessCodex: "gpt-5.4-mini", HarnessCopilot: "gpt-5.4-mini"},
 			Preferred: HarnessCodex,
 		},
 		{
 			ID: "openai/gpt-5.4", ProviderID: ProviderOpenAI, Name: "GPT-5.4",
 			InputUSD: usd(2.50), OutputUSD: usd(15.00),
-			Supported: map[string]string{HarnessCodex: "gpt-5.4"},
+			Supported: map[string]string{HarnessCodex: "gpt-5.4", HarnessCopilot: "gpt-5.4"},
 			Preferred: HarnessCodex,
 		},
 		{
 			ID: "openai/gpt-5.5", ProviderID: ProviderOpenAI, Name: "GPT-5.5",
 			InputUSD: usd(5.00), OutputUSD: usd(30.00),
-			Supported: map[string]string{HarnessCodex: "gpt-5.5"},
+			Supported: map[string]string{HarnessCodex: "gpt-5.5", HarnessCopilot: "gpt-5.5"},
 			Preferred: HarnessCodex,
-		},
-		{
-			ID: "openai/gpt-5.2", ProviderID: ProviderOpenAI, Name: "GPT-5.2",
-			Supported: map[string]string{HarnessCopilot: "gpt-5.2"},
-			Preferred: HarnessCopilot,
 		},
 		{
 			ID: "openai/gpt-5.3-codex", ProviderID: ProviderOpenAI, Name: "GPT-5.3 Codex",
@@ -112,8 +107,8 @@ func builtins() []Model {
 			Preferred: HarnessCopilot,
 		},
 
-		// Google — Gemini models priced; the Antigravity-only id carries no
-		// published per-token pricing (quota/subscription billing).
+		// Google — Gemini models priced; the id with no Gemini CLI counterpart
+		// carries no published per-token pricing (quota/subscription billing).
 		{
 			ID: "google/gemini-3.1-flash-lite", ProviderID: ProviderGoogle, Name: "Gemini 3.1 Flash-Lite",
 			InputUSD: usd(0.25), OutputUSD: usd(1.50),
@@ -129,7 +124,11 @@ func builtins() []Model {
 		{
 			ID: "google/gemini-3.5-flash", ProviderID: ProviderGoogle, Name: "Gemini 3.5 Flash",
 			InputUSD: usd(1.50), OutputUSD: usd(9.00),
-			Supported: map[string]string{HarnessGemini: "gemini-3.5-flash", HarnessAntigravity: "gemini-3.5-flash"},
+			Supported: map[string]string{
+				HarnessGemini:      "gemini-3.5-flash",
+				HarnessAntigravity: "gemini-3.5-flash",
+				HarnessCopilot:     "gemini-3.5-flash",
+			},
 			Preferred: HarnessGemini,
 		},
 		{
@@ -141,7 +140,7 @@ func builtins() []Model {
 		},
 		{
 			ID: "google/gemini-3.1-pro", ProviderID: ProviderGoogle, Name: "Gemini 3.1 Pro",
-			Supported: map[string]string{HarnessAntigravity: "gemini-3.1-pro"},
+			Supported: map[string]string{HarnessAntigravity: "gemini-3.1-pro", HarnessCopilot: "gemini-3.1-pro"},
 			Preferred: HarnessAntigravity,
 		},
 
