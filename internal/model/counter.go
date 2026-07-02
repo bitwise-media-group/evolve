@@ -89,7 +89,7 @@ type anthropicCounter struct {
 }
 
 func (a anthropicCounter) CountTokens(ctx context.Context, modelID, text string) (int, error) {
-	headers := a.authHeaders()
+	headers := anthropicAuthHeaders(a.envKeys)
 	if headers == nil {
 		return 0, ErrNoCredential
 	}
@@ -109,8 +109,10 @@ func (a anthropicCounter) CountTokens(ctx context.Context, modelID, text string)
 	return *resp.InputTokens, nil
 }
 
-func (a anthropicCounter) authHeaders() map[string]string {
-	for _, env := range a.envKeys {
+// anthropicAuthHeaders resolves the first set credential env var into request
+// headers, or nil when none is set. Shared by the counting and listing clients.
+func anthropicAuthHeaders(envKeys []string) map[string]string {
+	for _, env := range envKeys {
 		value := os.Getenv(env)
 		if value == "" {
 			continue

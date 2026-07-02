@@ -26,4 +26,5 @@ evolve models [flags]
 ### SEE ALSO
 
 * [evolve](evolve.md)	 - Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals, reports
+* [evolve models discover](evolve_models_discover.md)	 - List vendor-served models and add new ones to the .evolve config
 

@@ -96,11 +96,9 @@ func (o *Options) ConfigFileName() string {
 	return ""
 }
 
-// readConfigFile finds and loads the single .evolve.<ext> in dir. JSONC is
-// standardized to plain JSON before it reaches viper, which parses the other
-// formats natively. More than one config file is ambiguous and rejected
-// rather than silently prioritized.
-func readConfigFile(v *viper.Viper, dir string) error {
+// FindConfigFile locates the single .evolve.<ext> in dir: "" when none
+// exists, an error listing every candidate when several do.
+func FindConfigFile(dir string) (string, error) {
 	var found []string
 	for _, ext := range ConfigExtensions {
 		path := filepath.Join(dir, ".evolve."+ext)
@@ -110,13 +108,22 @@ func readConfigFile(v *viper.Viper, dir string) error {
 	}
 	switch len(found) {
 	case 0:
-		return nil // config is optional
+		return "", nil // config is optional
 	case 1:
-	default:
-		return fmt.Errorf("ambiguous config: found %s; keep exactly one", strings.Join(found, ", "))
+		return found[0], nil
 	}
+	return "", fmt.Errorf("ambiguous config: found %s; keep exactly one", strings.Join(found, ", "))
+}
 
-	path := found[0]
+// readConfigFile finds and loads the single .evolve.<ext> in dir. JSONC is
+// standardized to plain JSON before it reaches viper, which parses the other
+// formats natively. More than one config file is ambiguous and rejected
+// rather than silently prioritized.
+func readConfigFile(v *viper.Viper, dir string) error {
+	path, err := FindConfigFile(dir)
+	if err != nil || path == "" {
+		return err
+	}
 	if strings.HasSuffix(path, ".jsonc") {
 		raw, err := os.ReadFile(path)
 		if err != nil {

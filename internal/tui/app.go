@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Package tui renders the interactive selection form and live run dashboard for
-// `evolve run`. It is a presentation layer over internal/run: the engine
+// `evolve run`, plus the fuzzy multi-select picker for `evolve models discover`
+// (see discover.go). It is a presentation layer over internal/run: the engine
 // reports progress through run.Reporter, which tuiReporter forwards into this
 // program as messages.
 package tui
