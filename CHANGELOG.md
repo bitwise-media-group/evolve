@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.1](https://github.com/bitwise-media-group/evolve/compare/v0.5.0...v0.5.1) (2026-07-03)
+
+
+### Features
+
+* add supported models for copilot cli ([e3292db](https://github.com/bitwise-media-group/evolve/commit/e3292dbe5f02838c1e4b94492eb5eb44227a3c11))
+* **model:** add Claude Sonnet 5 to the Anthropic registry ([f5c6728](https://github.com/bitwise-media-group/evolve/commit/f5c672805ef126abaed451051bdbf596cf639734))
+* **models:** add discover verb with fuzzy picker and config injection ([09be408](https://github.com/bitwise-media-group/evolve/commit/09be408a24d8d8e22c6e5312772c0fe01d417164))
+
 ## [0.5.0](https://github.com/bitwise-media-group/evolve/compare/v0.4.0...v0.5.0) (2026-07-01)
 
 
