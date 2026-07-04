@@ -18,8 +18,8 @@
 | `checks.signals` | bool | `true` | Emit the advisory skill-quality signals after run checks; the --no-signals flag forces them off. |
 | `checks.plugin_manifests` | list of strings | `["claude","codex"]` | Plugin manifests every plugin must ship: claude (.claude-plugin/plugin.json) and/or codex (.codex-plugin/plugin.json). With both, a hooks/ directory is forbidden (codex and claude hooks.json are incompatible). |
 | `checks.marketplace` | bool | `true` | Validate marketplace manifests (marketplace layout only). |
-| `report.thresholds.triggers_min_pass_rate` | float | unset — no gate | Minimum triggers pass rate (0-1); report --check exits 1 below it. |
-| `report.thresholds.evals_min_pass_rate` | float | unset — no gate | Minimum evals pass rate (0-1); report --check exits 1 below it. |
+| `report.thresholds.triggers_min_pass_rate` | float | `0.5` | Minimum triggers pass rate (0-1); report --check exits 1 below it and the run dashboard rolls a failing group to an orange check while its rate stays at or above it. |
+| `report.thresholds.evals_min_pass_rate` | float | `0.66` | Minimum evals pass rate (0-1); report --check exits 1 below it and the run dashboard rolls a failing group to an orange check while its rate stays at or above it. |
 | `report.thresholds.models` | list of strings | unset — every model with stored results | Model keys (provider/model-id) the thresholds apply to. |
 | `report.junit` | string | unset — no JUnit file written | Path for a JUnit XML test-results file (one testcase per eval/trigger case per model); the --junit flag overrides it. |
 | `report.cobertura` | string | unset — no Cobertura file written | Path for a Cobertura XML coverage file marking each skill covered by a current eval result; the --cobertura flag overrides it. |

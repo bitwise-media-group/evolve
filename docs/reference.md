@@ -80,7 +80,7 @@ check the local environment.
 
 `evolve report` rebuilds repository-level rollups from stored per-skill results, writing `EVALUATION.md` plus a
 machine-readable rollup in the configured format (per-plugin detail pages in marketplace / multi repos). Gate on
-thresholds:
+thresholds (defaults: triggers `0.5`, evals `0.66`):
 
 ```sh
 evolve report --check --min-triggers-pass-rate 0.95 --min-evals-pass-rate 0.90

@@ -182,10 +182,19 @@ func Generate(opts Options) (*Summary, error) {
 	return summary, nil
 }
 
-// Thresholds gate CI on minimum pass rates (config: report.thresholds).
+// Default minimum pass rates for report --check and the dashboard's rollup
+// classification, applied when report.thresholds leaves them unset (the
+// fallback happens in internal/cli's config resolution).
+const (
+	DefaultTriggersMinPassRate = 0.5
+	DefaultEvalsMinPassRate    = 0.66
+)
+
+// Thresholds gate CI on minimum pass rates (config: report.thresholds). The
+// rates always gate: an unset config key resolves to the Default* constants.
 type Thresholds struct {
-	TriggersMinPassRate *float64
-	EvalsMinPassRate    *float64
+	TriggersMinPassRate float64
+	EvalsMinPassRate    float64
 	Models              []string // model keys; empty = all models with results (or Defined under Strict)
 
 	// Strict requires the thresholds to be met for every Defined model, so a
@@ -220,10 +229,7 @@ func Check(summary *Summary, th Thresholds) []string {
 	}
 
 	var breaches []string
-	check := func(kind string, minRate *float64) {
-		if minRate == nil {
-			return
-		}
+	check := func(kind string, minRate float64) {
 		keys := th.Models
 		if len(keys) == 0 {
 			if th.Strict {
@@ -244,9 +250,9 @@ func Check(summary *Summary, th Thresholds) []string {
 				continue
 			}
 			rate := float64(a.passed) / float64(a.executed)
-			if rate < *minRate {
+			if rate < minRate {
 				breaches = append(breaches, fmt.Sprintf("%s: %s pass rate %.1f%% below threshold %.1f%%",
-					kind, key, rate*100, *minRate*100))
+					kind, key, rate*100, minRate*100))
 			}
 		}
 	}

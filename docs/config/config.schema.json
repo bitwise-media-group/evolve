@@ -158,16 +158,18 @@
           ],
           "properties": {
             "triggers_min_pass_rate": {
-              "description": "Minimum triggers pass rate (0-1); report --check exits 1 below it.",
+              "description": "Minimum triggers pass rate (0-1); report --check exits 1 below it and the run dashboard rolls a failing group to an orange check while its rate stays at or above it.",
               "type": "number",
               "minimum": 0,
-              "maximum": 1
+              "maximum": 1,
+              "default": 0.5
             },
             "evals_min_pass_rate": {
-              "description": "Minimum evals pass rate (0-1); report --check exits 1 below it.",
+              "description": "Minimum evals pass rate (0-1); report --check exits 1 below it and the run dashboard rolls a failing group to an orange check while its rate stays at or above it.",
               "type": "number",
               "minimum": 0,
-              "maximum": 1
+              "maximum": 1,
+              "default": 0.66
             },
             "models": {
               "description": "Model keys (provider/model-id) the thresholds apply to.",

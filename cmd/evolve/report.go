@@ -91,20 +91,16 @@ var reportCmd = &cobra.Command{
 		}
 		th := opts.Thresholds()
 		if cmd.Flags().Changed("min-triggers-pass-rate") {
-			th.TriggersMinPassRate = &reportFlags.MinTriggersPassRate
+			th.TriggersMinPassRate = reportFlags.MinTriggersPassRate
 		}
 		if cmd.Flags().Changed("min-evals-pass-rate") {
-			th.EvalsMinPassRate = &reportFlags.MinEvalsPassRate
+			th.EvalsMinPassRate = reportFlags.MinEvalsPassRate
 		}
 		if strict {
 			th.Strict = true
 			if th.Defined, err = opts.DefinedModelKeys(); err != nil {
 				return err
 			}
-		}
-		if th.TriggersMinPassRate == nil && th.EvalsMinPassRate == nil {
-			return fmt.Errorf("report --check: no thresholds configured " +
-				"(set report.thresholds in the .evolve config file or pass --min-*-pass-rate flags)")
 		}
 		breaches := report.Check(summary, th)
 		for _, breach := range breaches {
@@ -147,10 +143,12 @@ func init() {
 		"fail when pass rates breach the configured thresholds")
 	reportCmd.Flags().BoolVar(&reportFlags.Migrate, "migrate", false,
 		"upgrade stored results files to the latest schema before generating the reports")
-	reportCmd.Flags().Float64Var(&reportFlags.MinTriggersPassRate, "min-triggers-pass-rate", 0,
-		"minimum trigger pass rate (0..1) for --check")
-	reportCmd.Flags().Float64Var(&reportFlags.MinEvalsPassRate, "min-evals-pass-rate", 0,
-		"minimum eval pass rate (0..1) for --check")
+	reportCmd.Flags().Float64Var(&reportFlags.MinTriggersPassRate, "min-triggers-pass-rate",
+		report.DefaultTriggersMinPassRate,
+		"minimum trigger pass rate (0..1) for --check (overrides report.thresholds)")
+	reportCmd.Flags().Float64Var(&reportFlags.MinEvalsPassRate, "min-evals-pass-rate",
+		report.DefaultEvalsMinPassRate,
+		"minimum eval pass rate (0..1) for --check (overrides report.thresholds)")
 	reportCmd.Flags().StringVar(&reportFlags.JUnit, "junit", "",
 		"also write a JUnit XML test-results file to this path (overrides report.junit)")
 	reportCmd.Flags().StringVar(&reportFlags.Cobertura, "cobertura", "",

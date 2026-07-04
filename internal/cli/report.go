@@ -12,16 +12,19 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
-// Thresholds reads report.thresholds from config.
+// Thresholds reads report.thresholds from config, falling back to the report
+// package's default pass rates for the keys the config leaves unset.
 func (o *Options) Thresholds() report.Thresholds {
-	th := report.Thresholds{Models: o.Viper.GetStringSlice("report.thresholds.models")}
+	th := report.Thresholds{
+		TriggersMinPassRate: report.DefaultTriggersMinPassRate,
+		EvalsMinPassRate:    report.DefaultEvalsMinPassRate,
+		Models:              o.Viper.GetStringSlice("report.thresholds.models"),
+	}
 	if o.Viper.IsSet("report.thresholds.triggers_min_pass_rate") {
-		v := o.Viper.GetFloat64("report.thresholds.triggers_min_pass_rate")
-		th.TriggersMinPassRate = &v
+		th.TriggersMinPassRate = o.Viper.GetFloat64("report.thresholds.triggers_min_pass_rate")
 	}
 	if o.Viper.IsSet("report.thresholds.evals_min_pass_rate") {
-		v := o.Viper.GetFloat64("report.thresholds.evals_min_pass_rate")
-		th.EvalsMinPassRate = &v
+		th.EvalsMinPassRate = o.Viper.GetFloat64("report.thresholds.evals_min_pass_rate")
 	}
 	return th
 }

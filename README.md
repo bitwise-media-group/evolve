@@ -187,7 +187,7 @@ evolve report --check
 The report command writes `EVALUATION.md` plus a machine-readable rollup using the configured results format. In
 marketplace and multi-plugin repositories, it also includes per-plugin detail pages.
 
-Thresholds can be set in `.evolve.<ext>` or passed directly:
+Thresholds default to `0.5` for triggers and `0.66` for evals; they can be set in `.evolve.<ext>` or passed directly:
 
 ```sh
 evolve report --check --min-triggers-pass-rate 0.95 --min-evals-pass-rate 0.90

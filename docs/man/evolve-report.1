@@ -34,12 +34,12 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 	upgrade stored results files to the latest schema before generating the reports
 
 .PP
-\fB--min-evals-pass-rate\fP=0
-	minimum eval pass rate (0..1) for --check
+\fB--min-evals-pass-rate\fP=0.66
+	minimum eval pass rate (0..1) for --check (overrides report.thresholds)
 
 .PP
-\fB--min-triggers-pass-rate\fP=0
-	minimum trigger pass rate (0..1) for --check
+\fB--min-triggers-pass-rate\fP=0.5
+	minimum trigger pass rate (0..1) for --check (overrides report.thresholds)
 
 .PP
 \fB--stale-results\fP=""

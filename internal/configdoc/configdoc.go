@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
+	"github.com/bitwise-media-group/evolve/internal/report"
 	"github.com/bitwise-media-group/evolve/internal/run"
 )
 
@@ -118,14 +119,16 @@ func Schema() []Option {
 			Doc: "Validate marketplace manifests (marketplace layout only).",
 		},
 		{
-			Key: "report.thresholds.triggers_min_pass_rate", Type: "float", Example: 0.8,
-			Fallback: "no gate",
-			Doc:      "Minimum triggers pass rate (0-1); report --check exits 1 below it.",
+			Key: "report.thresholds.triggers_min_pass_rate", Type: "float",
+			Value: report.DefaultTriggersMinPassRate,
+			Doc: "Minimum triggers pass rate (0-1); report --check exits 1 below it and the run " +
+				"dashboard rolls a failing group to an orange check while its rate stays at or above it.",
 		},
 		{
-			Key: "report.thresholds.evals_min_pass_rate", Type: "float", Example: 0.9,
-			Fallback: "no gate",
-			Doc:      "Minimum evals pass rate (0-1); report --check exits 1 below it.",
+			Key: "report.thresholds.evals_min_pass_rate", Type: "float",
+			Value: report.DefaultEvalsMinPassRate,
+			Doc: "Minimum evals pass rate (0-1); report --check exits 1 below it and the run " +
+				"dashboard rolls a failing group to an orange check while its rate stays at or above it.",
 		},
 		{
 			Key: "report.thresholds.models", Type: "list of strings", Example: []string{"anthropic/claude-fable-5"},

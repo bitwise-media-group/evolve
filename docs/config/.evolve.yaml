@@ -87,13 +87,15 @@ checks:
 
 report:
   thresholds:
-    # Minimum triggers pass rate (0-1); report --check exits 1 below it.
-    # Default: unset — no gate.
-    # triggers_min_pass_rate: 0.8
+    # Minimum triggers pass rate (0-1); report --check exits 1 below it and
+    # the run dashboard rolls a failing group to an orange check while its
+    # rate stays at or above it.
+    triggers_min_pass_rate: 0.5
 
-    # Minimum evals pass rate (0-1); report --check exits 1 below it.
-    # Default: unset — no gate.
-    # evals_min_pass_rate: 0.9
+    # Minimum evals pass rate (0-1); report --check exits 1 below it and the
+    # run dashboard rolls a failing group to an orange check while its rate
+    # stays at or above it.
+    evals_min_pass_rate: 0.66
 
     # Model keys (provider/model-id) the thresholds apply to.
     # Default: unset — every model with stored results.

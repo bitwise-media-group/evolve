@@ -18,7 +18,7 @@ evolve report --check         # also gate on configured thresholds (non-zero exi
 
 | Flag                         | Description                                                                                                           |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `--check`                    | Fail (exit `1`) when a pass rate breaches a configured threshold.                                                     |
+| `--check`                    | Fail (exit `1`) when a pass rate breaches its threshold (defaults: triggers `0.5`, evals `0.66`).                     |
 | `--migrate`                  | Upgrade stored results files to the latest schema before rendering.                                                   |
 | `--min-triggers-pass-rate`   | Minimum trigger pass rate `0..1` for `--check` (overrides the config threshold).                                      |
 | `--min-evals-pass-rate`      | Minimum eval pass rate `0..1` for `--check` (overrides the config threshold).                                         |
@@ -146,5 +146,7 @@ breach, printing each as `FAIL: …`.
 evolve report --check --min-triggers-pass-rate 0.95 --min-evals-pass-rate 0.90
 ```
 
-With no threshold configured and no flag passed, `--check` is an error rather than a silent pass. Exit codes follow the
-[reference](../reference.md#exit-codes): `0` clean, `1` on a breach, `2` on a usage or runtime error.
+The thresholds have built-in defaults — `0.5` for triggers and `0.66` for evals — so with nothing configured `--check`
+gates at those; config and the `--min-*-pass-rate` flags override them. The run dashboard classifies its rollup
+indicators against the same thresholds, so a group that would breach the gate reads as a red ✗ there. Exit codes follow
+the [reference](../reference.md#exit-codes): `0` clean, `1` on a breach, `2` on a usage or runtime error.

@@ -296,31 +296,59 @@ func TestCheckThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The defaults are load-bearing (report --check gates at them with no
+	// config); pin the values so a silent change fails a test.
+	if DefaultTriggersMinPassRate != 0.5 || DefaultEvalsMinPassRate != 0.66 {
+		t.Errorf("defaults = %v/%v, want 0.5/0.66", DefaultTriggersMinPassRate, DefaultEvalsMinPassRate)
+	}
+
 	// anthropic triggers 1/2 = 50%, cursor 2/2 = 100%.
-	breaches := Check(summary, Thresholds{TriggersMinPassRate: new(0.8)})
+	breaches := Check(summary, Thresholds{TriggersMinPassRate: 0.8})
 	if len(breaches) != 1 || !strings.Contains(breaches[0], "anthropic/claude-fable-5") {
 		t.Errorf("breaches = %v, want one for anthropic", breaches)
 	}
 
-	// A threshold model with no results is a breach.
-	breaches = Check(summary, Thresholds{EvalsMinPassRate: new(0.5), Models: []string{"openai/gpt-5.5"}})
-	if len(breaches) != 1 || !strings.Contains(breaches[0], "no stored results") {
-		t.Errorf("breaches = %v, want missing-results breach", breaches)
+	// At the built-in defaults, anthropic triggers sit exactly on the 50% gate
+	// and only its 0/1 evals rate breaches the 66% gate.
+	breaches = Check(summary, Thresholds{
+		TriggersMinPassRate: DefaultTriggersMinPassRate,
+		EvalsMinPassRate:    DefaultEvalsMinPassRate,
+	})
+	if len(breaches) != 1 || !strings.Contains(breaches[0], "evals: anthropic/claude-fable-5") {
+		t.Errorf("breaches = %v, want one evals breach for anthropic", breaches)
 	}
 
-	if got := Check(summary, Thresholds{TriggersMinPassRate: new(0.4)}); len(got) != 0 {
+	// A threshold model with no results is a breach — both gates always run, so
+	// the absence surfaces once per tier.
+	breaches = Check(summary, Thresholds{EvalsMinPassRate: 0.5, Models: []string{"openai/gpt-5.5"}})
+	if len(breaches) != 2 {
+		t.Fatalf("breaches = %v, want missing-results breaches for both tiers", breaches)
+	}
+	for _, b := range breaches {
+		if !strings.Contains(b, "no stored results") {
+			t.Errorf("breach = %q, want missing-results breach", b)
+		}
+	}
+
+	if got := Check(summary, Thresholds{TriggersMinPassRate: 0.4}); len(got) != 0 {
 		t.Errorf("breaches = %v, want none at 40%%", got)
 	}
 
-	// Strict holds every Defined model to the threshold, so a configured model
-	// with no results breaches where the default gate (above, at 40%) passes.
+	// Strict holds every Defined model to the thresholds, so a configured model
+	// with no results breaches per tier where the default gate (above, at 40%)
+	// passes.
 	strict := Check(summary, Thresholds{
-		TriggersMinPassRate: new(0.4),
+		TriggersMinPassRate: 0.4,
 		Strict:              true,
 		Defined:             []string{"anthropic/claude-fable-5", "openai/gpt-5.5"},
 	})
-	if len(strict) != 1 || !strings.Contains(strict[0], "openai/gpt-5.5") {
-		t.Errorf("strict breaches = %v, want one missing-results breach for openai/gpt-5.5", strict)
+	if len(strict) != 2 {
+		t.Fatalf("strict breaches = %v, want missing-results breaches for openai/gpt-5.5", strict)
+	}
+	for _, b := range strict {
+		if !strings.Contains(b, "openai/gpt-5.5") {
+			t.Errorf("strict breach = %q, want it to name openai/gpt-5.5", b)
+		}
 	}
 }
 
