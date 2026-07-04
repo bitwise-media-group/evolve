@@ -76,11 +76,11 @@ func forward(rep run.Reporter) io.Writer {
 // state; the callback receives the chosen RunRequest and the reporter to attach
 // to its run.Options.
 func runWithUI(cmd *cobra.Command, session *plan.Session, cat []plan.SkillCatalog, evalFilter string,
-	prior plan.PriorMetrics,
+	prior plan.PriorMetrics, thresholds tui.Thresholds,
 	engine func(ctx context.Context, req tui.RunRequest, rep run.Reporter) (bool, error),
 ) (bool, error) {
 	runReq := make(chan tui.RunRequest, 1)
-	model := tui.New(session, cat, evalFilter, prior, runReq)
+	model := tui.New(session, cat, evalFilter, prior, thresholds, runReq)
 	p := tea.NewProgram(model)
 	rep := tui.NewReporter(p)
 
@@ -267,7 +267,12 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 		return failed, nil
 	}
 
-	failed, err := runWithUI(cmd, session, cat, evalFilter, prior, engine)
+	// The dashboard classifies its rollup glyphs against the same report
+	// thresholds `report --check` gates on, so the two verdicts cannot drift.
+	th := opts.Thresholds()
+	thresholds := tui.Thresholds{Triggers: th.TriggersMinPassRate, Evals: th.EvalsMinPassRate}
+
+	failed, err := runWithUI(cmd, session, cat, evalFilter, prior, thresholds, engine)
 	if err != nil {
 		return err
 	}

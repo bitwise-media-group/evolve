@@ -10,8 +10,9 @@ import (
 )
 
 // TestPendingGlyph proves the "queued to run" indicator is tinted by the prior
-// result it will re-run against: green after a pass, red after a fail or error, and
-// the plain foreground when there is no prior result.
+// result it will re-run against: green after a pass, orange after a threshold
+// pass, red after a fail or error, and the plain foreground when there is no
+// prior result.
 func TestPendingGlyph(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -19,6 +20,7 @@ func TestPendingGlyph(t *testing.T) {
 		want  string
 	}{
 		{"prior pass tints green", stPass, passStyle.Render("◌")},
+		{"prior threshold pass tints orange", stPassThreshold, threshPassStyle.Render("◌")},
 		{"prior fail tints red", stFail, failStyle.Render("◌")},
 		{"prior error tints red", stError, failStyle.Render("◌")},
 		{"no prior is plain", stPending, "◌"},
@@ -33,12 +35,24 @@ func TestPendingGlyph(t *testing.T) {
 	}
 }
 
+// TestPassThresholdGlyph pins the threshold-pass presentation: an orange check
+// for the settled glyph and a status word that reads apart from a clean pass.
+func TestPassThresholdGlyph(t *testing.T) {
+	d := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{}, testThresholds)
+	if got, want := d.glyph(stPassThreshold), threshPassStyle.Render("✓"); got != want {
+		t.Errorf("glyph(stPassThreshold) = %q, want the orange check %q", got, want)
+	}
+	if got, want := statusWord(stPassThreshold), "pass (met threshold)"; got != want {
+		t.Errorf("statusWord(stPassThreshold) = %q, want %q", got, want)
+	}
+}
+
 // TestCaseGlyphQueuedVsPrior pins the indicator rule: a case queued to run this
 // session shows the pending dot (tinted by its prior result) so it reads apart from
 // a read-only prior row's settled check/cross, a running case spins, and a freshly
 // settled or no-data row keeps its plain glyph.
 func TestCaseGlyphQueuedVsPrior(t *testing.T) {
-	d := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{})
+	d := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{}, testThresholds)
 	cases := []struct {
 		name string
 		c    *caseState

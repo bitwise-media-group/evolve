@@ -19,9 +19,9 @@ func (d dashboardModel) view() string {
 		return d.quitDialog()
 	}
 	// Chrome rows above/below the panes: the title bar, a blank separator beneath
-	// it, and the footer. The progress bar rides the title bar rather than taking a
-	// row of its own, so the Execution and Rollup panes stay top-aligned.
-	bodyH := max(d.h-3, 4)
+	// it, and the footer (leftDims/rightDims own the resulting body height). The
+	// progress bar rides the title bar rather than taking a row of its own, so the
+	// Execution and Rollup panes stay top-aligned.
 	leftW := max(d.w/2, 28)
 	rightW := max(d.w-leftW, 24)
 	cW := panelContentWidth(rightW)
@@ -38,9 +38,15 @@ func (d dashboardModel) view() string {
 		hl = d.followHighlight(nodes)
 	}
 
+	execH, legendH := d.leftDims()
 	left := panel(1, "Execution", d.leftCount(nodes, hl), "",
-		d.renderLeft(nodes, hl, panelContentWidth(leftW), bodyH-2),
-		d.focus == paneExecution, leftW, bodyH, paneBaseColor(paneExecution))
+		d.renderLeft(nodes, hl, panelContentWidth(leftW), execH-2),
+		d.focus == paneExecution, leftW, execH, paneBaseColor(paneExecution))
+	if legendH > 0 {
+		body, _ := d.legend(leftW)
+		legend := panel(0, "Legend", "", "", body, false, leftW, legendH, paneBaseColor(paneExecution))
+		left = lipgloss.JoinVertical(lipgloss.Left, left, legend)
+	}
 
 	_, rollupH, runsH, detailsH := d.rightDims()
 	rollup := panel(2, "Rollup", "", d.tabStrip(),
@@ -55,6 +61,61 @@ func (d dashboardModel) view() string {
 	footer := footerHint.Render(clip(d.footerHints(), d.w))
 	// "" is the blank separator row between the title bar and the panes.
 	return lipgloss.JoinVertical(lipgloss.Left, d.titleBar(leftW, rightW), "", body, footer)
+}
+
+// legend builds the Execution pane's glyph legend for a pane of outer width w,
+// returning the content and the panel height it needs. Entries are packed
+// greedily into as few rows as fit the pane width — never split mid-entry, so
+// nothing clips — which is the form legend's shape generalized past two rows
+// (this pane is half the screen where the form's is two thirds).
+func (d dashboardModel) legend(w int) (body string, h int) {
+	items := []string{
+		legendItem(passStyle.Render("✓"), "pass"),
+		legendItem(threshPassStyle.Render("✓"), "≥ threshold"),
+		legendItem(failStyle.Render("✗"), "fail"),
+		legendItem(errStyle.Render("⚠"), "error"),
+		legendItem(mutedStyle.Render("⊘"), "skipped"),
+		legendItem(mutedStyle.Render("≈"), "counts only"),
+		legendItem(mutedStyle.Render("·"), "no data"),
+		legendItem("◌", "queued"),
+		legendItem(mutedStyle.Render(baselineMark), "vs baseline"),
+	}
+	limit := panelContentWidth(w)
+	var rows []string
+	row := ""
+	for _, it := range items {
+		joined := it
+		if row != "" {
+			joined = row + "  " + it
+		}
+		if row != "" && lipgloss.Width(joined) > limit {
+			rows = append(rows, row)
+			row = it
+			continue
+		}
+		row = joined
+	}
+	rows = append(rows, row)
+	return strings.Join(rows, "\n"), len(rows) + 2
+}
+
+// leftDims splits the left column into the Execution panel's outer height and
+// the legend's beneath it (0 when hidden). The legend is dropped on a short
+// terminal — the form's paneH >= 13 rule, plus a floor of eight tree rows in
+// case a narrow pane wraps the legend tall — so the tree keeps usable height;
+// the two heights always sum to the body height, keeping the left column
+// aligned with the right one. execPageStep shares this math so paging cannot
+// drift from the rendered pane.
+func (d dashboardModel) leftDims() (execH, legendH int) {
+	bodyH := max(d.h-3, 4)
+	if bodyH < 13 {
+		return bodyH, 0
+	}
+	_, legendH = d.legend(max(d.w/2, 28))
+	if bodyH-legendH < 8 {
+		return bodyH, 0
+	}
+	return bodyH - legendH, legendH
 }
 
 // rightDims splits the right column into the Rollup, Runs, and Details panes,

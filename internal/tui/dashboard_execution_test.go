@@ -247,6 +247,44 @@ func TestCompletedGroupSettlesWithoutSpinner(t *testing.T) {
 	}
 }
 
+// TestThresholdGroupGlyphs pins the threshold-based group rollup: failures roll
+// a group to the orange check while every tier's pass rate meets its report
+// threshold, and to the red cross once one drops below. The red case doubles as
+// the zero-value guard — unplumbed thresholds would pass every rate and show
+// orange forever.
+func TestThresholdGroupGlyphs(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
+
+	// settle runs every case of a unit to the given statuses, without delivering
+	// unitFinishedMsg, so the group glyph comes from the case rollup.
+	settle := func(d *dashboardModel, ref plan.UnitRef, labels []string, sts []plan.Status) {
+		d.apply(unitStartedMsg{ref: ref, total: len(labels), mode: plan.ModeRun})
+		for i, l := range labels {
+			d.apply(itemStartedMsg{ref: ref, item: run.ItemStart{Label: l}})
+			d.apply(itemDoneMsg{ref: ref, item: run.ItemResult{Label: l, Status: sts[i]}})
+		}
+	}
+
+	// Triggers 1/2 sit exactly on the 50% gate; evals stay clean → orange check.
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	settle(&d, tr, []string{"q1", "q2"}, []plan.Status{plan.StatusPass, plan.StatusFail})
+	settle(&d, ev, []string{"e1", "e2"}, []plan.Status{plan.StatusPass, plan.StatusPass})
+	if got, want := d.aggGlyph(soloModelUnits(d)), threshPassStyle.Render("✓"); got != want {
+		t.Errorf("threshold-met group glyph = %q, want the orange check %q", got, want)
+	}
+
+	// Evals 1/2 = 50% miss their 66% gate → the worst tier rolls the group red.
+	d = dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	settle(&d, tr, []string{"q1", "q2"}, []plan.Status{plan.StatusPass, plan.StatusPass})
+	settle(&d, ev, []string{"e1", "e2"}, []plan.Status{plan.StatusPass, plan.StatusFail})
+	if got, want := d.aggGlyph(soloModelUnits(d)), failStyle.Render("✗"); got != want {
+		t.Errorf("below-threshold group glyph = %q, want the red cross %q", got, want)
+	}
+}
+
 // TestQueuedGroupShowsPendingIndicator guards the Image #3 bug: a group whose cases
 // are queued for this run but have not started yet shows the pending dot tinted by
 // its prior result — never the running spinner — so the about-to-run rows read apart

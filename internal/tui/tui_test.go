@@ -108,12 +108,17 @@ func testSession(t *testing.T, cat []plan.SkillCatalog, enabledModelKeys []strin
 	return plan.NewSession(cat, models, harnesses, plan.PriorMetrics{}, reasons, filters, []string{"fake"}, enabledModelKeys)
 }
 
+// testThresholds mirrors the built-in report defaults; literal values keep the
+// presentation package decoupled from internal/report (the report package's
+// tests pin the constants themselves).
+var testThresholds = Thresholds{Triggers: 0.5, Evals: 0.66}
+
 func testModel(t *testing.T) Model {
 	t.Helper()
 	cat := soloCatalog(t)
 	// Only m1 is enabled; with no filter set it needs every case (a plain run).
 	session := testSession(t, cat, []string{"fake/m1"}, plan.Filters{})
-	return New(session, cat, "", plan.PriorMetrics{}, make(chan RunRequest, 1))
+	return New(session, cat, "", plan.PriorMetrics{}, testThresholds, make(chan RunRequest, 1))
 }
 
 // selectionFromFilter builds the plan.Selection the dashboard would receive for
@@ -157,7 +162,7 @@ func selectionFromFilter(models []harness.Selection, filter *plan.Filter) plan.S
 // case filter into a plan via plan.Build, then project it.
 func dashFromFilter(cat []plan.SkillCatalog, models []harness.Selection, filter *plan.Filter, prior plan.PriorMetrics) dashboardModel {
 	p := plan.Build(cat, models, selectionFromFilter(models, filter), prior)
-	return newDashboard(p, cat, prior)
+	return newDashboard(p, cat, prior, testThresholds)
 }
 
 // runeKey builds a printable key-press message from a single-character string,

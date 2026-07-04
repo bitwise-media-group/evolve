@@ -20,4 +20,5 @@
 
 # claude
 /.claude/plans/
+**/.claude/plans/
 *.local.*

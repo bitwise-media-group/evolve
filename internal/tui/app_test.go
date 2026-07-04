@@ -57,7 +57,7 @@ func TestRunTransitionAndDashboard(t *testing.T) {
 	}
 
 	out := m.View().Content
-	for _, want := range []string{"Execution", "Rollup", "Runs", "Details"} {
+	for _, want := range []string{"Execution", "Legend", "Rollup", "Runs", "Details"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dashboard view missing %q:\n%s", want, out)
 		}

@@ -25,28 +25,31 @@ const (
 // Model is the root bubbletea model: it shows the selection form, then the live
 // dashboard once the user chooses RUN.
 type Model struct {
-	screen screen
-	form   formModel
-	dash   dashboardModel
-	cat    []plan.SkillCatalog
-	prior  plan.PriorMetrics
-	runReq chan<- RunRequest
-	w, h   int
+	screen     screen
+	form       formModel
+	dash       dashboardModel
+	cat        []plan.SkillCatalog
+	prior      plan.PriorMetrics
+	thresholds Thresholds
+	runReq     chan<- RunRequest
+	w, h       int
 }
 
 // New builds the model. session owns the form's filter and selection state (the
 // harnesses/models it lists and the new/modified/failed baseline); cat is the
 // full catalog the form's case tree is built from; evalFilter forces non-matching
-// evals off; prior seeds the dashboard's deltas. The chosen RunRequest is sent on
+// evals off; prior seeds the dashboard's deltas; thresholds are the report gates
+// the dashboard classifies rollups against. The chosen RunRequest is sent on
 // runReq when the user runs; the channel is closed by the caller if they cancel.
 func New(session *plan.Session, cat []plan.SkillCatalog, evalFilter string,
-	prior plan.PriorMetrics, runReq chan<- RunRequest) Model {
+	prior plan.PriorMetrics, thresholds Thresholds, runReq chan<- RunRequest) Model {
 	return Model{
-		screen: screenForm,
-		form:   newForm(session, cat, evalFilter),
-		cat:    cat,
-		prior:  prior,
-		runReq: runReq,
+		screen:     screenForm,
+		form:       newForm(session, cat, evalFilter),
+		cat:        cat,
+		prior:      prior,
+		thresholds: thresholds,
+		runReq:     runReq,
 	}
 }
 
@@ -103,7 +106,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) startRun() (tea.Model, tea.Cmd) {
 	req := m.form.request()
 	p := plan.Build(m.cat, req.Models, req.Selection, m.prior)
-	m.dash = newDashboard(p, m.cat, m.prior)
+	m.dash = newDashboard(p, m.cat, m.prior, m.thresholds)
 	m.dash.w, m.dash.h = m.w, m.h
 	m.screen = screenDashboard
 	return m, tea.Batch(

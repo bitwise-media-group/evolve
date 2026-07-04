@@ -79,11 +79,14 @@ var (
 
 	tabActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(accentRollup)
 
-	passStyle  = lipgloss.NewStyle().Foreground(colGreen)
-	failStyle  = lipgloss.NewStyle().Foreground(colRed)
-	errStyle   = lipgloss.NewStyle().Foreground(colYellow)
-	pendStyle  = lipgloss.NewStyle().Foreground(colGrey)
-	footerHint = lipgloss.NewStyle().Foreground(colGrey)
+	passStyle = lipgloss.NewStyle().Foreground(colGreen)
+	// threshPassStyle tints a rollup that passed by threshold rather than
+	// cleanly — failures present, but the tier pass rate meets the report minimum.
+	threshPassStyle = lipgloss.NewStyle().Foreground(colOrange)
+	failStyle       = lipgloss.NewStyle().Foreground(colRed)
+	errStyle        = lipgloss.NewStyle().Foreground(colYellow)
+	pendStyle       = lipgloss.NewStyle().Foreground(colGrey)
+	footerHint      = lipgloss.NewStyle().Foreground(colGrey)
 	// runStyle tints the live spinner for the run under test (blue); baselineStyle
 	// tints the spinner and label of an eval running its without-skill baseline
 	// first (yellow), so the two phases read apart at a glance.

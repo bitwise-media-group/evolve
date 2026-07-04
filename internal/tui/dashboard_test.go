@@ -227,3 +227,85 @@ func TestQuitDialog(t *testing.T) {
 		t.Error("second ctrl+c should quit")
 	}
 }
+
+// TestCaseAggStatusThresholds pins the rollup classifier: an error still wins
+// outright, but a failing tier only rolls the group red below its report
+// threshold — at or above it the group passes by threshold (orange) — and the
+// worst tier verdict decides a mixed group.
+func TestCaseAggStatusThresholds(t *testing.T) {
+	d := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{}, testThresholds)
+	c := func(kind plan.Kind, st status) *caseState { return &caseState{kind: kind, status: st} }
+	trig := func(st status) *caseState { return c(plan.KindTriggers, st) }
+	eval := func(st status) *caseState { return c(plan.KindEvals, st) }
+
+	cases := []struct {
+		name string
+		in   []*caseState
+		want status
+	}{
+		{"all pass", []*caseState{trig(stPass), eval(stPass)}, stPass},
+		{"error wins over a passing rate",
+			[]*caseState{trig(stPass), trig(stPass), trig(stError)}, stError},
+		{"triggers at the 50% gate",
+			[]*caseState{trig(stPass), trig(stFail)}, stPassThreshold},
+		{"triggers below the gate",
+			[]*caseState{trig(stPass), trig(stFail), trig(stFail)}, stFail},
+		{"evals above the 66% gate", // 2/3 ≈ 0.667
+			[]*caseState{eval(stPass), eval(stPass), eval(stFail)}, stPassThreshold},
+		{"evals below the gate", // 1/2 = 0.5
+			[]*caseState{eval(stPass), eval(stFail)}, stFail},
+		{"worst tier wins", // triggers 1/2 meets its gate, evals 0/1 misses its own
+			[]*caseState{trig(stPass), trig(stFail), eval(stFail)}, stFail},
+		{"threshold tier beats a clean tier",
+			[]*caseState{trig(stPass), eval(stPass), eval(stPass), eval(stFail)}, stPassThreshold},
+		{"all skipped", []*caseState{trig(stSkipped), eval(stSkipped)}, stSkipped},
+		{"count-only ranks below a pass",
+			[]*caseState{trig(stCount), trig(stSkipped)}, stCount},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := d.caseAggStatus(tc.in); got != tc.want {
+				t.Errorf("caseAggStatus = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUnitFinishedThresholdStatus pins the unit-level rollup: a finished unit
+// with failures settles orange while its pass rate meets its tier's threshold
+// and red below it, judged against the unit's own kind; errors still win.
+func TestUnitFinishedThresholdStatus(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	tr := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindTriggers}
+	ev := plan.UnitRef{Skill: "solo-skill", Key: m1.Key(), Kind: plan.KindEvals}
+
+	cases := []struct {
+		name string
+		ref  plan.UnitRef
+		sum  run.UnitSummary
+		want status
+	}{
+		{"triggers at the 50% gate", tr,
+			run.UnitSummary{Executed: true, Passed: 1, Failed: 1, Total: 2}, stPassThreshold},
+		{"triggers below the gate", tr,
+			run.UnitSummary{Executed: true, Passed: 1, Failed: 2, Total: 3}, stFail},
+		{"evals above the 66% gate", ev,
+			run.UnitSummary{Executed: true, Passed: 2, Failed: 1, Total: 3}, stPassThreshold},
+		{"evals below the gate", ev,
+			run.UnitSummary{Executed: true, Passed: 1, Failed: 1, Total: 2}, stFail},
+		{"all passed stays green", tr,
+			run.UnitSummary{Executed: true, Passed: 2, Total: 2}, stPass},
+		{"an error still wins", tr,
+			run.UnitSummary{Executed: true, Passed: 1, Failed: 1, Errored: 1, Total: 3}, stError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+			d.apply(unitFinishedMsg{ref: tc.ref, sum: tc.sum})
+			if got := d.unit(tc.ref).status; got != tc.want {
+				t.Errorf("unit status = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

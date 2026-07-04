@@ -23,6 +23,10 @@ const (
 	stPending status = iota
 	stRunning
 	stPass
+	// stPassThreshold is a rollup that passed by threshold rather than cleanly:
+	// failures present, but the tier's pass rate meets the report minimum.
+	// Groups and units only — individual cases stay binary.
+	stPassThreshold
 	stFail
 	stError
 	stSkipped
@@ -33,7 +37,8 @@ const (
 // terminal reports whether a status is a settled outcome (no longer pending or
 // running).
 func (s status) terminal() bool {
-	return s == stPass || s == stFail || s == stError || s == stSkipped || s == stCount
+	return s == stPass || s == stPassThreshold || s == stFail || s == stError ||
+		s == stSkipped || s == stCount
 }
 
 // statusOf maps an engine item status to a dashboard status.
@@ -173,12 +178,22 @@ type (
 	}
 )
 
+// Thresholds are the report pass-rate gates (report.thresholds.*) the dashboard
+// classifies group and unit rollups against: within an error-free rollup, a
+// tier with failures still earns a check — orange — while its pass rate stays
+// at or above the tier's minimum; below it the rollup fails.
+type Thresholds struct {
+	Triggers float64
+	Evals    float64
+}
+
 type dashboardModel struct {
-	cat      []plan.SkillCatalog
-	skillCat map[string]*plan.SkillCatalog
-	units    []*unitState
-	index    map[plan.UnitRef]int
-	tree     []pluginGroup
+	cat        []plan.SkillCatalog
+	skillCat   map[string]*plan.SkillCatalog
+	units      []*unitState
+	index      map[plan.UnitRef]int
+	tree       []pluginGroup
+	thresholds Thresholds
 
 	// prior is the last committed metrics each live case is compared against (the
 	// vs-previous basis, plus the seeded baseline). liveBaseline collects baselines
@@ -231,7 +246,8 @@ type dashboardModel struct {
 // straight from plan.Build, so the view never re-derives them (and so cannot drift
 // from what the engine runs). cat supplies the authored specs the Details pane
 // shows; prior seeds the delta basis.
-func newDashboard(p plan.Plan, cat []plan.SkillCatalog, prior plan.PriorMetrics) dashboardModel {
+func newDashboard(p plan.Plan, cat []plan.SkillCatalog, prior plan.PriorMetrics,
+	thresholds Thresholds) dashboardModel {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
@@ -239,6 +255,7 @@ func newDashboard(p plan.Plan, cat []plan.SkillCatalog, prior plan.PriorMetrics)
 		cat:          cat,
 		skillCat:     map[string]*plan.SkillCatalog{},
 		index:        map[plan.UnitRef]int{},
+		thresholds:   thresholds,
 		spin:         sp,
 		now:          time.Now,
 		focus:        paneRuns,
@@ -275,7 +292,7 @@ func newDashboard(p plan.Plan, cat []plan.SkillCatalog, prior plan.PriorMetrics)
 					// A unit with nothing queued never receives engine events, so settle it
 					// from its prior cases now — otherwise its group row would read "pending".
 					if len(u.cases) > 0 && !queuedCases(u.cases) {
-						u.status = caseAggStatus(u.cases)
+						u.status = d.caseAggStatus(u.cases)
 					}
 					mg.units = append(mg.units, len(d.units))
 					d.index[un.Ref] = len(d.units)
@@ -313,27 +330,45 @@ func caseFromPlan(c plan.Case) *caseState {
 
 // caseAggStatus rolls a set of case statuses into one settled status — used both
 // for a unit with no queued cases (all prior, so its group row shows the stored
-// rollup rather than "pending") and for a group's settled glyph. Worst outcome
-// wins; count-only ranks below a real pass and all-no-data folds to skipped.
-func caseAggStatus(cases []*caseState) status {
-	var anyErr, anyFail, anyPass, anyCount bool
+// rollup rather than "pending") and for a group's settled glyph. An error still
+// wins outright (results are incomplete, so no rate is trustworthy); otherwise
+// each tier's pass rate is held to its report threshold and the worst tier
+// verdict decides. Count-only ranks below a real pass and all-no-data folds to
+// skipped.
+func (d dashboardModel) caseAggStatus(cases []*caseState) status {
+	var anyErr, anyPass, anyCount bool
+	var trigPass, trigFail, evalPass, evalFail int
 	for _, c := range cases {
 		switch c.status {
 		case stError:
 			anyErr = true
 		case stFail:
-			anyFail = true
+			if c.kind == plan.KindEvals {
+				evalFail++
+			} else {
+				trigFail++
+			}
 		case stPass:
 			anyPass = true
+			if c.kind == plan.KindEvals {
+				evalPass++
+			} else {
+				trigPass++
+			}
 		case stCount:
 			anyCount = true
 		}
 	}
-	switch {
-	case anyErr:
+	if anyErr {
 		return stError
-	case anyFail:
+	}
+	trig := tierStatus(trigPass, trigFail, d.thresholds.Triggers)
+	eval := tierStatus(evalPass, evalFail, d.thresholds.Evals)
+	switch {
+	case trig == stFail || eval == stFail:
 		return stFail
+	case trig == stPassThreshold || eval == stPassThreshold:
+		return stPassThreshold
 	case anyPass:
 		return stPass
 	case anyCount:
@@ -341,6 +376,31 @@ func caseAggStatus(cases []*caseState) status {
 	default:
 		return stSkipped
 	}
+}
+
+// tierStatus classifies one tier's settled pass/fail tally against its report
+// threshold: no failures is a clean pass (including an empty tally, which the
+// caller's anyPass/anyCount fold resolves); with failures, meeting the minimum
+// pass rate passes by threshold, below it the tier fails. The rate divides by
+// passed+failed only — errors never reach here (an errored rollup is ⚠), and
+// skipped/count-only cases carry no verdict — which matches report.Check's
+// passed/executed on the error-free groups this classifies.
+func tierStatus(pass, fail int, minRate float64) status {
+	if fail == 0 {
+		return stPass
+	}
+	if float64(pass)/float64(pass+fail) >= minRate {
+		return stPassThreshold
+	}
+	return stFail
+}
+
+// minRate is the report threshold for a unit's tier.
+func (d dashboardModel) minRate(k plan.Kind) float64 {
+	if k == plan.KindEvals {
+		return d.thresholds.Evals
+	}
+	return d.thresholds.Triggers
 }
 
 // queuedCases reports whether a unit has any case running this session (a
@@ -387,7 +447,7 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 			// cases keeps their prior outcome, so the unit reflects its cases rather
 			// than always reading "skipped".
 			u.settlePending(stSkipped)
-			u.status = caseAggStatus(u.cases)
+			u.status = d.caseAggStatus(u.cases)
 		}
 	case baselineStartedMsg:
 		// An eval's without-skill baseline started, ahead of its own run. Marking
@@ -438,7 +498,7 @@ func (d *dashboardModel) apply(msg tea.Msg) {
 			case u.errored > 0:
 				u.status = stError
 			case u.failed > 0:
-				u.status = stFail
+				u.status = tierStatus(u.passed, u.failed, d.minRate(u.ref.Kind))
 			default:
 				u.status = stPass
 			}

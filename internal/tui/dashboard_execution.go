@@ -551,7 +551,7 @@ func (d dashboardModel) aggStatus(unitIdxs []int) status {
 	if _, done := d.groupState(unitIdxs); !done {
 		return stPending
 	}
-	return caseAggStatus(d.groupCases(unitIdxs))
+	return d.caseAggStatus(d.groupCases(unitIdxs))
 }
 
 // aggGlyph renders a group row's status glyph. A group queued to run this session
@@ -561,7 +561,7 @@ func (d dashboardModel) aggStatus(unitIdxs []int) status {
 func (d dashboardModel) aggGlyph(unitIdxs []int) string {
 	st := d.aggStatus(unitIdxs)
 	if st == stPending && d.groupQueuedPending(unitIdxs) {
-		return pendingGlyph(caseAggStatus(d.groupCases(unitIdxs)))
+		return pendingGlyph(d.caseAggStatus(d.groupCases(unitIdxs)))
 	}
 	return d.glyph(st)
 }
@@ -778,10 +778,11 @@ func (d *dashboardModel) skipRule(step int) {
 }
 
 // execPageStep is roughly the left pane's visible row count, so ctrl+d/ctrl+u
-// page by a screenful.
+// page by a screenful. It reads the Execution panel's height from the same
+// leftDims split view() renders with, so the legend cannot desync the paging.
 func (d dashboardModel) execPageStep() int {
-	bodyH := max(d.h-3, 4)   // panel outer height (matches view(): title bar, blank, footer)
-	inner := max(bodyH-2, 1) // height handed to renderLeft
+	execH, _ := d.leftDims()
+	inner := max(execH-2, 1) // height handed to renderLeft
 	return max(inner-2, 1)   // minus the column header, minus one for context
 }
 

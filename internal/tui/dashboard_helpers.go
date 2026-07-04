@@ -38,6 +38,8 @@ func pendingGlyph(prior status) string {
 	switch prior {
 	case stPass:
 		return passStyle.Render("◌")
+	case stPassThreshold:
+		return threshPassStyle.Render("◌")
 	case stFail, stError:
 		return failStyle.Render("◌")
 	default:
@@ -51,6 +53,8 @@ func (d dashboardModel) glyph(s status) string {
 		return runStyle.Render(strings.TrimSpace(d.spin.View()))
 	case stPass:
 		return passStyle.Render("✓")
+	case stPassThreshold:
+		return threshPassStyle.Render("✓")
 	case stFail:
 		return failStyle.Render("✗")
 	case stError:
@@ -72,6 +76,8 @@ func statusWord(s status) string {
 		return "running"
 	case stPass:
 		return "pass"
+	case stPassThreshold:
+		return "pass (met threshold)"
 	case stFail:
 		return "fail"
 	case stError:
