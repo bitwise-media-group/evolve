@@ -1,7 +1,8 @@
 # Copyright 2026 Bitwise Media Group Ltd
 # SPDX-License-Identifier: MIT
 
-# Keep module deps, pinned dev tools, npm lint tools, uv docs tooling, and SHA-pinned actions fresh.
+# Keep the app module deps, the shared Makefile library submodule, npm lint
+# tools, uv docs tooling, and SHA-pinned actions fresh.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -15,24 +16,25 @@ updates:
     schedule:
       interval: daily
 
-  - package-ecosystem: gomod
-    directory: /tools
-    # The pinned tools sit in `tool (...)` directives, so every require entry
-    # is `// indirect`. Dependabot only updates direct deps by default, so allow
-    # indirect ones too or these updates would never fire.
-    allow:
-      - dependency-type: all
+  # The pinned Go dev CLIs (addlicense, golangci-lint, goreleaser, ...) no longer
+  # live in a tools/go.mod — they come from the make/ submodule's .<tool>-version
+  # pins. Track the submodule so a library release (a new `release` branch head)
+  # flows here as a bump.
+  - package-ecosystem: gitsubmodule
+    directory: /
     cooldown:
       default-days: 7
+      # our own make/ submodule ships straight through — no cooldown wait.
+      # Dependabot names a submodule dependency by its path, so exclude "make"
+      # (not an owner glob like the actions ecosystem uses).
+      exclude:
+        - make
     commit-message:
       include: scope
       prefix: build
       prefix-development: build
     schedule:
       interval: daily
-    groups:
-      tools:
-        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /

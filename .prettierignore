@@ -9,6 +9,10 @@
 # Report-viewer SPA: a self-contained sub-project with its own toolchain.
 /internal/web/ui/
 
+# Shared Makefile library submodule (linted in its own repo) and on-demand tool bin
+/make/
+/.bin/
+
 # claude
 /.claude
 

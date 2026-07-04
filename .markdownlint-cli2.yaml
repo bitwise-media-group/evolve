@@ -29,6 +29,8 @@ ignores:
   - "site/**"
   # report-viewer SPA sub-project (its own toolchain; node_modules/dist live here).
   - "internal/web/ui/**"
+  # shared Makefile library submodule — linted in its own repo.
+  - "make/**"
   # generated command reference — cobra's output, not house prose.
   - "docs/cli/**"
   # generated configuration reference — evolve docs --format config.

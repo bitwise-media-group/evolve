@@ -77,11 +77,10 @@ binary_signs:
 # ^ref: https://goreleaser.com/customization/sbom/
 sboms:
   - artifacts: archive
-    cmd: go
+    # syft is installed from the make/ library's .syft-version pin into .bin/,
+    # which the library's snapshot/release targets put on PATH.
+    cmd: syft
     args:
-      - tool
-      - -modfile=../tools/go.mod
-      - syft
       - $artifact
       - --output
       - spdx-json=$document

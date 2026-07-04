@@ -1,155 +1,79 @@
-# one -ignore flag per non-empty line in .licenseignore (quoted to avoid shell globbing)
-LICENSE_HOLDER := 'Bitwise Media Group Ltd'
-LICENSE_IGNORE := $(foreach pattern,$(shell cat .licenseignore 2>/dev/null),-ignore '$(pattern)')
-
-# Developer tasks. `make help` lists targets; `make pr` is the full local gate.
+# evolve — the common Go build/lint/test/release machinery lives in the shared
+# Makefile library (bitwise-media-group/make), consumed as the `make/` submodule
+# and included below. Only evolve's repo-specific knobs and long-tail targets
+# live here; the canonical lint/build/test/ci/pr contract comes from go-cli.mk.
+APP     := evolve
 APP_PKG := ./cmd/evolve
-MODULE  := $(shell go list -m)
 
-# Report-viewer SPA: built into internal/web/ui/dist and embedded by `build` via
-# -tags withui. dist/ is git-ignored (a built bundle, like site/); the ui target
-# rebuilds it only when the UI sources change.
+# The report-viewer SPA is embedded into the binary via the withui build tag;
+# the `ui` target below builds internal/web/ui/dist before go-build compiles.
+BUILD_TAGS := withui
+
+# `go test -fuzz` accepts a single package, so point fuzz at one target/package.
+FUZZ_PKG := ./internal/manifest
+FUZZ     := FuzzFrontmatter
+
+# Gate extensions. The archetype's gates stop at tidy/fmt/lint/test/build(/commit);
+# evolve's also run fuzz, bench, docs, snapshot, and smoke. Declared before the
+# include so these prerequisites are made first, in this order — make runs
+# prerequisites left-to-right, each at most once, so the archetype's repeats are
+# skipped and `commit` still lands last in `pr`.
+pr: tidy fmt lint test fuzz bench build docs snapshot smoke
+ci: lint test fuzz build docs snapshot
+
+include make/go-cli.mk
+
+# ---- repo-local targets (the long tail the library intentionally omits) -----
+
+# Platform build-tag matrix. The host GOOS only compiles its own files, so the
+# library's single-GOOS go-lint/go-fmt skip every other platform's
+# build-constrained source (the sandbox_*.go / proc_*.go split in
+# internal/runner). Linting the remaining platforms in turn covers them all.
+# golangci-lint is a host binary, so run it under each GOOS env var — a
+# cross-built golangci-lint could not exec on the host. gofmt itself ignores
+# build tags, so the host pass already reaches every file.
+LINT_GOOS       ?= linux darwin windows
+LINT_GOOS_EXTRA := $(filter-out $(shell go env GOOS),$(LINT_GOOS))
+
+.PHONY: go-lint-goos go-fmt-goos
+lint: go-lint-goos lint-e2e
+go-lint-goos: $(GOLANGCI_LINT)
+	@	ret=0; \
+		for goos in $(LINT_GOOS_EXTRA); do \
+			echo "lint: GOOS=$$goos"; \
+			GOOS=$$goos "$(GOLANGCI_LINT)" run || { ret=1; break; }; \
+		done; \
+		exit $$ret
+
+fmt: go-fmt-goos fmt-e2e
+go-fmt-goos: $(GOLANGCI_LINT)
+	@	ret=0; \
+		for goos in $(LINT_GOOS_EXTRA); do \
+			echo "fmt: GOOS=$$goos"; \
+			GOOS=$$goos "$(GOLANGCI_LINT)" run --fix || { ret=1; break; }; \
+		done; \
+		exit $$ret
+
+# e2e is its own module (the root ./... never picks it up), so lint/format/tidy
+# it explicitly alongside the root module.
+.PHONY: lint-e2e fmt-e2e tidy-e2e
+lint-e2e: $(GOLANGCI_LINT)
+	@ echo "lint: e2e"
+	@ cd e2e && "$(GOLANGCI_LINT)" run
+fmt-e2e: $(GOLANGCI_LINT)
+	@ echo "fmt: e2e"
+	@ cd e2e && "$(GOLANGCI_LINT)" run --fix
+tidy: tidy-e2e
+tidy-e2e:
+	@ rm -f e2e/go.sum; go -C e2e mod tidy
+
+# Report-viewer SPA: built into internal/web/ui/dist and embedded by go-build
+# via -tags withui (BUILD_TAGS above). dist/ is git-ignored (a built bundle,
+# like site/); the file target reruns npm only when the UI sources change.
 UI_DIR  := internal/web/ui
 UI_SRCS := $(UI_DIR)/package.json $(UI_DIR)/package-lock.json $(UI_DIR)/index.html \
 	$(UI_DIR)/vite.config.ts $(UI_DIR)/tsconfig.json $(shell find $(UI_DIR)/src -type f 2>/dev/null)
 
-# Version metadata stamped into the binary via -ldflags. GoReleaser injects the
-# same vars at the same import path ($(MODULE)/internal/version) on tagged releases.
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
-DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -s -w \
-	-X $(MODULE)/internal/version.Version=$(VERSION) \
-	-X $(MODULE)/internal/version.Commit=$(COMMIT) \
-	-X $(MODULE)/internal/version.BuildDate=$(DATE)
-
-# Fuzzing: `make fuzz` runs one target (FUZZ=) for FUZZTIME.
-FUZZ_PKG ?= ./internal/manifest
-FUZZ     ?= FuzzFrontmatter
-FUZZTIME ?= 20s
-
-# Benchmarks: `make bench` runs BENCH (a -bench regexp) over BENCH_PKG.
-BENCH     ?= .
-BENCH_PKG ?= ./...
-
-TOOLS_BIN := $(CURDIR)/.bin
-
-# Go developer CLIs (addlicense, goreleaser) are pinned in tools/go.mod — a
-# separate module so their dependency graphs never touch the application's go.mod —
-# and invoked with `go tool -modfile=tools/go.mod <name>`: compiled into the build
-# cache on first use, no GOBIN, no binaries to manage. -modfile anchors on the root
-# go.mod and runs the tool in the current directory, so relative paths just work.
-# Do not add a go.work that `use`s tools/ — -modfile cannot be used in workspace mode.
-
-# Smoke: the live end-to-end test in e2e/ — its own module, so the root
-# `go test ./...` never picks it up. See e2e/smoke_test.go for what it asserts.
-SMOKE_MODEL ?= claude-haiku-4-5
-
-.DEFAULT_GOAL := help
-
-.PHONY: help
-help: ## list available targets
-	@ grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
-		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
-
-.PHONY: pr
-pr: tidy fmt lint test fuzz bench build docs snapshot smoke commit ## full local gate, then run any pending ./commit.sh
-
-.PHONY: ci
-ci: lint test fuzz build docs snapshot ## continuous integration gate
-
-.PHONY: commit
-commit: ## run ./commit.sh (agent-prepared commit batch) if present
-	@ if [ -x ./commit.sh ]; then ./commit.sh; fi
-
-# Install the pinned Node tools exactly as locked in package-lock.json.
-# Re-runs only when package.json / the lockfile change.
-node_modules: package.json package-lock.json
-	@ npm ci --ignore-scripts --no-fund
-	@ touch node_modules
-
-# build the golangci-linter to allow GOOS arguments for linting multiple platforms
-go_tools: tools/go.mod tools/go.sum
-	@ mkdir -p "$(TOOLS_BIN)"
-	@ go build -modfile=tools/go.mod -o "$(TOOLS_BIN)/" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
-
-sync: pyproject.toml uv.lock
-	@ uv run sync
-
-# Platform build-tag matrix. The host GOOS only compiles its own files, so the
-# linters skip every other platform's build-constrained source (the sandbox_*.go /
-# proc_*.go split in internal/runner). Vetting/linting under each GOOS in turn
-# covers them all: linux and darwin pick up sandbox_{linux,darwin}.go + proc_unix.go,
-# windows picks up proc_windows.go + sandbox_other.go (!linux && !darwin). gofmt
-# itself ignores build tags, so `go fmt` already reaches every file.
-#
-# go vet is part of the go command and analyses the target GOOS while running on the
-# host, so `GOOS=… go vet` just works. `go tool golangci-lint`, though, would
-# cross-*build* golangci-lint for that GOOS and then fail to exec the foreign binary
-# on the host — so build one host binary up front and run it under each GOOS instead.
-LINT_GOOS ?= linux darwin windows
-
-.PHONY: fmt
-fmt: node_modules go_tools ## format the go code, prose, and config (gofmt + prettier)
-	@ go tool -modfile=tools/go.mod addlicense -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
-	@	ret=0; \
-		for goos in $(LINT_GOOS); do \
-			echo "fmt: GOOS=$$goos"; \
-			GOOS=$$goos "$(TOOLS_BIN)/golangci-lint" run --fix || { ret=1; break; }; \
-		done; \
-		exit $$ret
-	@ cd e2e; echo "fmt: e2e"; "$(TOOLS_BIN)/golangci-lint" run
-	@ npm run format
-	@ npm run lint:fix
-
-tidy: go.mod e2e/go.mod tools/go.mod ## tidy the go module references
-	@ rm -f go.sum; go mod tidy
-	@ rm -f tools/go.sum; go -C tools mod tidy
-	@ rm -f e2e/go.sum; go -C e2e mod tidy
-
-.PHONY: lint
-lint: node_modules go_tools ## lint the go code (across the LINT_GOOS build-tag matrix)
-	@ go tool -modfile=tools/go.mod addlicense -check -c $(LICENSE_HOLDER) -l mit -s=only $(LICENSE_IGNORE) .
-	@	ret=0; \
-		for goos in $(LINT_GOOS); do \
-			echo "lint: GOOS=$$goos"; \
-			GOOS=$$goos "$(TOOLS_BIN)/golangci-lint" run || { ret=1; break; }; \
-		done; \
-		exit $$ret
-	@ cd e2e; echo "lint: e2e"; "$(TOOLS_BIN)/golangci-lint" run
-	@ go tool -modfile=tools/go.mod govulncheck ./...
-	@ npm run lint
-	@ npm run format:check
-
-# -covermode=atomic is the race-safe counter mode `-race` requires. gotestsum runs
-# the suite, streams human-readable output, and writes a JUnit report in one pass
-# (propagating the test exit code, which a bare `go test | …` pipe would swallow);
-# gocover-cobertura turns the profile into Cobertura XML. Both are pinned in
-# tools/go.mod and run via `go tool` — no `go install` of an @latest tool. Coverage
-# (cobertura-coverage.xml) and test results (junit.xml) land in coverage/ where the
-# reusable CI workflow uploads them to Codecov.
-.PHONY: test
-test: ## run the unit tests (+ fuzz seed corpora)
-	@ mkdir -p coverage
-	@ go tool -modfile=tools/go.mod gotestsum --junitfile coverage/junit.xml -- \
-		-race -covermode=atomic -coverprofile=coverage/coverage.out ./...
-	@ go tool -modfile=tools/go.mod gocover-cobertura <coverage/coverage.out >coverage/cobertura-coverage.xml
-
-.PHONY: fuzz
-fuzz: ## fuzz one target (FUZZ=FuzzParse FUZZTIME=20s FUZZ_PKG=./internal/evalspec)
-	@ go test -run '^$$' -fuzz '^$(FUZZ)$$' -fuzztime $(FUZZTIME) $(FUZZ_PKG)
-
-.PHONY: bench
-bench: ## run benchmarks (BENCH=. all, BENCH=DashboardView one; BENCH_PKG=./internal/tui; profile with BENCH_FLAGS='-cpuprofile=cpu.prof')
-	@ go test -run '^$$' -bench '$(BENCH)' -benchmem $(BENCH_FLAGS) $(BENCH_PKG)
-
-.PHONY: smoke
-smoke: ## real `evolve run all` on the marketplace fixture (SMOKE_MODEL=claude-haiku-4-5, 1 run, 1 job; needs the claude CLI + credentials)
-	@ command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
-	@ SMOKE_MODEL=$(SMOKE_MODEL) go -C e2e test -v -count=1 -run '^TestSmoke$$' .
-
-# Build the embedded report-viewer SPA. The file target reruns npm only when the
-# UI sources change; `ui` is the phony entrypoint.
 $(UI_DIR)/dist/index.html: $(UI_SRCS)
 	@ npm --prefix $(UI_DIR) ci --no-fund --no-audit
 	@ npm --prefix $(UI_DIR) run build
@@ -157,31 +81,34 @@ $(UI_DIR)/dist/index.html: $(UI_SRCS)
 .PHONY: ui
 ui: $(UI_DIR)/dist/index.html ## build the embedded report-viewer SPA (internal/web/ui/dist)
 
-.PHONY: build
-build: ui ## build the binary (./evolve) with the embedded report viewer
-	@ CGO_ENABLED=0 go build -tags withui -trimpath -ldflags "$(LDFLAGS)" -o evolve $(APP_PKG)
+# the withui build embeds ui/dist, so it must exist before go-build compiles
+go-build: ui
+
+# Benchmarks: `make bench` runs BENCH (a -bench regexp) over BENCH_PKG.
+BENCH     ?= .
+BENCH_PKG ?= ./...
+.PHONY: bench
+bench: ## run benchmarks (BENCH=. all, BENCH=DashboardView one; BENCH_PKG=./internal/tui; profile with BENCH_FLAGS='-cpuprofile=cpu.prof')
+	@ go test -run '^$$' -bench '$(BENCH)' -benchmem $(BENCH_FLAGS) $(BENCH_PKG)
+
+# Smoke: the live end-to-end test in e2e/ — its own module, so the root
+# `go test ./...` never picks it up. See e2e/smoke_test.go for what it asserts.
+SMOKE_MODEL ?= claude-haiku-4-5
+.PHONY: smoke
+smoke: ## real `evolve run all` on the marketplace fixture (SMOKE_MODEL=claude-haiku-4-5, 1 run, 1 job; needs the claude CLI + credentials)
+	@ command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
+	@ SMOKE_MODEL=$(SMOKE_MODEL) go -C e2e test -v -count=1 -run '^TestSmoke$$' .
 
 .PHONY: run
 run: build ## build and run locally (override args via ARGS=...)
-	@ ./evolve $(ARGS)
+	@ ./$(APP) $(ARGS)
 
+# Regenerate the CLI/config reference from the built binary, then render the
+# site. (Kept repo-local: generating a CLI reference is app-specific. `serve`,
+# `docs-build`, and the zensical plumbing come from the library's docs.mk.)
 .PHONY: docs
 docs: build sync ## regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)
-	@ ./evolve docs --out docs/cli --format markdown
-	@ ./evolve docs --out docs/man --format man
-	@ ./evolve docs --out docs/config --format config
+	@ ./$(APP) docs --out docs/cli --format markdown
+	@ ./$(APP) docs --out docs/man --format man
+	@ ./$(APP) docs --out docs/config --format config
 	@ uv run zensical build
-
-# --skip=sign: cosign keyless signing needs the GitHub Actions OIDC token, so
-# it only works in the release workflow — locally it would fail or prompt.
-.PHONY: snapshot
-snapshot: ## build local snapshot (binaries, no publish, no signing)
-	@ go tool -modfile=tools/go.mod goreleaser release --snapshot --clean --skip=sign
-
-.PHONY: release
-release: ## build and publish a release (needs a vX.Y.Z tag + creds)
-	@ go tool -modfile=tools/go.mod goreleaser release --clean
-
-.PHONY: serve
-serve: sync ## serve the docs site locally
-	@ uv run zensical serve

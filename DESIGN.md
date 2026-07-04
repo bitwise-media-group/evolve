@@ -44,7 +44,7 @@ restores exit 1 on failures (`cli.ErrFailures`). `report --check` always exits 1
 ./docs/man/...         # generated man pages (make docs)
 ./docs/config/...      # generated configuration reference + annotated examples (make docs)
 ./e2e/...              # separate module: live smoke test plus fixture repositories and golden files
-./tools/go.mod         # pinned developer CLIs (addlicense, golangci-lint, goreleaser, syft)
+./make/...             # shared Makefile library submodule (archetype, fragments, dev-CLI pins)
 ```
 
 If a concern spans areas, it gets its own package under `./internal` with a clear but concise name. Every internal

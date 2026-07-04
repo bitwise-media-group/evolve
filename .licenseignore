@@ -1,5 +1,6 @@
 .git/**
 .bin/**
+make/**
 node_modules/**
 .venv/**
 .claude/**
