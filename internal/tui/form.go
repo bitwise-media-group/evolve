@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
@@ -39,6 +40,13 @@ const (
 const (
 	btnCancel = iota
 	btnRun
+)
+
+// The button labels, shared by buttons() and layout() so the rendered row and
+// the click targets cannot drift.
+const (
+	btnCancelLabel = "CANCEL [esc]"
+	btnRunLabel    = "RUN [r]"
 )
 
 // Case-marker and selection glyphs. Markers identify the tier; the selection
@@ -240,9 +248,124 @@ func (f formModel) pressButton() formAction {
 	return actionNone
 }
 
+// handleMouse routes a mouse event on the form. A left click focuses the pane
+// under the cursor and acts on the row or button it hit; the wheel moves the
+// pane's cursor without changing focus (the form's windows are
+// cursor-anchored, so the cursor is the scroll position).
+func (f formModel) handleMouse(msg tea.MouseMsg) (formModel, formAction) {
+	switch m := msg.(type) {
+	case tea.MouseClickMsg:
+		if m.Button == tea.MouseLeft {
+			return f.click(m.X, m.Y)
+		}
+	case tea.MouseWheelMsg:
+		switch m.Button {
+		case tea.MouseWheelUp:
+			f.wheelAt(m.X, m.Y, -1)
+		case tea.MouseWheelDown:
+			f.wheelAt(m.X, m.Y, 1)
+		}
+	}
+	return f, actionNone
+}
+
+// click focuses what was hit and applies it: buttons activate, list rows
+// toggle, tree parents fold, and a repeat click on the leaf already under the
+// cursor cycles its selection.
+func (f formModel) click(x, y int) (formModel, formAction) {
+	l := f.layout()
+	switch {
+	case l.cancelBtn.contains(x, y):
+		f.focus, f.btnFocus = paneButtons, btnCancel
+		return f, actionCancel
+	case l.runBtn.contains(x, y):
+		f.focus, f.btnFocus = paneButtons, btnRun
+		if f.valid() {
+			return f, actionRun
+		}
+	case l.filters.contains(x, y):
+		f.clickList(paneFilters, &f.filters, l.filters, y)
+	case l.harness.contains(x, y):
+		f.clickList(paneHarness, &f.harness, l.harness, y)
+	case l.models.contains(x, y):
+		f.clickList(paneModels, &f.models, l.models, y)
+	case l.tree.contains(x, y):
+		f.clickTree(l.tree, y)
+	}
+	return f, actionNone
+}
+
+// clickList focuses a list pane and, when the click lands on a row, moves the
+// cursor there and toggles it — checkbox rows are unambiguous click targets,
+// and toggle routes to the same Session receivers the space key uses.
+func (f *formModel) clickList(region int, lst *list, r rect, y int) {
+	f.focus = region
+	c := contentRect(r)
+	if y < c.y0 || y >= c.y1 {
+		return
+	}
+	idx := topWindowStart(lst.cursor, c.h()) + (y - c.y0)
+	if idx >= len(lst.items) {
+		return
+	}
+	lst.setCursor(idx)
+	f.toggle()
+}
+
+// clickTree focuses the tree and applies the clicked row: a parent folds or
+// unfolds, a leaf takes the cursor, and only a repeat click on the leaf
+// already under the cursor cycles its tri-state — cycling on first contact
+// would flip cases while the user is merely selecting.
+func (f *formModel) clickTree(r rect, y int) {
+	wasFocused := f.focus == paneTree
+	f.focus = paneTree
+	c := contentRect(r)
+	if y < c.y0 || y >= c.y1 {
+		return
+	}
+	vis := f.tree.visible()
+	if len(vis) == 0 {
+		return
+	}
+	// renderTree windows off the clamped cursor, so the hit-test must too.
+	cursor := clampInt(f.tree.cursor, 0, len(vis)-1)
+	pos := topWindowStart(cursor, c.h()) + (y - c.y0)
+	if pos >= len(vis) {
+		return
+	}
+	i := vis[pos]
+	f.tree.cursor = pos
+	if !f.tree.nodes[i].leaf && len(f.tree.nodes[i].children) > 0 {
+		f.tree.nodes[i].expanded = !f.tree.nodes[i].expanded
+		return
+	}
+	if wasFocused && cursor == pos {
+		f.toggle()
+	}
+}
+
+// wheelAt moves the cursor of the pane under the mouse without changing focus.
+func (f *formModel) wheelAt(x, y, delta int) {
+	l := f.layout()
+	switch {
+	case l.filters.contains(x, y):
+		f.moveIn(paneFilters, delta)
+	case l.harness.contains(x, y):
+		f.moveIn(paneHarness, delta)
+	case l.models.contains(x, y):
+		f.moveIn(paneModels, delta)
+	case l.tree.contains(x, y):
+		f.moveIn(paneTree, delta)
+	}
+}
+
 // moveCursor advances the focused region's cursor.
-func (f *formModel) moveCursor(delta int) {
-	switch f.focus {
+func (f *formModel) moveCursor(delta int) { f.moveIn(f.focus, delta) }
+
+// moveIn advances one region's cursor, focused or not — the wheel scrolls the
+// pane under the mouse without moving focus.
+func (f *formModel) moveIn(region, delta int) {
+	switch region {
 	case paneFilters:
 		f.filters.move(delta)
 	case paneHarness:
@@ -385,17 +508,11 @@ func (f formModel) request() RunRequest {
 // view renders the filter/harness/model column beside the case tree, with a
 // button/hint footer.
 func (f formModel) view() string {
-	// headerH covers the EVOLVE wordmark plus the blank line below it; footerH the
-	// button row (bordered, 3 high) plus the hint line. Both come off the pane
-	// height so the columns never overflow the window.
-	const headerH, footerH = 2, 4
-	paneH := max(f.h-headerH-footerH, 8)
-	leftW := max(f.w/3, 20)
-	rightW := max(f.w-leftW, 20)
-
-	filtersH := 5
-	harnessH := min(len(f.harness.items)+2, max(paneH/3, 5))
-	modelsH := max(paneH-filtersH-harnessH, 4)
+	// Every pane renders at the rect layout() reports, so mouse hit-testing
+	// shares this exact geometry.
+	l := f.layout()
+	leftW := l.filters.w()
+	rightW := l.tree.w()
 
 	// Accents mirror the dashboard horizontally: its right column becomes our left
 	// column (green/teal/orange top-to-bottom) and its single tall left pane becomes
@@ -403,26 +520,21 @@ func (f formModel) view() string {
 	// when a pane is unfocused — same as the dashboard.
 	cw := panelContentWidth(leftW)
 	filters := panel(1, "Filters", "", "",
-		f.renderFilters(cw, filtersH-2), f.focus == paneFilters, leftW, filtersH, accentRollup)
+		f.renderFilters(cw, l.filters.h()-2), f.focus == paneFilters, leftW, l.filters.h(), accentRollup)
 	harness := panel(2, "Harnesses", "", "",
-		f.renderHarness(cw, harnessH-2), f.focus == paneHarness, leftW, harnessH, accentRuns)
+		f.renderHarness(cw, l.harness.h()-2), f.focus == paneHarness, leftW, l.harness.h(), accentRuns)
 	models := panel(3, "Models", f.modelCount(), "",
-		f.renderModels(cw, modelsH-2), f.focus == paneModels, leftW, modelsH, accentDetails)
+		f.renderModels(cw, l.models.h()-2), f.focus == paneModels, leftW, l.models.h(), accentDetails)
 	left := lipgloss.JoinVertical(lipgloss.Left, filters, harness, models)
 
 	// A glyph legend sits directly under the tree pane: one row when it fits the pane
 	// width, two when it does not. On a short terminal it is dropped so the tree keeps
 	// usable height. The height is recomputed every render, so resize re-flows it.
-	legendBody, legendH := f.legend(rightW)
-	treeH := paneH
-	showLegend := paneH >= 13
-	if showLegend {
-		treeH = paneH - legendH
-	}
 	tree := panel(4, "Plugins / Skills / Cases", "", "",
-		f.renderTree(panelContentWidth(rightW), treeH-2), f.focus == paneTree, rightW, treeH, accentExec)
+		f.renderTree(panelContentWidth(rightW), l.tree.h()-2), f.focus == paneTree, rightW, l.tree.h(), accentExec)
 	right := tree
-	if showLegend {
+	if l.paneH >= 13 {
+		legendBody, legendH := f.legend(rightW)
 		legend := panel(0, "Legend", "", "", legendBody, false, rightW, legendH, accentExec)
 		right = lipgloss.JoinVertical(lipgloss.Left, tree, legend)
 	}
@@ -434,23 +546,73 @@ func (f formModel) view() string {
 	return lipgloss.JoinVertical(lipgloss.Left, " "+evolveTitle(), "", panes, footer)
 }
 
+// formLayout reports where each form pane and button lands on screen as outer
+// rects in terminal cells. view() renders from it and handleMouse hit-tests
+// against it, so the two can never disagree about the geometry.
+type formLayout struct {
+	filters, harness, models, tree rect
+	cancelBtn, runBtn              rect
+	paneH                          int
+}
+
+// layout computes the current frame's geometry from the window size: two
+// chrome rows (the wordmark and the blank line beneath it), then the left
+// column stacking filters/harnesses/models beside the tree (the legend under
+// it is inert, so it carries no rect), then the right-aligned button row.
+// paneH takes the header (2 rows) and footer (the bordered 3-row buttons plus
+// the hint line) off the window height.
+func (f formModel) layout() formLayout {
+	const bodyTop = 2
+	paneH := max(f.h-6, 8)
+	leftW := max(f.w/3, 20)
+	rightW := max(f.w-leftW, 20)
+
+	filtersH := 5
+	harnessH := min(len(f.harness.items)+2, max(paneH/3, 5))
+	modelsH := max(paneH-filtersH-harnessH, 4)
+
+	treeH := paneH
+	if paneH >= 13 {
+		_, legendH := f.legend(rightW)
+		treeH = paneH - legendH
+	}
+
+	l := formLayout{
+		paneH:   paneH,
+		filters: rect{0, bodyTop, leftW, bodyTop + filtersH},
+		harness: rect{0, bodyTop + filtersH, leftW, bodyTop + filtersH + harnessH},
+		models:  rect{0, bodyTop + filtersH + harnessH, leftW, bodyTop + filtersH + harnessH + modelsH},
+		tree:    rect{leftW, bodyTop, leftW + rightW, bodyTop + treeH},
+	}
+
+	// The buttons sit under the taller column: the right one is always paneH
+	// tall (tree plus legend), but on a tiny window the left column's height
+	// floors can push it past paneH, and JoinHorizontal bottoms the pane block
+	// out at the taller of the two.
+	btnTop := bodyTop + max(filtersH+harnessH+modelsH, paneH)
+	cancelW := lipgloss.Width(buttonStyle.Render(btnCancelLabel))
+	runW := lipgloss.Width(buttonStyle.Render(btnRunLabel))
+	x0 := max(max(f.w, 1)-(cancelW+2+runW), 0) // PlaceHorizontal's right alignment
+	l.cancelBtn = rect{x0, btnTop, x0 + cancelW, btnTop + 3}
+	l.runBtn = rect{x0 + cancelW + 2, btnTop, x0 + cancelW + 2 + runW, btnTop + 3}
+	return l
+}
+
 // buttons renders the right-aligned CANCEL / RUN pair. The focused button takes
 // the blue fill; RUN tints green when a run is queued and greys out when nothing
 // is, so it reads as disabled even while focused.
 func (f formModel) buttons() string {
-	cancel := "CANCEL [esc]"
-	cancelBtn := buttonStyle.Render(cancel)
+	cancelBtn := buttonStyle.Render(btnCancelLabel)
 	if f.focus == paneButtons && f.btnFocus == btnCancel {
-		cancelBtn = buttonActive.Render(cancel)
+		cancelBtn = buttonActive.Render(btnCancelLabel)
 	}
 
-	run := "RUN [r]"
-	runBtn := buttonStyle.Render(run)
+	runBtn := buttonStyle.Render(btnRunLabel)
 	switch {
 	case f.valid() && f.focus == paneButtons && f.btnFocus == btnRun:
-		runBtn = buttonActive.Render(run)
+		runBtn = buttonActive.Render(btnRunLabel)
 	case f.valid():
-		runBtn = buttonReady.Render(run)
+		runBtn = buttonReady.Render(btnRunLabel)
 	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, cancelBtn, "  ", runBtn)
@@ -529,10 +691,7 @@ func providerGlyph(on, total int) string {
 // visible, each row rendered by line.
 func renderRows(items []listItem, cursor int, focused bool, w, h int, line func(listItem) string) string {
 	rows := max(h, 1)
-	start := 0
-	if cursor >= rows {
-		start = cursor - rows + 1
-	}
+	start := topWindowStart(cursor, rows)
 	end := min(start+rows, len(items))
 	var b strings.Builder
 	for i := start; i < end; i++ {
@@ -561,10 +720,7 @@ func (f formModel) renderTree(w, h int) string {
 		f.tree.cursor = 0
 	}
 	rows := max(h, 1)
-	start := 0
-	if f.tree.cursor >= rows {
-		start = f.tree.cursor - rows + 1
-	}
+	start := topWindowStart(f.tree.cursor, rows)
 	end := min(start+rows, len(vis))
 
 	var b strings.Builder

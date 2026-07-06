@@ -139,3 +139,48 @@ func TestCancelQuits(t *testing.T) {
 		t.Error("expected a tea.QuitMsg from cancel")
 	}
 }
+
+// TestMouseRouting pins the root model's mouse wiring: the view declares
+// cell-motion mouse mode, clicks route to whichever screen is active, and
+// clicking RUN advances to the dashboard exactly like the keyboard path.
+func TestMouseRouting(t *testing.T) {
+	m := testModel(t)
+	m = step(m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("View().MouseMode = %v, want cell motion", got)
+	}
+
+	// On the form, a click lands in the form model.
+	l := m.form.layout()
+	m = step(m, leftClick(l.tree.x0+3, l.tree.y0+1))
+	if m.screen != screenForm || m.form.focus != paneTree {
+		t.Fatalf("screen=%v form focus=%d, want the click to focus the form tree", m.screen, m.form.focus)
+	}
+
+	// Clicking RUN starts the run and switches screens.
+	m, cmd := stepCmd(m, leftClick(l.runBtn.x0+2, l.runBtn.y0+1))
+	if m.screen != screenDashboard || cmd == nil {
+		t.Fatalf("screen=%v cmd=%v, want the RUN click to reach the dashboard", m.screen, cmd)
+	}
+
+	// On the dashboard, clicks route to the dashboard model.
+	dl := m.dash.layout()
+	m = step(m, leftClick(dl.details.x0+3, dl.details.y0+1))
+	if m.dash.focus != paneDetails {
+		t.Errorf("dash focus = %v, want the click to focus Details", m.dash.focus)
+	}
+}
+
+// TestMouseCancelQuits: a CANCEL click on the form quits like esc.
+func TestMouseCancelQuits(t *testing.T) {
+	m := testModel(t)
+	m = step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	l := m.form.layout()
+	_, cmd := m.Update(leftClick(l.cancelBtn.x0+2, l.cancelBtn.y0+1))
+	if cmd == nil {
+		t.Fatal("a CANCEL click should return a quit command")
+	}
+	if msg := cmd(); msg == nil {
+		t.Error("expected a tea.QuitMsg from the CANCEL click")
+	}
+}

@@ -206,10 +206,15 @@ func filterByDelta(rows []skillRow, improvements bool) []skillRow {
 
 // ── rendering ───────────────────────────────────────────────────────────────
 
+// rollupTabNames are the Rollup pane's tab labels in tab order, shared by
+// tabStrip (which renders them into the panel's top border) and tabAt (which
+// hit-tests clicks against the same strings) so the two cannot drift.
+var rollupTabNames = []string{"Improvements", "Regressions", "Skills"}
+
 // tabStrip renders the rollup tabs for the panel's top border; only the active
 // tab is recoloured.
 func (d dashboardModel) tabStrip() string {
-	names := []string{"Improvements", "Regressions", "Skills"}
+	names := rollupTabNames
 	parts := make([]string, len(names))
 	for i, n := range names {
 		if tab(i) == d.tab {

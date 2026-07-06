@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/plan"
@@ -307,5 +308,175 @@ func TestUnitFinishedThresholdStatus(t *testing.T) {
 				t.Errorf("unit status = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// mouseDash builds a sized dashboard over the solo catalog with every case
+// queued, for the mouse-handling tests.
+func mouseDash(t *testing.T) dashboardModel {
+	t.Helper()
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	d.w, d.h = 120, 40
+	return d
+}
+
+func leftClick(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}
+}
+
+// TestDashboardMouseFocus pins click-to-focus: a click in a pane's body moves
+// key focus there through setFocus (so Execution browse mode engages and
+// disengages), non-left buttons are ignored, and the quit dialog captures all
+// mouse input.
+func TestDashboardMouseFocus(t *testing.T) {
+	d := mouseDash(t)
+	l := d.layout()
+
+	d.handleMouse(leftClick(l.details.x0+3, l.details.y0+1))
+	if d.focus != paneDetails {
+		t.Fatalf("focus = %v, want details", d.focus)
+	}
+	d.handleMouse(leftClick(l.exec.x0+3, l.exec.y1-1)) // bottom border: focus only
+	if d.focus != paneExecution || !d.execBrowse {
+		t.Fatalf("focus = %v browse = %v, want focused Execution in browse mode", d.focus, d.execBrowse)
+	}
+	d.handleMouse(leftClick(l.runs.x0+3, l.runs.y0+1))
+	if d.focus != paneRuns || d.execBrowse {
+		t.Fatalf("focus = %v browse = %v, want Runs with browse mode exited", d.focus, d.execBrowse)
+	}
+
+	d.handleMouse(tea.MouseClickMsg{X: l.details.x0 + 3, Y: l.details.y0 + 1, Button: tea.MouseRight})
+	if d.focus != paneRuns {
+		t.Error("a non-left click must be ignored")
+	}
+	d.confirmQuit = true
+	d.handleMouse(leftClick(l.details.x0+3, l.details.y0+1))
+	if d.focus != paneRuns {
+		t.Error("the quit dialog must capture mouse input")
+	}
+}
+
+// TestDashboardMouseRunsRow pins click-to-select in the Runs pane: the row
+// under the cursor becomes the shared selection through moveRun, so follow
+// disengages and the Details scroll resets, exactly like keyboard navigation.
+func TestDashboardMouseRunsRow(t *testing.T) {
+	d := mouseDash(t)
+	l := d.layout()
+	if !d.runFollow {
+		t.Fatal("a fresh dashboard follows")
+	}
+	d.detailScroll = 3
+	c := contentRect(l.runs)
+	d.handleMouse(leftClick(c.x0+2, c.y0+2)) // the log fits the pane: row 2 = index 2
+	if d.runSel != 2 || d.runFollow || d.detailScroll != 0 {
+		t.Errorf("runSel=%d follow=%v detailScroll=%d, want selection 2, follow off, scroll reset",
+			d.runSel, d.runFollow, d.detailScroll)
+	}
+
+	// An empty log is a no-op, not a panic.
+	empty := newDashboard(plan.Plan{}, soloCatalog(t), plan.PriorMetrics{}, testThresholds)
+	empty.w, empty.h = 120, 40
+	empty.handleMouse(leftClick(c.x0+2, c.y0+1))
+}
+
+// TestDashboardMouseExecRows drives the Execution tree by clicks alone: group
+// rows toggle their expansion, a case row mirrors onto the shared selection,
+// and the trigger/eval divider is inert.
+func TestDashboardMouseExecRows(t *testing.T) {
+	d := mouseDash(t)
+	l := d.layout()
+	c := contentRect(l.exec)
+	rowY := func(row int) int { return c.y0 + 1 + row } // row 0 sits under the pinned header
+
+	// Nothing has started, so the tree renders one collapsed plugin row.
+	// Clicking it focuses the pane and opens the group; entering browse mode
+	// also expands the shared selection's path, so the tree opens fully.
+	d.handleMouse(leftClick(c.x0+2, rowY(0)))
+	if !d.execBrowse || !d.execExpand[nodeKey{kind: nkPlugin}] || d.execSel != 0 {
+		t.Fatalf("browse=%v expand=%v execSel=%d, want the clicked plugin open under the cursor",
+			d.execBrowse, d.execExpand, d.execSel)
+	}
+	nodes := d.execNodes()
+	if len(nodes) != 8 { // plugin, skill, model, q1, q2, rule, e1, e2
+		t.Fatalf("execNodes = %d rows, want 8 with the selection path expanded", len(nodes))
+	}
+
+	d.handleMouse(leftClick(c.x0+2, rowY(4))) // case q2
+	if d.execSel != 4 || d.runSel != 1 {
+		t.Errorf("execSel=%d runSel=%d, want the q2 row selected and mirrored to the log", d.execSel, d.runSel)
+	}
+	d.handleMouse(leftClick(c.x0+2, rowY(5))) // the trigger/eval divider
+	if d.execSel != 4 {
+		t.Errorf("execSel=%d, want the divider click ignored", d.execSel)
+	}
+
+	// Clicking the open model row folds it and lands the cursor on it.
+	d.handleMouse(leftClick(c.x0+2, rowY(2)))
+	if got := len(d.execNodes()); got != 3 || d.execSel != 2 {
+		t.Errorf("rows=%d execSel=%d, want the model folded to 3 rows with the cursor on it", got, d.execSel)
+	}
+}
+
+// TestDashboardMouseTabsAndFooter covers the two border targets: clicking a
+// rollup tab name switches the tab (and focuses the pane), and the footer's
+// open hints resolve without panicking when no path is retained yet.
+func TestDashboardMouseTabsAndFooter(t *testing.T) {
+	d := mouseDash(t)
+	l := d.layout()
+
+	border := ansi.Strip(strings.Split(d.view(), "\n")[l.rollup.y0])
+	idx := strings.Index(border, "Regressions")
+	if idx < 0 {
+		t.Fatalf("tab strip missing from the border row %q", border)
+	}
+	d.rollupScroll = 2
+	d.handleMouse(leftClick(ansi.StringWidth(border[:idx]), l.rollup.y0))
+	if d.tab != tabRegressions || d.focus != paneRollup || d.rollupScroll != 0 {
+		t.Errorf("tab=%v focus=%v scroll=%d, want the Regressions tab focused with the scroll reset",
+			d.tab, d.focus, d.rollupScroll)
+	}
+
+	hints := d.footerHints()
+	x := ansi.StringWidth(hints[:strings.Index(hints, "[o] open dir")])
+	d.handleMouse(leftClick(x, l.footerY)) // no retained workdir: a safe no-op
+	d.handleMouse(leftClick(0, l.footerY)) // no target under the cursor
+}
+
+// TestDashboardMouseWheel pins wheel-under-cursor: offset panes scroll by
+// wheelScrollStep, selection panes step the selection by one row, and focus
+// never moves.
+func TestDashboardMouseWheel(t *testing.T) {
+	cat := manySkillCatalog(t, 30)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	d.w, d.h = 120, 20
+	d.tab = tabSkills
+	l := d.layout()
+	wheel := func(x, y int, b tea.MouseButton) {
+		d.handleMouse(tea.MouseWheelMsg{X: x, Y: y, Button: b})
+	}
+
+	wheel(l.rollup.x0+3, l.rollup.y0+2, tea.MouseWheelDown)
+	if d.rollupScroll != wheelScrollStep {
+		t.Errorf("rollupScroll = %d, want %d", d.rollupScroll, wheelScrollStep)
+	}
+	wheel(l.rollup.x0+3, l.rollup.y0+2, tea.MouseWheelUp)
+	if d.rollupScroll != 0 {
+		t.Errorf("rollupScroll = %d, want the wheel to scroll back up", d.rollupScroll)
+	}
+
+	wheel(l.runs.x0+3, l.runs.y0+1, tea.MouseWheelDown)
+	if d.runSel != 1 || d.runFollow {
+		t.Errorf("runSel=%d follow=%v, want the wheel to step the selection off follow", d.runSel, d.runFollow)
+	}
+	wheel(l.exec.x0+3, l.exec.y0+1, tea.MouseWheelDown) // unfocused tree steps the shared selection
+	if d.runSel != 2 {
+		t.Errorf("runSel=%d, want the exec wheel to step the shared selection", d.runSel)
+	}
+	wheel(l.details.x0+3, l.details.y0+1, tea.MouseWheelDown)
+	if d.focus != paneRuns {
+		t.Errorf("focus = %v, want the wheel to never move focus", d.focus)
 	}
 }

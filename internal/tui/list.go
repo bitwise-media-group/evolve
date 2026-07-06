@@ -35,6 +35,14 @@ func (l *list) move(delta int) {
 	}
 }
 
+// setCursor moves the cursor onto row i, clamped into range.
+func (l *list) setCursor(i int) {
+	if len(l.items) == 0 {
+		return
+	}
+	l.cursor = clampInt(i, 0, len(l.items)-1)
+}
+
 func (l *list) top() { l.cursor = 0 }
 func (l *list) bottom() {
 	if len(l.items) > 0 {

@@ -91,6 +91,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		if m.screen == screenForm {
+			var action formAction
+			m.form, action = m.form.handleMouse(msg)
+			switch action {
+			case actionCancel:
+				return m, tea.Quit
+			case actionRun:
+				return m.startRun()
+			}
+			return m, nil
+		}
+		m.dash.handleMouse(msg)
+		return m, nil
+
 	case unitStartedMsg, unitSkippedMsg, itemStartedMsg, baselineStartedMsg, itemDoneMsg,
 		baselineDoneMsg, unitFinishedMsg, warnMsg, runDoneMsg:
 		m.dash.apply(msg)
@@ -120,9 +135,11 @@ func (m Model) View() tea.View {
 	if m.screen == screenForm {
 		content = m.form.view()
 	}
-	// Alt-screen is declared on the View in bubbletea v2 (the WithAltScreen
-	// program option is gone); the renderer enters full-window mode for us.
+	// Alt-screen and mouse mode are declared on the View in bubbletea v2 (the
+	// WithAltScreen/WithMouseCellMotion program options are gone); the renderer
+	// enters full-window mode and enables click/release/wheel reporting for us.
 	v := tea.NewView(content)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }

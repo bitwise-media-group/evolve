@@ -653,6 +653,146 @@ func (d *dashboardModel) paneKey(key string) {
 	}
 }
 
+// handleMouse routes a mouse event on the dashboard. A left click focuses the
+// pane under the cursor (selecting the row it hit, when it has one) or fires
+// one of the footer's open targets; the wheel scrolls the pane under the
+// cursor without moving focus. All mouse input is ignored while the quit
+// dialog is showing — it stays keyboard-confirmed, like the keys it captures.
+func (d *dashboardModel) handleMouse(msg tea.MouseMsg) {
+	if d.confirmQuit {
+		return
+	}
+	switch m := msg.(type) {
+	case tea.MouseClickMsg:
+		if m.Button == tea.MouseLeft {
+			d.click(m.X, m.Y)
+		}
+	case tea.MouseWheelMsg:
+		switch m.Button {
+		case tea.MouseWheelUp:
+			d.wheel(m.X, m.Y, -1)
+		case tea.MouseWheelDown:
+			d.wheel(m.X, m.Y, 1)
+		}
+	}
+}
+
+// click handles a left press, in target order: the footer's open hints, the
+// rollup tab strip on its top border, then pane focus plus whatever row the
+// click landed on.
+func (d *dashboardModel) click(x, y int) {
+	l := d.layout()
+	if y == l.footerY {
+		switch d.footerOpenTarget(x) {
+		case 'o':
+			openPath(d.selectedField(func(c *caseState) string { return c.workdir }))
+		case 'l':
+			openPath(d.selectedField(func(c *caseState) string { return c.logPath }))
+		}
+		return
+	}
+	if t, ok := d.tabAt(l, x, y); ok {
+		d.setFocus(paneRollup)
+		d.tab = t
+		d.rollupScroll = 0
+		return
+	}
+	switch {
+	case l.exec.contains(x, y):
+		d.execClick(l, y)
+	case l.rollup.contains(x, y):
+		d.setFocus(paneRollup)
+	case l.runs.contains(x, y):
+		d.setFocus(paneRuns)
+		d.runsClick(l, y)
+	case l.details.contains(x, y):
+		d.setFocus(paneDetails)
+	}
+}
+
+// runsClick moves the shared selection onto the clicked execution row via
+// moveRun, so follow disengages exactly as it does for keyboard navigation.
+func (d *dashboardModel) runsClick(l dashLayout, y int) {
+	sel := d.currentRun()
+	if sel < 0 {
+		return
+	}
+	c := contentRect(l.runs)
+	if idx := windowIndexAt(len(d.execLog), sel, c.h(), y-c.y0); idx >= 0 {
+		d.moveRun(idx - d.runSel)
+	}
+}
+
+// execClick focuses the Execution pane and acts on the clicked tree row: a
+// group row folds or unfolds, a case row moves the cursor and mirrors it onto
+// the shared selection. The click is resolved against the node window as it
+// was rendered, but applied by node identity, not index — entering browse mode
+// expands the shared selection's path (see enterBrowse/syncExecToSel), so the
+// rendered frame's indices do not survive the focus change.
+func (d *dashboardModel) execClick(l dashLayout, y int) {
+	var nodes []nodeRef
+	var hl int
+	if d.execBrowse {
+		nodes = d.execNodes()
+		hl = clampInt(d.execSel, 0, max(len(nodes)-1, 0))
+	} else {
+		nodes = d.buildNodeRefs()
+		hl = d.followHighlight(nodes)
+	}
+	c := contentRect(l.exec)
+	row := y - c.y0 - 1 // the pinned column header takes the first content row
+	idx := windowIndexAt(len(nodes), hl, c.h()-1, row)
+	d.setFocus(paneExecution)
+	if idx < 0 || nodes[idx].kind == nkRule {
+		return
+	}
+	n := nodes[idx]
+	if n.kind == nkCase {
+		if i := d.caseNodeIndex(n); i >= 0 {
+			d.execSel = i
+			d.syncSelFromExec()
+		}
+		return
+	}
+	// The rendered row carries the intent: a collapsed group opens, an open one
+	// folds — regardless of how entering browse mode reseeded the expansion.
+	d.execExpand[keyOf(n)] = n.collapsed
+	d.selectKey(keyOf(n))
+}
+
+// caseNodeIndex finds the browse-tree row showing the same case as n, or -1
+// when its group has been folded out of view.
+func (d dashboardModel) caseNodeIndex(n nodeRef) int {
+	for i, m := range d.execNodes() {
+		if m.kind == nkCase && m.unitIdx == n.unitIdx && m.caseIdx == n.caseIdx {
+			return i
+		}
+	}
+	return -1
+}
+
+// wheel scrolls the pane under the cursor without moving focus: offset panes
+// scroll by wheelScrollStep, selection-centered panes step their selection by
+// a single row (their window recenters on it, so a larger step skips rows).
+func (d *dashboardModel) wheel(x, y, dir int) {
+	l := d.layout()
+	switch {
+	case l.exec.contains(x, y):
+		if d.execBrowse {
+			d.moveExec(dir)
+			d.syncSelFromExec()
+		} else {
+			d.moveRun(dir)
+		}
+	case l.rollup.contains(x, y):
+		d.scrollRollupBy(dir * wheelScrollStep)
+	case l.runs.contains(x, y):
+		d.moveRun(dir)
+	case l.details.contains(x, y):
+		d.scrollDetailBy(dir * wheelScrollStep)
+	}
+}
+
 // rollupKey switches the rollup tab (resetting the scroll, since the row set
 // changes) and scrolls the active tab's rows when they overflow the pane.
 func (d *dashboardModel) rollupKey(key string) {

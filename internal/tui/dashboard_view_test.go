@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/plan"
@@ -82,5 +83,132 @@ func TestDashboardLegendLayout(t *testing.T) {
 	}
 	if out := d.view(); strings.Contains(out, "Legend") {
 		t.Error("short terminal must drop the legend panel")
+	}
+}
+
+// TestDashLayoutTilesBody pins the layout geometry: the two columns tile the
+// body height exactly, the x split sits at leftW, and the footer row lands
+// directly under the body — so hit-testing covers every cell without overlap.
+func TestDashLayoutTilesBody(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+
+	for _, size := range []struct{ w, h int }{{120, 40}, {100, 30}, {80, 14}} {
+		d.w, d.h = size.w, size.h
+		l := d.layout()
+		bodyH := max(d.h-3, 4)
+
+		if l.exec.y0 != 2 || l.rollup.y0 != 2 {
+			t.Errorf("%dx%d: body must start at row 2, got exec %d rollup %d", size.w, size.h, l.exec.y0, l.rollup.y0)
+		}
+		if leftH := l.exec.h() + l.legend.h(); leftH != bodyH {
+			t.Errorf("%dx%d: left column height %d, want bodyH %d", size.w, size.h, leftH, bodyH)
+		}
+		if rightH := l.rollup.h() + l.runs.h() + l.details.h(); rightH != bodyH {
+			t.Errorf("%dx%d: right column height %d, want bodyH %d", size.w, size.h, rightH, bodyH)
+		}
+		if l.runs.y0 != l.rollup.y1 || l.details.y0 != l.runs.y1 {
+			t.Errorf("%dx%d: right column rects must stack without gaps", size.w, size.h)
+		}
+		if l.exec.x1 != l.leftW || l.rollup.x0 != l.leftW || l.rollup.x1 != l.leftW+l.rightW {
+			t.Errorf("%dx%d: x split not at leftW=%d: exec %+v rollup %+v", size.w, size.h, l.leftW, l.exec, l.rollup)
+		}
+		if l.footerY != 2+bodyH {
+			t.Errorf("%dx%d: footerY = %d, want %d", size.w, size.h, l.footerY, 2+bodyH)
+		}
+	}
+}
+
+// TestDashLayoutMatchesView aligns the layout rects against the rendered
+// frame: each pane's title sits on the row its rect starts at, and the open
+// hints sit on the footer row — the drift guard between layout() and view().
+func TestDashLayoutMatchesView(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	d.w, d.h = 120, 40
+
+	l := d.layout()
+	lines := strings.Split(d.view(), "\n")
+	for _, tc := range []struct {
+		row  int
+		want string
+	}{
+		{row: l.exec.y0, want: "Execution"},
+		{row: l.legend.y0, want: "Legend"},
+		{row: l.rollup.y0, want: "Rollup"},
+		{row: l.runs.y0, want: "Runs"},
+		{row: l.details.y0, want: "Details"},
+		{row: l.footerY, want: "open dir"},
+	} {
+		if tc.row >= len(lines) || !strings.Contains(lines[tc.row], tc.want) {
+			t.Errorf("row %d must hold %q:\n%s", tc.row, tc.want, d.view())
+		}
+	}
+}
+
+// TestTabAt hit-tests the rollup tab strip against the rendered top border:
+// the column each tab name renders at resolves to that tab, and rows or
+// columns outside the strip miss.
+func TestTabAt(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	d.w, d.h = 120, 40
+
+	l := d.layout()
+	border := ansi.Strip(strings.Split(d.view(), "\n")[l.rollup.y0])
+	for i, name := range rollupTabNames {
+		idx := strings.Index(border, name)
+		if idx < 0 {
+			t.Fatalf("tab %q not on the rollup border row %q", name, border)
+		}
+		x := ansi.StringWidth(border[:idx])
+		for _, col := range []int{x, x + ansi.StringWidth(name) - 1} {
+			if got, ok := d.tabAt(l, col, l.rollup.y0); !ok || got != tab(i) {
+				t.Errorf("tabAt(%d, %d) = (%v, %v), want (%v, true)", col, l.rollup.y0, got, ok, tab(i))
+			}
+		}
+	}
+	if _, ok := d.tabAt(l, l.rollup.x0+1, l.rollup.y0); ok {
+		t.Error("border fill left of the strip must not resolve to a tab")
+	}
+	if _, ok := d.tabAt(l, l.rollup.x0+10, l.rollup.y0+1); ok {
+		t.Error("a body row must not resolve to a tab")
+	}
+
+	// A pane too narrow for the strip truncates it; clicks are not guessed at.
+	d.w = 56
+	l = d.layout()
+	for x := l.rollup.x0; x < l.rollup.x1; x++ {
+		if _, ok := d.tabAt(l, x, l.rollup.y0); ok {
+			t.Fatalf("truncated strip must not hit-test (x=%d)", x)
+		}
+	}
+}
+
+// TestFooterOpenTarget maps footer clicks onto the open-dir/open-log hints,
+// measured off the same footerHints string the view renders.
+func TestFooterOpenTarget(t *testing.T) {
+	cat := soloCatalog(t)
+	_, m1 := soloModels()
+	d := dashFromFilter(cat, []harness.Selection{m1}, nil, plan.PriorMetrics{})
+	d.w, d.h = 120, 40
+
+	hints := d.footerHints()
+	for seg, want := range map[string]byte{"[o] open dir": 'o', "[l] open log": 'l'} {
+		x := ansi.StringWidth(hints[:strings.Index(hints, seg)])
+		for _, col := range []int{x, x + len(seg) - 1} {
+			if got := d.footerOpenTarget(col); got != want {
+				t.Errorf("footerOpenTarget(%d) = %q, want %q", col, got, want)
+			}
+		}
+		if got := d.footerOpenTarget(x - 1); got == want {
+			t.Errorf("footerOpenTarget just left of %q must miss", seg)
+		}
+	}
+	if got := d.footerOpenTarget(0); got != 0 {
+		t.Errorf("footerOpenTarget(0) = %q, want no target", got)
 	}
 }

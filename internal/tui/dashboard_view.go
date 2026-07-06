@@ -21,10 +21,10 @@ func (d dashboardModel) view() string {
 	// Chrome rows above/below the panes: the title bar, a blank separator beneath
 	// it, and the footer (leftDims/rightDims own the resulting body height). The
 	// progress bar rides the title bar rather than taking a row of its own, so the
-	// Execution and Rollup panes stay top-aligned.
-	leftW := max(d.w/2, 28)
-	rightW := max(d.w-leftW, 24)
-	cW := panelContentWidth(rightW)
+	// Execution and Rollup panes stay top-aligned. Every pane renders at the rect
+	// layout() reports, so mouse hit-testing shares this exact geometry.
+	l := d.layout()
+	cW := panelContentWidth(l.rightW)
 
 	// The left pane reflects the shared selection while unfocused, and becomes a
 	// user-navigable tree (its own cursor + expansion) while focused.
@@ -38,29 +38,110 @@ func (d dashboardModel) view() string {
 		hl = d.followHighlight(nodes)
 	}
 
-	execH, legendH := d.leftDims()
 	left := panel(1, "Execution", d.leftCount(nodes, hl), "",
-		d.renderLeft(nodes, hl, panelContentWidth(leftW), execH-2),
-		d.focus == paneExecution, leftW, execH, paneBaseColor(paneExecution))
-	if legendH > 0 {
-		body, _ := d.legend(leftW)
-		legend := panel(0, "Legend", "", "", body, false, leftW, legendH, paneBaseColor(paneExecution))
+		d.renderLeft(nodes, hl, panelContentWidth(l.leftW), l.exec.h()-2),
+		d.focus == paneExecution, l.leftW, l.exec.h(), paneBaseColor(paneExecution))
+	if l.legend.h() > 0 {
+		body, _ := d.legend(l.leftW)
+		legend := panel(0, "Legend", "", "", body, false, l.leftW, l.legend.h(), paneBaseColor(paneExecution))
 		left = lipgloss.JoinVertical(lipgloss.Left, left, legend)
 	}
 
-	_, rollupH, runsH, detailsH := d.rightDims()
 	rollup := panel(2, "Rollup", "", d.tabStrip(),
-		d.renderTabs(cW, rollupH-2), d.focus == paneRollup, rightW, rollupH, paneBaseColor(paneRollup))
+		d.renderTabs(cW, l.rollup.h()-2), d.focus == paneRollup, l.rightW, l.rollup.h(), paneBaseColor(paneRollup))
 	runs := panel(3, "Runs", d.runsCount(), "",
-		d.renderRuns(cW, runsH-2), d.focus == paneRuns, rightW, runsH, paneBaseColor(paneRuns))
+		d.renderRuns(cW, l.runs.h()-2), d.focus == paneRuns, l.rightW, l.runs.h(), paneBaseColor(paneRuns))
 	details := panel(4, "Details", "", "",
-		d.renderDetails(cW, detailsH-2), d.focus == paneDetails, rightW, detailsH, paneBaseColor(paneDetails))
+		d.renderDetails(cW, l.details.h()-2), d.focus == paneDetails, l.rightW, l.details.h(), paneBaseColor(paneDetails))
 	right := lipgloss.JoinVertical(lipgloss.Left, rollup, runs, details)
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	footer := footerHint.Render(clip(d.footerHints(), d.w))
 	// "" is the blank separator row between the title bar and the panes.
-	return lipgloss.JoinVertical(lipgloss.Left, d.titleBar(leftW, rightW), "", body, footer)
+	return lipgloss.JoinVertical(lipgloss.Left, d.titleBar(l.leftW, l.rightW), "", body, footer)
+}
+
+// dashLayout reports where each dashboard pane lands on screen as outer panel
+// rects in terminal cells. view() renders from it and handleMouse hit-tests
+// against it, so the two can never disagree about the geometry.
+type dashLayout struct {
+	leftW, rightW         int
+	exec, legend          rect // legend is the zero rect when hidden
+	rollup, runs, details rect
+	footerY               int // the footer hint row
+}
+
+// layout computes the current frame's geometry from the window size: two
+// chrome rows (the title bar and its blank separator) above the body, the
+// left/right column split, and the pane heights leftDims/rightDims own.
+func (d dashboardModel) layout() dashLayout {
+	const bodyTop = 2
+	leftW := max(d.w/2, 28)
+	rightW := max(d.w-leftW, 24)
+	execH, legendH := d.leftDims()
+	_, rollupH, runsH, detailsH := d.rightDims()
+	l := dashLayout{
+		leftW: leftW, rightW: rightW,
+		exec:    rect{0, bodyTop, leftW, bodyTop + execH},
+		rollup:  rect{leftW, bodyTop, leftW + rightW, bodyTop + rollupH},
+		runs:    rect{leftW, bodyTop + rollupH, leftW + rightW, bodyTop + rollupH + runsH},
+		details: rect{leftW, bodyTop + rollupH + runsH, leftW + rightW, bodyTop + rollupH + runsH + detailsH},
+		footerY: bodyTop + max(d.h-3, 4),
+	}
+	if legendH > 0 {
+		l.legend = rect{0, bodyTop + execH, leftW, bodyTop + execH + legendH}
+	}
+	return l
+}
+
+// tabAt resolves a click on the Rollup panel's top border to the tab under it.
+// The strip sits right-aligned in the border, ending one cell before the
+// corner (panel's topRight placement); a strip truncated on a too-narrow pane
+// is not hit-tested rather than guessed at.
+func (d dashboardModel) tabAt(l dashLayout, x, y int) (tab, bool) {
+	if y != l.rollup.y0 {
+		return 0, false
+	}
+	stripW := len(rollupTabNames) - 1 // the single-space joins
+	for _, n := range rollupTabNames {
+		stripW += ansi.StringWidth(n)
+	}
+	at := l.rollup.x1 - 2 - stripW
+	if at <= l.rollup.x0+2 {
+		return 0, false
+	}
+	for i, n := range rollupTabNames {
+		w := ansi.StringWidth(n)
+		if x >= at && x < at+w {
+			return tab(i), true
+		}
+		at += w + 1
+	}
+	return 0, false
+}
+
+// footerOpenTarget resolves a click on the footer hint row to the open action
+// under it: 'o' for "[o] open dir", 'l' for "[l] open log", 0 for neither. The
+// x-ranges are measured off the same footerHints string the view renders.
+func (d dashboardModel) footerOpenTarget(x int) byte {
+	hints := d.footerHints()
+	for _, t := range []struct {
+		seg string
+		key byte
+	}{
+		{seg: "[o] open dir", key: 'o'},
+		{seg: "[l] open log", key: 'l'},
+	} {
+		idx := strings.Index(hints, t.seg)
+		if idx < 0 {
+			continue
+		}
+		at := ansi.StringWidth(hints[:idx])
+		if x >= at && x < at+ansi.StringWidth(t.seg) {
+			return t.key
+		}
+	}
+	return 0
 }
 
 // legend builds the Execution pane's glyph legend for a pane of outer width w,

@@ -194,6 +194,30 @@ The dashboard is split across two files: `dashboard.go` holds the state, message
   rows stay binary; `caseAggStatus`/`tierStatus` in `dashboard.go` own the classification.
 - `now func() time.Time` is injected so elapsed-time rendering is deterministic under test.
 
+### Mouse
+
+Both screens take mouse input alongside the keyboard. `Model.View` declares `MouseMode: cell motion` on the returned
+`tea.View` (the v2 replacement for the `WithMouseCellMotion` program option), and `Update` routes `tea.MouseMsg` to the
+active screen's `handleMouse` exactly like key presses — so every click and wheel event flows through the same mutators
+the keyboard uses (`setFocus`/`moveRun`/`scrollDetailBy`… on the dashboard, the Session receivers via `toggle()` on the
+form) and none of the shared-selection or no-drift invariants above gain a second code path. A left click focuses the
+pane under the cursor and applies the row it hit: form checkbox rows toggle, tree parents (form and Execution alike)
+fold or unfold, a case/run row takes the shared selection, the rollup tab strip switches tabs, CANCEL/RUN activate, and
+the footer's `[o] open dir` / `[l] open log` hints fire `openPath` like their keys. A repeat click on the form-tree leaf
+already under the cursor cycles its tri-state — cycling on first contact would flip cases while the user is merely
+selecting. The wheel scrolls the pane under the cursor **without** moving focus: offset-scrolled panes (Rollup, Details)
+step by `wheelScrollStep`, selection-centred ones (Runs, Execution, the form's cursor-anchored windows) step their
+selection or cursor by one row. The quit dialog ignores the mouse entirely.
+
+Hit-testing is manual geometry with one hard rule: **it must read the same `layout()` the view renders from**. Each
+screen exposes a `layout()` (`dashLayout` in `dashboard_view.go`, `formLayout` in `form.go`) that reports every pane's
+outer rect, and `view()` is written in terms of it — so the rendered frame and the click targets cannot drift, and the
+tests pin the alignment by asserting each pane's title sits on the row its rect starts at. `mouse.go` holds the shared
+primitives: `rect`, `contentRect` (the inverse of `panel`'s border-and-margin inset), and the window inverses
+`windowIndexAt`/`topWindowStart` that map a clicked row back to a list index (tested against `scrollWindowFunc` /
+`renderRows` output directly). One tradeoff to know: with mouse reporting on, the terminal's native text selection needs
+the usual shift-drag (or option/alt-drag) bypass.
+
 ### Rendering primitives and tests
 
 `panel.go` draws every framed box — a rounded border with the title, count, and tab strip embedded in the border edges,
