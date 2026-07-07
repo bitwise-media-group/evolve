@@ -4,6 +4,7 @@
 package web
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/bitwise-media-group/evolve/internal/layout"
@@ -158,5 +159,20 @@ func TestProviderModelFallback(t *testing.T) {
 	p, m = providerModel("anything/here", results.Header{Provider: "google", Model: "gemini-3"})
 	if p != "google" || m != "gemini-3" {
 		t.Errorf("header: got %q/%q, want google/gemini-3", p, m)
+	}
+}
+
+// TestBuildDatasetDegradesOnNewerSchema pins the viewer's read-only degrade: a
+// results file written by a newer evolve yields no rows rather than an error,
+// keeping the report viewer usable while the write paths refuse.
+func TestBuildDatasetDegradesOnNewerSchema(t *testing.T) {
+	repo, resultsDir := fixtureRepo(t)
+	writeFile(t, filepath.Join(resultsDir, "results.json"), `{"schema": 99, "models": {"m": {}}}`)
+	ds, err := BuildDataset(repo, "test")
+	if err != nil {
+		t.Fatalf("BuildDataset: %v", err)
+	}
+	if len(ds.Rows) != 0 {
+		t.Errorf("got %d rows, want 0 (newer-schema file degrades to empty)", len(ds.Rows))
 	}
 }

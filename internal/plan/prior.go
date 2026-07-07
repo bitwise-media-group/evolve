@@ -31,7 +31,7 @@ func LoadPriorMetrics(cat []SkillCatalog) PriorMetrics {
 		trigger:  map[priorKey]results.TriggerResult{},
 	}
 	for _, sc := range cat {
-		file, _ := results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
+		file, _, _ := results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 		for key, m := range file.Models {
 			if m.Evals != nil {
 				ref := UnitRef{Skill: sc.Skill, Key: key, Kind: KindEvals}

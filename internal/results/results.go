@@ -4,6 +4,8 @@
 package results
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,6 +14,11 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 )
+
+// ErrSchemaTooNew reports a results or report file written by a newer evolve:
+// this binary must never overwrite it. Callers that would rewrite the file
+// propagate it; read-only consumers may degrade instead.
+var ErrSchemaTooNew = errors.New("written by a newer evolve")
 
 // Schema is the current results-file schema version. v2 made the per-eval
 // result a superset of skill-creator's grading.json (expectations with
@@ -313,39 +320,44 @@ func Find(dir string) string {
 // initialises a fresh one when the file is missing. A file written under an older
 // structural schema (v3/v4) is migrated to the current shape on load (see migrate)
 // and rewritten on the next SaveDir, so committed history survives a schema bump; a
-// file that is unreadable, far older, or written by a newer evolve is discarded.
-// reset reports such a discard so callers can tell the user history is starting
-// over.
-func LoadDir(dir, plugin, skill string) (f *File, reset bool) {
+// file that is unreadable or far older is discarded, and reset reports the discard
+// so callers can tell the user history is starting over. A file written by a newer
+// evolve is never discarded: LoadDir returns a fresh value alongside an error
+// wrapping ErrSchemaTooNew, so writers refuse before touching it while read-only
+// callers may blank the error and degrade.
+func LoadDir(dir, plugin, skill string) (f *File, reset bool, err error) {
 	fresh := &File{Schema: Schema, Plugin: plugin, Skill: skill}
 	path := Find(dir)
 	if path == "" {
-		return fresh, false
+		return fresh, false, nil
 	}
 	var probe struct {
 		Schema int `json:"schema"`
 	}
 	if encfmt.DecodeFile(path, &probe) != nil {
-		return fresh, true
+		return fresh, true, nil
 	}
 	switch {
 	case probe.Schema == Schema:
 		var loaded File
 		if encfmt.DecodeFile(path, &loaded) != nil {
-			return fresh, true
+			return fresh, true, nil
 		}
 		loaded.Plugin, loaded.Skill = plugin, skill
-		return &loaded, false
+		return &loaded, false, nil
 	case Migratable(probe.Schema):
 		migrated, ok := migrate(path)
 		if !ok {
-			return fresh, true
+			return fresh, true, nil
 		}
 		migrated.Plugin, migrated.Skill = plugin, skill
-		return migrated, false
+		return migrated, false, nil
+	case probe.Schema > Schema:
+		return fresh, false, fmt.Errorf("%s is schema %d, %w (this evolve writes schema %d); upgrade evolve",
+			path, probe.Schema, ErrSchemaTooNew, Schema)
 	default:
-		// Older than the migratable range, or written by a newer evolve: discard.
-		return fresh, true
+		// Older than the migratable range: discard.
+		return fresh, true, nil
 	}
 }
 

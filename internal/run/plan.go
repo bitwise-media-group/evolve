@@ -99,7 +99,7 @@ func Needs(
 		// skill, identical across every model and case in the skill.
 		var triggerContent, evalContent string
 		if flags {
-			file, _ = results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
+			file, _, _ = results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 			triggerContent, evalContent = needContentHashes(opts, sc, def)
 		}
 		if def.Triggers {
@@ -130,7 +130,7 @@ func CaseReasons(opts Options, cat []plan.SkillCatalog, sels []harness.Selection
 		if !opts.selects(sc.Plugin, sc.Skill) {
 			continue
 		}
-		file, _ := results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
+		file, _, _ := results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 		var triggerContent, evalContent string
 		if def.Triggers {
 			if md, err := os.ReadFile(filepath.Join(sc.SkillDir, "SKILL.md")); err == nil {

@@ -9,6 +9,10 @@
       "description": "Optional URI of this schema; ignored by evolve, honored by editors.",
       "type": "string"
     },
+    "version": {
+      "description": "Terraform-style semver constraint (\"0.4.0\", \"~> 0.4\", \">= 0.4, < 1\") the evolve binary must satisfy before run triggers/evals/all or report will rewrite results. Non-release builds (dev and snapshot/prerelease versions) warn and skip the check.",
+      "type": "string"
+    },
     "layout": {
       "description": "Repository layout: auto, marketplace, multi, or single.",
       "type": "string",

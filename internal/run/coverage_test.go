@@ -15,10 +15,10 @@ import (
 )
 
 // coverageRepo writes a single-plugin repo with one skill, its evals, and a
-// results file carrying a current eval result for modelKey, and returns the repo
+// results file carrying a current eval result for anthropic/m1, and returns the repo
 // and the skill directory. The stored fingerprints are computed the same way the
 // engine does, so the result reads as current until a fixture changes.
-func coverageRepo(t *testing.T, modelKey string) (*layout.Repo, string) {
+func coverageRepo(t *testing.T) (*layout.Repo, string) {
 	t.Helper()
 	root := t.TempDir()
 	write := func(rel, content string) {
@@ -46,7 +46,7 @@ func coverageRepo(t *testing.T, modelKey string) (*layout.Repo, string) {
 		t.Fatal(err)
 	}
 	file := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
-	file.SetEval(modelKey, &results.EvalEntry{
+	file.SetEval("anthropic/m1", &results.EvalEntry{
 		Header:  results.Header{Provider: "anthropic", ContentHash: content},
 		Results: []results.EvalResult{{ID: ef.Evals[0].ID, Passed: new(true), SpecHash: evalFingerprint(ef.Evals[0])}},
 	})
@@ -73,7 +73,7 @@ func find(t *testing.T, cov []SkillCoverage, skill string) SkillCoverage {
 }
 
 func TestCoverageCurrentResult(t *testing.T) {
-	repo, _ := coverageRepo(t, "anthropic/m1")
+	repo, _ := coverageRepo(t)
 	cov, err := Coverage(repo, []model.Model{{ID: "anthropic/m1", ProviderID: "anthropic"}}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestCoverageCurrentResult(t *testing.T) {
 // TestCoverageStaleResult: mutating the skill content after the result was
 // recorded makes the result stale, so the skill is no longer covered.
 func TestCoverageStaleResult(t *testing.T) {
-	repo, skillDir := coverageRepo(t, "anthropic/m1")
+	repo, skillDir := coverageRepo(t)
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"),
 		[]byte("---\nname: solo-skill\ndescription: changed. Use when testing.\n---\nnew body\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestCoverageStaleResult(t *testing.T) {
 // only when every model in its resolved matrix has a current result; a configured
 // model with no result fails it, where the default mode passes on one.
 func TestCoverageStrictRequiresEveryModel(t *testing.T) {
-	repo, _ := coverageRepo(t, "anthropic/m1")
+	repo, _ := coverageRepo(t)
 	configured := []model.Model{
 		{ID: "anthropic/m1", ProviderID: "anthropic"},
 		{ID: "openai/m1", ProviderID: "openai"},
@@ -157,5 +157,23 @@ func TestCoverageEnumeratesEvalLessSkills(t *testing.T) {
 	}
 	if sc := find(t, cov, "bare"); sc.Covered {
 		t.Errorf("a skill with no evals must be uncovered, got %+v", sc)
+	}
+}
+
+// TestCoverageDegradesOnNewerSchema pins the read-only degrade: a results file
+// written by a newer evolve reads as no results at all, so the skill is simply
+// uncovered — the write paths refuse on their own before anything is rewritten.
+func TestCoverageDegradesOnNewerSchema(t *testing.T) {
+	repo, _ := coverageRepo(t)
+	if err := os.WriteFile(filepath.Join(repo.Root, "evals", "solo-skill", "results.json"),
+		[]byte(`{"schema": 99, "models": {"m": {}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cov, err := Coverage(repo, []model.Model{{ID: "anthropic/m1", ProviderID: "anthropic"}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if find(t, cov, "solo-skill").Covered {
+		t.Error("a newer-schema results file must degrade to uncovered, not error")
 	}
 }

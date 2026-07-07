@@ -86,7 +86,7 @@ func BuildDataset(repo *layout.Repo, toolVersion string) (*Dataset, error) {
 		if results.Find(set.ResultsDir) == "" {
 			continue
 		}
-		f, _ := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		f, _, _ := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
 		for _, key := range f.ModelKeys() {
 			me := f.Models[key]
 			if me == nil {

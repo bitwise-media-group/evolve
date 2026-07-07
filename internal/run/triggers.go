@@ -86,7 +86,10 @@ func runTriggerSet(ctx context.Context, opts TriggerOptions, set layout.EvalSet)
 	// so that is the content fingerprint persisted for --modified detection.
 	contentHash := triggerContentHash(skillMD)
 	rep := opts.reporter()
-	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	file, reset, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	if err != nil {
+		return false, err
+	}
 	if reset {
 		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)

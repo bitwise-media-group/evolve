@@ -30,6 +30,13 @@ func Schema() []Option {
 	checks := run.DefaultCheckConfig()
 	return []Option{
 		{
+			Key: "version", Type: "string", Example: "~> 0.4",
+			Fallback: "any evolve version may run",
+			Doc: "Terraform-style semver constraint (\"0.4.0\", \"~> 0.4\", \">= 0.4, < 1\") the evolve binary " +
+				"must satisfy before run triggers/evals/all or report will rewrite results. Non-release builds " +
+				"(dev and snapshot/prerelease versions) warn and skip the check.",
+		},
+		{
 			Key: "layout", Type: "string", Value: "auto",
 			Doc: "Repository layout: auto, marketplace, multi, or single.",
 		},

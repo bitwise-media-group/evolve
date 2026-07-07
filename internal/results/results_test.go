@@ -4,6 +4,7 @@
 package results
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +68,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "evals", "go-testing")
 			saveDir(t, sample(), dir, format)
-			loaded, _ := LoadDir(dir, "golang", "go-testing")
+			loaded, _, _ := LoadDir(dir, "golang", "go-testing")
 			entry := loaded.Trigger("anthropic/claude-fable-5")
 			if entry == nil || !entry.Executed || *entry.Summary.Passed != 1 {
 				t.Fatalf("loaded entry = %+v", entry)
@@ -104,7 +105,7 @@ func TestSaveDeterministic(t *testing.T) {
 func TestSaveDirFormatSwitch(t *testing.T) {
 	dir := t.TempDir()
 	saveDir(t, sample(), dir, "json")
-	loaded, _ := LoadDir(dir, "golang", "go-testing")
+	loaded, _, _ := LoadDir(dir, "golang", "go-testing")
 	path := saveDir(t, loaded, dir, "yaml")
 	if filepath.Base(path) != "results.yaml" {
 		t.Errorf("path = %s", path)
@@ -112,7 +113,7 @@ func TestSaveDirFormatSwitch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "results.json")); !os.IsNotExist(err) {
 		t.Error("stale results.json must be removed on format switch")
 	}
-	again, _ := LoadDir(dir, "golang", "go-testing")
+	again, _, _ := LoadDir(dir, "golang", "go-testing")
 	if entry := again.Trigger("anthropic/claude-fable-5"); entry == nil || *entry.Summary.Passed != 1 {
 		t.Errorf("yaml reload = %+v, want history preserved", entry)
 	}
@@ -141,21 +142,40 @@ func TestSerializedShape(t *testing.T) {
 }
 
 func TestLoadToleratesGarbage(t *testing.T) {
-	missing, _ := LoadDir(t.TempDir(), "p", "s")
+	missing, _, _ := LoadDir(t.TempDir(), "p", "s")
 	if missing.Schema != Schema || missing.Plugin != "p" {
 		t.Errorf("missing-file load = %+v", missing)
 	}
 
 	bad := t.TempDir()
 	os.WriteFile(filepath.Join(bad, "results.json"), []byte("{corrupt"), 0o644)
-	if f, _ := LoadDir(bad, "p", "s"); len(f.Models) != 0 {
+	if f, _, _ := LoadDir(bad, "p", "s"); len(f.Models) != 0 {
 		t.Error("corrupt file must load fresh")
 	}
 
+}
+
+// TestLoadRefusesNewerSchema pins the forward-only guarantee: a file written by
+// a newer evolve is never discarded or read down — LoadDir surfaces
+// ErrSchemaTooNew (reset=false) alongside a fresh value and leaves the file
+// untouched, so callers on the write path refuse before overwriting committed
+// data.
+func TestLoadRefusesNewerSchema(t *testing.T) {
 	newer := t.TempDir()
-	os.WriteFile(filepath.Join(newer, "results.json"), []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644)
-	if f, reset := LoadDir(newer, "p", "s"); !reset || len(f.Models) != 0 || f.Schema != Schema {
-		t.Error("a newer schema cannot be read down and must load fresh")
+	path := filepath.Join(newer, "results.json")
+	content := []byte(`{"schema": 99, "models": {"m": {}}}`)
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, reset, err := LoadDir(newer, "p", "s")
+	if !errors.Is(err, ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if reset || len(f.Models) != 0 || f.Schema != Schema {
+		t.Errorf("f = %+v reset = %v, want fresh file without reset", f, reset)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(content) {
+		t.Error("newer-schema file must be left untouched")
 	}
 }
 
@@ -192,7 +212,7 @@ func TestLoadMigratesOlderSchema(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "results.json"), []byte(v4), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	loaded, reset := LoadDir(dir, "p", "s")
+	loaded, reset, _ := LoadDir(dir, "p", "s")
 	if reset {
 		t.Fatal("an older structural schema must migrate, not reset")
 	}
@@ -284,7 +304,7 @@ func TestRuntimeErrorSerialization(t *testing.T) {
 	}
 
 	// Additive fields must not trigger a schema reset; values round-trip.
-	loaded, reset := LoadDir(dir, "p", "s")
+	loaded, reset, _ := LoadDir(dir, "p", "s")
 	if reset {
 		t.Error("additive omitempty fields must not force a schema reset")
 	}

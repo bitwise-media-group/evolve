@@ -61,7 +61,7 @@ func TestMigrateResults(t *testing.T) {
 	}
 
 	// The file is now current, so a second pass reports nothing to do.
-	loaded, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
+	loaded, _, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
 	if loaded.Schema != results.Schema {
 		t.Errorf("on-disk schema = %d, want %d", loaded.Schema, results.Schema)
 	}

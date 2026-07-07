@@ -53,7 +53,10 @@ func (o *Options) FindStaleResults(active map[string]bool) ([]StaleEntry, error)
 		if results.Find(set.ResultsDir) == "" {
 			continue
 		}
-		file, _ := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		file, _, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		if err != nil {
+			return nil, err
+		}
 		stale := map[string]bool{}
 		for key := range file.Models {
 			if !active[key] {

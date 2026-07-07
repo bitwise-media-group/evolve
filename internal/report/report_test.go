@@ -4,6 +4,7 @@
 package report
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -463,4 +464,55 @@ func lineWith(t *testing.T, text string, needles ...string) string {
 	}
 	t.Fatalf("no line contains all of %v:\n%s", needles, text)
 	return ""
+}
+
+// TestGenerateRefusesNewerSummary pins the forward-only guarantee on the report
+// side: an EVALUATION rollup written by a newer evolve stops Generate before any
+// file is written, wrapping results.ErrSchemaTooNew.
+func TestGenerateRefusesNewerSummary(t *testing.T) {
+	repo := fixtureRepo(t)
+	rollup := filepath.Join(repo.Root, "EVALUATION.json")
+	content := []byte(`{"schema": 99, "tool_version": "future", "plugins": {}}`)
+	if err := os.WriteFile(rollup, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo.Root, "EVALUATION.md")); !os.IsNotExist(statErr) {
+		t.Error("EVALUATION.md must not be written when the rollup is newer")
+	}
+	if after, _ := os.ReadFile(rollup); string(after) != string(content) {
+		t.Error("newer rollup must survive byte-identical")
+	}
+
+	// A current-schema rollup regenerates as usual.
+	if err := os.WriteFile(rollup, []byte(`{"schema": 3, "tool_version": "old", "plugins": {}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Schema != SummarySchema {
+		t.Errorf("summary schema = %d, want %d", summary.Schema, SummarySchema)
+	}
+}
+
+// TestGenerateRefusesNewerResults pins that report generation also refuses when
+// a per-skill results file (not the rollup) was written by a newer evolve.
+func TestGenerateRefusesNewerResults(t *testing.T) {
+	repo := fixtureRepo(t)
+	path := filepath.Join(repo.Root, "evals", "solo-skill", "results.json")
+	if err := os.WriteFile(path, []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)}); !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo.Root, "EVALUATION.md")); !os.IsNotExist(statErr) {
+		t.Error("EVALUATION.md must not be written when a results file is newer")
+	}
 }

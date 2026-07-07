@@ -88,7 +88,10 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 		return false, fmt.Errorf("fingerprinting skill under test: %w", err)
 	}
 	rep := opts.reporter()
-	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	file, reset, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	if err != nil {
+		return false, err
+	}
 	if reset {
 		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)

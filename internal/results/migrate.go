@@ -28,8 +28,8 @@ func Migratable(schema int) bool {
 //
 // A file that cannot be migrated without discarding committed data — unreadable,
 // older than the migratable range, or written by a newer evolve — is left
-// untouched and reported as an error, never overwritten. This is the deliberate
-// difference from LoadDir, which resets such a file to a fresh in-memory value.
+// untouched and reported as an error, never overwritten; the newer-evolve case
+// wraps ErrSchemaTooNew, matching LoadDir.
 func MigrateFile(dir, plugin, skill, format string) (onDisk int, upgraded bool, err error) {
 	path := Find(dir)
 	if path == "" {
@@ -54,6 +54,9 @@ func MigrateFile(dir, plugin, skill, format string) (onDisk int, upgraded bool, 
 			return probe.Schema, false, err
 		}
 		return probe.Schema, true, nil
+	case probe.Schema > Schema:
+		return probe.Schema, false, fmt.Errorf("%s is schema %d, %w (this evolve writes schema %d); upgrade evolve",
+			path, probe.Schema, ErrSchemaTooNew, Schema)
 	default:
 		return probe.Schema, false, fmt.Errorf(
 			"%s is schema %d, which this evolve cannot migrate (current schema %d)", path, probe.Schema, Schema)

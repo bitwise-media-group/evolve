@@ -7,9 +7,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
+	"github.com/bitwise-media-group/evolve/internal/model"
+	"github.com/bitwise-media-group/evolve/internal/runner"
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 )
 
@@ -120,4 +124,34 @@ func TestOptionsSelects(t *testing.T) {
 			}
 		})
 	}
+}
+
+// recordingRunner wraps another runner and counts invocations, so a test can
+// assert an engine refused before spawning any agent.
+type recordingRunner struct {
+	inner Runner
+	mu    sync.Mutex
+	calls int
+}
+
+func (r *recordingRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+	return r.inner.Run(ctx, spec, timeout, onLine)
+}
+
+// seedNewerSchema writes a results file claiming a future schema into the
+// skill's results dir and returns its path and content for the untouched check.
+func seedNewerSchema(t *testing.T, root, skill string) (string, []byte) {
+	t.Helper()
+	path := filepath.Join(root, "evals", skill, "results.json")
+	content := []byte(`{"schema": 99, "models": {"m": {}}}`)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path, content
 }

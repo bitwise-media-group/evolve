@@ -3,6 +3,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/docs/config/config.schema.json",
 
+  // Terraform-style semver constraint ("0.4.0", "~> 0.4", ">= 0.4, < 1") the
+  // evolve binary must satisfy before run triggers/evals/all or report will
+  // rewrite results. Non-release builds (dev and snapshot/prerelease
+  // versions) warn and skip the check.
+  // Default: unset — any evolve version may run.
+  // "version": "~> 0.4",
+
   // Repository layout: auto, marketplace, multi, or single.
   "layout": "auto",
 

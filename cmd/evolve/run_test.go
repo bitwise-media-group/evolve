@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 )
@@ -91,5 +92,31 @@ func TestSweepFlagsMultiValue(t *testing.T) {
 				t.Errorf("Models = %q, want %q", f.Models, tc.models)
 			}
 		})
+	}
+}
+
+// TestWriteCommandsEnforceVersionPin pins the wiring: every command that
+// rewrites results or reports consults the version pin before doing anything
+// else. An invalid constraint errors on any binary (a valid one is skipped for
+// the test binary's non-semver "dev" version), so it proves each RunE calls
+// CheckVersionPin and propagates its error.
+func TestWriteCommandsEnforceVersionPin(t *testing.T) {
+	saved := opts.Viper
+	t.Cleanup(func() { opts.Viper = saved })
+	opts.Viper = viper.New()
+	opts.Viper.Set("version", "banana")
+
+	for name, runE := range map[string]func(*cobra.Command, []string) error{
+		"run triggers": triggersCmd.RunE,
+		"run evals":    evalsCmd.RunE,
+		"run all":      runAllCmd.RunE,
+		"report":       reportCmd.RunE,
+	} {
+		cmd := &cobra.Command{}
+		cmd.SetErr(&bytes.Buffer{})
+		err := runE(cmd, nil)
+		if err == nil || !strings.Contains(err.Error(), "invalid version constraint") {
+			t.Errorf("%s: err = %v, want the version-pin error before any work", name, err)
+		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
 // allFlags is flag storage only: `run all` never reads it. Values reach the
@@ -24,6 +25,9 @@ var runAllCmd = &cobra.Command{
 	Short: "Run everything: checks, triggers, evals, then regenerate reports",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		interactive := interactiveTUI(cmd, allFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err

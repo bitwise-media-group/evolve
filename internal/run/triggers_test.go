@@ -170,7 +170,7 @@ func TestTriggersWritesResults(t *testing.T) {
 	}
 
 	path := filepath.Join(repo.Root, "evals", "solo-skill", "results.json")
-	file, _ := results.LoadDir(filepath.Dir(path), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Dir(path), "solo", "solo-skill")
 	entry := file.Trigger("fake/model-1")
 	if entry == nil {
 		t.Fatalf("no fake/model-1 entry; stdout:\n%s", stdout.String())
@@ -207,7 +207,7 @@ func TestTriggersWithoutCountingCapability(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Trigger("fake/model-1")
 	if entry.Pricing != nil {
 		t.Error("unpriced model must serialize pricing: null")
@@ -260,7 +260,7 @@ func TestTriggersHonorEvalModels(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	if entry := file.Trigger("fake/model-1"); entry != nil {
 		t.Errorf("fake/model-1 is outside the eval-set models; want no trigger entry, got %+v", entry)
 	}
@@ -280,7 +280,7 @@ func TestTriggersDetectsFailures(t *testing.T) {
 	if !failed {
 		t.Error("failed = false, want true")
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	if r := file.Trigger("fake/model-1").Results[0]; *r.Passed {
 		t.Errorf("result = %+v, want failed", r)
 	}
@@ -330,7 +330,7 @@ func TestTriggersNewRerunsAfterEvalChange(t *testing.T) {
 	if strings.Contains(stdout.String(), "skip:") {
 		t.Errorf("--new skipped despite a new query:\n%s", stdout.String())
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	if got := len(file.Trigger("fake/model-1").Results); got != 3 {
 		t.Errorf("results = %d, want 3 after the added query", got)
 	}
@@ -428,7 +428,7 @@ func TestTriggersNewMergesAndPrunes(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	queries := map[string]bool{}
 	for _, r := range file.Trigger("fake/model-1").Results {
 		queries[r.Query] = true
@@ -458,7 +458,7 @@ func TestNeedsNewSkipsUnfillableCounts(t *testing.T) {
 	if _, err := Triggers(context.Background(), topts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Trigger(topts.Selected[0].Key())
 	if entry == nil || !entry.Executed {
 		t.Fatalf("entry = %+v, want an executed entry", entry)
@@ -495,12 +495,33 @@ func TestTriggersCountOnly(t *testing.T) {
 	if _, err := Triggers(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Trigger("fake/model-1")
 	if entry.Executed || entry.RunsPerQuery != 0 {
 		t.Errorf("count-only entry = %+v, want executed=false", entry.Header)
 	}
 	if entry.Results[0].Estimate == nil || entry.Results[0].Passed != nil {
 		t.Errorf("count-only result = %+v", entry.Results[0])
+	}
+}
+
+// TestTriggersRefusesNewerSchema pins the forward-only guarantee at the engine
+// level: a results file written by a newer evolve fails the run before any
+// agent is spawned and survives byte-identical on disk.
+func TestTriggersRefusesNewerSchema(t *testing.T) {
+	repo := triggerRepoFixture(t)
+	path, content := seedNewerSchema(t, repo.Root, "solo-skill")
+	opts := triggerOptions(t, repo, &fakeTriggerProvider{})
+	rec := &recordingRunner{inner: fakeTriggerRunner{}}
+	opts.Runner = rec
+
+	if _, err := Triggers(context.Background(), opts); !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if rec.calls != 0 {
+		t.Errorf("runner invoked %d times, want 0 (refuse before spawning agents)", rec.calls)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(content) {
+		t.Error("newer-schema results file must survive byte-identical")
 	}
 }

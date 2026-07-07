@@ -82,7 +82,7 @@ func skillCovered(p layout.Plugin, skill, skillDir string, configured []model.Mo
 	if err != nil || len(ef.Evals) == 0 {
 		return false
 	}
-	file, _ := results.LoadDir(resultsDir, p.Name, skill)
+	file, _, _ := results.LoadDir(resultsDir, p.Name, skill)
 	freshContent, err := skillContentHash(skillDir)
 	if err != nil {
 		return false

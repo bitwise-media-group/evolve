@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/model"
@@ -46,6 +47,10 @@ type Options struct {
 	CoberturaPath string
 	Coverage      []SkillCoverage
 }
+
+// SummarySchema is the EVALUATION rollup's schema version
+// (schemas/evaluation.schema.json pins the same const).
+const SummarySchema = 3
 
 // Summary is the machine-readable rollup written to EVALUATION.<format>.
 type Summary struct {
@@ -116,7 +121,13 @@ type pluginFiles struct {
 }
 
 // Generate writes the reports and returns the summary for threshold checks.
+// It refuses to regenerate anything over an EVALUATION rollup written by a
+// newer evolve (see checkExistingSummary), so an older binary can never
+// downgrade committed reports.
 func Generate(opts Options) (*Summary, error) {
+	if err := checkExistingSummary(opts.Repo.Root); err != nil {
+		return nil, err
+	}
 	loaded, err := load(opts.Repo)
 	if err != nil {
 		return nil, err
@@ -131,7 +142,7 @@ func Generate(opts Options) (*Summary, error) {
 		excluded = excludedModels(opts.Models, opts.ActiveModels)
 	}
 
-	summary := &Summary{Schema: 3, ToolVersion: opts.ToolVersion, Plugins: map[string]*PluginSummary{}}
+	summary := &Summary{Schema: SummarySchema, ToolVersion: opts.ToolVersion, Plugins: map[string]*PluginSummary{}}
 	for _, pf := range loaded {
 		ps := &PluginSummary{
 			Triggers: rollupTriggers(pf.files),
@@ -278,7 +289,10 @@ func load(repo *layout.Repo) ([]pluginFiles, error) {
 			byPlugin[set.Plugin.Name] = pf
 			order = append(order, set.Plugin.Name)
 		}
-		file, _ := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		file, _, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+		if err != nil {
+			return nil, err
+		}
 		pf.files = append(pf.files, file)
 	}
 	out := make([]pluginFiles, 0, len(order))
@@ -286,6 +300,27 @@ func load(repo *layout.Repo) ([]pluginFiles, error) {
 		out = append(out, *byPlugin[name])
 	}
 	return out, nil
+}
+
+// checkExistingSummary refuses to regenerate reports over an EVALUATION rollup
+// written by a newer evolve, probing every supported extension at root. A
+// missing or undecodable rollup regenerates as usual; only a decodable one
+// carrying a schema beyond SummarySchema wraps results.ErrSchemaTooNew.
+func checkExistingSummary(root string) error {
+	for _, ext := range encfmt.Extensions {
+		path := filepath.Join(root, "EVALUATION."+ext)
+		var probe struct {
+			Schema int `json:"schema"`
+		}
+		if encfmt.DecodeFile(path, &probe) != nil {
+			continue
+		}
+		if probe.Schema > SummarySchema {
+			return fmt.Errorf("%s is schema %d, %w (this evolve writes schema %d); upgrade evolve",
+				path, probe.Schema, results.ErrSchemaTooNew, SummarySchema)
+		}
+	}
+	return nil
 }
 
 // filterActive drops every trigger/eval entry whose model key is not in active.

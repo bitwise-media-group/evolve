@@ -4,6 +4,7 @@
 package results
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,7 +52,7 @@ func TestMigrateFileUpgradesOlderSchema(t *testing.T) {
 	}
 
 	// The file on disk now carries the current schema and the new model-major shape.
-	loaded, reset := LoadDir(dir, "p", "s")
+	loaded, reset, _ := LoadDir(dir, "p", "s")
 	if reset {
 		t.Fatal("rewritten file must not reset on reload")
 	}
@@ -94,24 +95,33 @@ func TestMigrateFileMissingIsNoOp(t *testing.T) {
 	}
 }
 
-// TestMigrateFilePreservesUnmigratable pins the deliberate divergence from
-// LoadDir: a schema this binary cannot convert is reported as an error and left
-// byte-for-byte on disk, never discarded the way LoadDir resets it.
+// TestMigrateFilePreservesUnmigratable pins that a schema this binary cannot
+// convert is reported as an error and left byte-for-byte on disk, never
+// overwritten; the newer-than-binary case wraps ErrSchemaTooNew, matching
+// LoadDir.
 func TestMigrateFilePreservesUnmigratable(t *testing.T) {
-	cases := map[string]string{
-		"newer":      `{"schema": 99, "models": {"m": {}}}`,
-		"too-old":    `{"schema": 1, "plugin": "p", "skill": "s"}`,
-		"unreadable": "{corrupt",
+	cases := map[string]struct {
+		content string
+		tooNew  bool
+	}{
+		"newer":      {content: `{"schema": 99, "models": {"m": {}}}`, tooNew: true},
+		"too-old":    {content: `{"schema": 1, "plugin": "p", "skill": "s"}`},
+		"unreadable": {content: "{corrupt"},
 	}
-	for name, content := range cases {
+	for name, tc := range cases {
+		content := tc.content
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "results.json")
 			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if _, upgraded, err := MigrateFile(dir, "p", "s", "json"); err == nil || upgraded {
+			_, upgraded, err := MigrateFile(dir, "p", "s", "json")
+			if err == nil || upgraded {
 				t.Fatalf("MigrateFile = (upgraded %v, err %v), want (false, error)", upgraded, err)
+			}
+			if errors.Is(err, ErrSchemaTooNew) != tc.tooNew {
+				t.Errorf("errors.Is(err, ErrSchemaTooNew) = %v, want %v (err %v)", !tc.tooNew, tc.tooNew, err)
 			}
 			after, err := os.ReadFile(path)
 			if err != nil {

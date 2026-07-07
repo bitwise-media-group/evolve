@@ -11,6 +11,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
 // TriggersFlags holds the flags for `evolve run triggers`.
@@ -26,6 +27,9 @@ var triggersCmd = &cobra.Command{
 	Short: "Run Tier 1 trigger-accuracy evals through headless agent sessions",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		interactive := interactiveTUI(cmd, triggersFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err

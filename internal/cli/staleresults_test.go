@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,7 +105,7 @@ func TestFindAndDropStaleResults(t *testing.T) {
 	if err := o.DropStaleResults(stale); err != nil {
 		t.Fatal(err)
 	}
-	reloaded, _ := results.LoadDir(filepath.Join(root, "evals", "solo-skill"), "solo", "solo-skill")
+	reloaded, _, _ := results.LoadDir(filepath.Join(root, "evals", "solo-skill"), "solo", "solo-skill")
 	if _, ok := reloaded.Models["google/gemini-3.5-flash"]; ok {
 		t.Error("dropped model still on disk")
 	}
@@ -115,5 +116,20 @@ func TestFindAndDropStaleResults(t *testing.T) {
 	// Nothing stale once the active set covers what remains.
 	if stale, err := o.FindStaleResults(active); err != nil || len(stale) != 0 {
 		t.Fatalf("post-drop stale = %v err=%v, want none", stale, err)
+	}
+}
+
+// TestFindStaleResultsRefusesNewerSchema pins that the stale-results sweep — a
+// path that can rewrite files via DropStaleResults — propagates the
+// forward-only refusal instead of treating a newer file as a blank slate.
+func TestFindStaleResultsRefusesNewerSchema(t *testing.T) {
+	root := staleRepo(t)
+	path := filepath.Join(root, "evals", "solo-skill", "results.json")
+	if err := os.WriteFile(path, []byte(`{"schema": 99, "models": {"m": {}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	o := &Options{Viper: viper.New(), Root: root, Layout: "auto", ResultsFormat: "json"}
+	if _, err := o.FindStaleResults(map[string]bool{}); !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
 	}
 }

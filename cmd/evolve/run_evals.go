@@ -11,6 +11,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
 // EvalsFlags holds the flags for `evolve run evals`.
@@ -27,6 +28,9 @@ var evalsCmd = &cobra.Command{
 	Short: "Run Tier 2 behavioral evals: agent sessions graded by assertions",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		interactive := interactiveTUI(cmd, evalsFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err

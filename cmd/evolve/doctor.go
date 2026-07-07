@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
+	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
 var doctorCmd = &cobra.Command{
@@ -58,6 +60,8 @@ var doctorCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "WARN: %s\n", msg)
 		}
 
+		fmt.Fprintf(cmd.OutOrStdout(), "\nVersion pin: %s\n", versionPinStatus())
+
 		fmt.Fprintln(cmd.OutOrStdout(), "\nCursor model ids are config-driven: run `agent models` for the live list and"+
 			" pin them via providers.cursor.models in the .evolve config file.")
 		return nil
@@ -66,6 +70,26 @@ var doctorCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+}
+
+// versionPinStatus renders the repository's version pin verdict for the doctor
+// output: doctor diagnoses a pin mismatch rather than failing on it, so it
+// stays usable on exactly the binary the pin rejects.
+func versionPinStatus() string {
+	pin := opts.VersionPin()
+	if pin == "" {
+		return "none (any evolve version may run)"
+	}
+	var warn bytes.Buffer
+	err := opts.CheckVersionPin(version.Version, &warn)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("VIOLATED — %v", err)
+	case warn.Len() > 0:
+		return fmt.Sprintf("%q skipped (evolve %s is not a release build)", pin, version.Version)
+	default:
+		return fmt.Sprintf("%q satisfied by evolve %s", pin, version.Version)
+	}
 }
 
 // credentialStatus reports the first set credential env var, or that none of

@@ -4,6 +4,7 @@
 package plan
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -59,5 +60,21 @@ func TestLoadPriorMetricsMissingDir(t *testing.T) {
 	pm := LoadPriorMetrics([]SkillCatalog{{Plugin: "p", Skill: "s", ResultsDir: filepath.Join(t.TempDir(), "absent")}})
 	if _, ok := pm.EvalPrevious(UnitRef{Skill: "s", Key: "fake/m1", Kind: KindEvals}, "e1"); ok {
 		t.Error("missing results dir should contribute nothing")
+	}
+}
+
+// TestLoadPriorMetricsDegradesOnNewerSchema pins the read-only degrade: a
+// results file written by a newer evolve yields no prior metrics rather than an
+// error — the engines refuse on their own write paths before anything is
+// overwritten.
+func TestLoadPriorMetricsDegradesOnNewerSchema(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "results.json"),
+		[]byte(`{"schema": 99, "models": {"m": {}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pm := LoadPriorMetrics([]SkillCatalog{{Plugin: "p", Skill: "s", ResultsDir: dir}})
+	if _, ok := pm.EvalPrevious(UnitRef{Skill: "s", Key: "fake/m1", Kind: KindEvals}, "e1"); ok {
+		t.Error("newer-schema file must degrade to no prior metrics")
 	}
 }

@@ -254,7 +254,10 @@ func filterEvals(evals []evalspec.Eval, id string) []evalspec.Eval {
 // results file (warning on a discarded incompatible schema) and the skill payload.
 func loadSet(opts Options, set layout.EvalSet) (*results.File, []byte, error) {
 	rep := opts.reporter()
-	file, reset := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	file, reset, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	if err != nil {
+		return nil, nil, err
+	}
 	if reset {
 		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)

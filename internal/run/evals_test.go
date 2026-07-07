@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,7 +208,7 @@ func evalRepoWithToolCall(t *testing.T) *layout.Repo {
 // firstEvalResult loads the single committed result for the solo-skill fixture.
 func firstEvalResult(t *testing.T, repo *layout.Repo) results.EvalResult {
 	t.Helper()
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	if entry == nil || len(entry.Results) == 0 {
 		t.Fatalf("no results: %+v", entry)
@@ -248,7 +249,7 @@ func TestEvalsGradesEval(t *testing.T) {
 		t.Errorf("failed = true:\n%s", stdout.String())
 	}
 
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	if entry == nil || !entry.Executed {
 		t.Fatalf("entry = %+v", entry)
@@ -425,7 +426,7 @@ func TestEvalsCursorLikeProvider(t *testing.T) {
 	if failed {
 		t.Error("failed = true")
 	}
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	r := entry.Results[0]
 	if r.Measured != nil || r.Estimate != nil || entry.Pricing != nil {
@@ -493,7 +494,7 @@ func TestEvalsRuntimeError(t *testing.T) {
 		t.Errorf("[ERROR] detail must not appear on stdout:\n%s", stdout.String())
 	}
 
-	file, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
+	file, _, _ := results.LoadDir(filepath.Join(repo.Root, "evals", "solo-skill"), "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	if entry == nil {
 		t.Fatal("no entry written")
@@ -631,7 +632,7 @@ func TestEvalsFailedPreservesAndNarrows(t *testing.T) {
 
 	resultsDir := filepath.Join(repo.Root, "evals", "solo-skill")
 	key := opts.Selected[0].Key()
-	file, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
+	file, _, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
 	if got := byID(file.Eval(key).Results); got["good"].Passed == nil || !*got["good"].Passed || got["bad"].Passed == nil || *got["bad"].Passed {
 		t.Fatalf("first run: want good pass / bad fail, got %+v", file.Eval(key).Results)
 	}
@@ -644,7 +645,7 @@ func TestEvalsFailedPreservesAndNarrows(t *testing.T) {
 	if _, err := Evals(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	file, _ = results.LoadDir(resultsDir, "solo", "solo-skill")
+	file, _, _ = results.LoadDir(resultsDir, "solo", "solo-skill")
 	got := byID(file.Eval(key).Results)
 	if len(got) != 2 {
 		t.Fatalf("merged results = %d, want 2 (both evals retained)", len(got))
@@ -713,7 +714,7 @@ func TestEvalsBaseline(t *testing.T) {
 	if len(rep.baselines) != 1 {
 		t.Errorf("BaselineDone calls = %d, want 1", len(rep.baselines))
 	}
-	file, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
+	file, _, _ := results.LoadDir(resultsDir, "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	if entry.Baseline == nil || byID(entry.Baseline.Results)["basic"].Fingerprint == "" {
 		t.Fatalf("baseline not stored with a fingerprint: %+v", entry.Baseline)
@@ -733,7 +734,7 @@ func TestEvalsBaseline(t *testing.T) {
 	if len(rn2.agentRuns) != 1 || !rn2.agentRuns[0] {
 		t.Errorf("second run agent runs = %v, want one with-skill run (baseline cached)", rn2.agentRuns)
 	}
-	if file, _ = results.LoadDir(resultsDir, "solo", "solo-skill"); file.Eval("fake/model-1").Previous == nil {
+	if file, _, _ = results.LoadDir(resultsDir, "solo", "solo-skill"); file.Eval("fake/model-1").Previous == nil {
 		t.Error("second run should rotate the prior run into previous")
 	}
 
@@ -800,7 +801,7 @@ func TestEvalsBaselineAdditiveWithNew(t *testing.T) {
 	if _, err := Evals(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	if file, _ := results.LoadDir(resultsDir, "solo", "solo-skill"); file.Eval("fake/model-1").Baseline != nil {
+	if file, _, _ := results.LoadDir(resultsDir, "solo", "solo-skill"); file.Eval("fake/model-1").Baseline != nil {
 		t.Fatal("precondition: the first run should leave no baseline")
 	}
 
@@ -841,7 +842,7 @@ func TestEvalsBaselineAdditiveWithNew(t *testing.T) {
 
 func mustLoadEval(t *testing.T, dir string) *results.EvalEntry {
 	t.Helper()
-	file, _ := results.LoadDir(dir, "solo", "solo-skill")
+	file, _, _ := results.LoadDir(dir, "solo", "solo-skill")
 	entry := file.Eval("fake/model-1")
 	if entry == nil {
 		t.Fatal("no eval entry written")
@@ -883,5 +884,26 @@ func TestEvalFilter(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo.Root, "evals", "solo-skill", "results.json")); err == nil {
 		t.Error("filtered-out sweep must not write results")
+	}
+}
+
+// TestEvalsRefusesNewerSchema pins the forward-only guarantee at the engine
+// level: a results file written by a newer evolve fails the run before any
+// agent is spawned and survives byte-identical on disk.
+func TestEvalsRefusesNewerSchema(t *testing.T) {
+	repo := evalRepoFixture(t)
+	path, content := seedNewerSchema(t, repo.Root, "solo-skill")
+	opts := evalOptions(t, repo, &countingTriggerProvider{fakeTriggerProvider{priced: true}})
+	rec := &recordingRunner{inner: &fakeEvalRunner{}}
+	opts.Runner = rec
+
+	if _, err := Evals(context.Background(), opts); !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if rec.calls != 0 {
+		t.Errorf("runner invoked %d times, want 0 (refuse before spawning agents)", rec.calls)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(content) {
+		t.Error("newer-schema results file must survive byte-identical")
 	}
 }

@@ -32,6 +32,9 @@ var reportCmd = &cobra.Command{
 	Short: "Regenerate EVALUATION.md and EVALUATION.json from the stored results",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 		repo, err := opts.Repo()
 		if err != nil {
 			return err

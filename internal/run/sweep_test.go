@@ -5,6 +5,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/plan"
+	"github.com/bitwise-media-group/evolve/internal/results"
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 )
 
@@ -103,5 +105,35 @@ func TestSweepInterleavesTiersPerSkill(t *testing.T) {
 		if rep.started[i] != w {
 			t.Fatalf("unit order = %v, want %v", rep.started, want)
 		}
+	}
+}
+
+// TestSweepRefusesNewerSchema pins the forward-only guarantee on the sweep
+// path: a skill whose results file was written by a newer evolve aborts the
+// sweep and survives byte-identical on disk.
+func TestSweepRefusesNewerSchema(t *testing.T) {
+	repo := twoSkillRepo(t)
+	path, content := seedNewerSchema(t, repo.Root, "a-skill")
+	p := &countingTriggerProvider{fakeTriggerProvider{priced: true}}
+	opts := SweepOptions{
+		Options: Options{
+			Repo:        repo,
+			Selected:    []harness.Selection{{Model: p.canonicalModel(), Harness: p}},
+			Counter:     tokencount.New(filepath.Join(t.TempDir(), "c.json"), os.Stderr),
+			Timeout:     30 * time.Second,
+			Jobs:        2,
+			CountOnly:   true,
+			ToolVersion: "test",
+			Now:         func() time.Time { return time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC) },
+			Reporter:    &recReporter{},
+		},
+		Tiers: plan.Tiers{Triggers: true, Evals: true},
+		Runs:  1,
+	}
+	if _, err := Sweep(context.Background(), opts); !errors.Is(err, results.ErrSchemaTooNew) {
+		t.Fatalf("err = %v, want ErrSchemaTooNew", err)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(content) {
+		t.Error("newer-schema results file must survive byte-identical")
 	}
 }
