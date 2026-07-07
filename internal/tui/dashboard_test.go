@@ -203,7 +203,7 @@ func TestQuitDialog(t *testing.T) {
 
 	// q opens the dialog without quitting.
 	m, cmd := stepCmd(m, runeKey("q"))
-	if cmd != nil {
+	if yieldsQuit(cmd) {
 		t.Fatal("q should not quit immediately")
 	}
 	if !m.dash.confirmQuit || !strings.Contains(m.View().Content, "Are you sure") {
@@ -216,7 +216,7 @@ func TestQuitDialog(t *testing.T) {
 	}
 	// q then y quits.
 	m, _ = stepCmd(m, runeKey("q"))
-	if _, cmd = stepCmd(m, runeKey("y")); cmd == nil {
+	if _, cmd = stepCmd(m, runeKey("y")); !yieldsQuit(cmd) {
 		t.Error("y in the dialog should quit")
 	}
 	// Two ctrl+c in a row quit immediately.
@@ -224,7 +224,7 @@ func TestQuitDialog(t *testing.T) {
 	if !m.dash.confirmQuit {
 		t.Error("first ctrl+c should open the dialog")
 	}
-	if _, cmd = stepCmd(m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); cmd == nil {
+	if _, cmd = stepCmd(m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}); !yieldsQuit(cmd) {
 		t.Error("second ctrl+c should quit")
 	}
 }

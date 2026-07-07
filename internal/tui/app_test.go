@@ -4,6 +4,7 @@
 package tui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -183,4 +184,71 @@ func TestMouseCancelQuits(t *testing.T) {
 	if msg := cmd(); msg == nil {
 		t.Error("expected a tea.QuitMsg from the CANCEL click")
 	}
+}
+
+// TestLineShiftingMessagesForceRepaint pins the workaround for the upstream
+// ultraviolet scroll-optimization bug (stale duplicate rows after a scrolled
+// repaint): every message that can shift lines vertically — keys, mouse, and
+// engine progress — must chain tea.ClearScreen so the renderer full-repaints
+// instead of hard-scrolling, while spinner ticks and resizes stay diff-only.
+func TestLineShiftingMessagesForceRepaint(t *testing.T) {
+	m := testModel(t)
+	m = step(m, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	shifting := map[string]tea.Msg{
+		"form key":     runeKey("j"),
+		"engine event": warnMsg{text: "x"},
+	}
+	m2 := step(m, runeKey("r")) // to the dashboard
+	if m2.screen != screenDashboard {
+		t.Fatal("did not switch to dashboard")
+	}
+	for name, msg := range shifting {
+		if _, cmd := stepCmd(m, msg); !yieldsClearScreen(cmd) {
+			t.Errorf("%s: cmd must chain tea.ClearScreen (scroll-optimization workaround)", name)
+		}
+	}
+	if _, cmd := stepCmd(m2, runeKey("j")); !yieldsClearScreen(cmd) {
+		t.Error("dashboard key: cmd must chain tea.ClearScreen (scroll-optimization workaround)")
+	}
+
+	if _, cmd := stepCmd(m2, tea.WindowSizeMsg{Width: 100, Height: 30}); yieldsClearScreen(cmd) {
+		t.Error("resize already erases in the renderer; it must not chain another clear")
+	}
+}
+
+// yieldsClearScreen reports whether cmd (possibly a batch) produces the message
+// tea.ClearScreen produces.
+func yieldsClearScreen(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if yieldsClearScreen(c) {
+				return true
+			}
+		}
+		return false
+	}
+	return reflect.TypeOf(msg) == reflect.TypeOf(tea.ClearScreen())
+}
+
+// yieldsQuit reports whether cmd (possibly a batch) produces tea.QuitMsg.
+func yieldsQuit(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if yieldsQuit(c) {
+				return true
+			}
+		}
+		return false
+	}
+	_, ok := msg.(tea.QuitMsg)
+	return ok
 }

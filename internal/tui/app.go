@@ -55,6 +55,22 @@ func New(session *plan.Session, cat []plan.SkillCatalog, evalFilter string,
 
 func (m Model) Init() tea.Cmd { return nil }
 
+// repaint chains a full-screen redraw onto an update's own commands. It works
+// around a rendering bug in bubbletea v2.0.8's ultraviolet renderer: after its
+// DECSTBM hard-scroll optimization shifts a region of the terminal, rows inside
+// that region whose content did not change since the previous frame are skipped
+// by the repaint loop (the scroll marks the physical-screen buffer touched, but
+// the loop only consults the app buffer's per-line dirty flags), leaving stale
+// duplicate rows on screen. tea.ClearScreen bypasses the scroll optimization
+// for the next flush, and painting is ticker-driven, so the buggy diff normally
+// never reaches the terminal. Applied to every message that can shift lines
+// vertically — user input and engine progress — but not to spinner ticks, which
+// only rewrite cells in place. Drop this once the upstream fix lands:
+// https://github.com/charmbracelet/ultraviolet/issues/137
+func repaint(cmds ...tea.Cmd) tea.Cmd {
+	return tea.Batch(append(cmds, tea.ClearScreen)...)
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -84,12 +100,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case actionRun:
 				return m.startRun()
 			}
-			return m, nil
+			return m, repaint()
 		}
 		if m.dash.handleKey(msg) {
 			return m, tea.Quit
 		}
-		return m, nil
+		return m, repaint()
 
 	case tea.MouseMsg:
 		if m.screen == screenForm {
@@ -101,15 +117,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case actionRun:
 				return m.startRun()
 			}
-			return m, nil
+			return m, repaint()
 		}
 		m.dash.handleMouse(msg)
-		return m, nil
+		return m, repaint()
 
 	case unitStartedMsg, unitSkippedMsg, itemStartedMsg, baselineStartedMsg, itemDoneMsg,
 		baselineDoneMsg, unitFinishedMsg, warnMsg, runDoneMsg:
 		m.dash.apply(msg)
-		return m, nil
+		return m, repaint()
 	}
 	return m, nil
 }
@@ -124,7 +140,8 @@ func (m Model) startRun() (tea.Model, tea.Cmd) {
 	m.dash = newDashboard(p, m.cat, m.prior, m.thresholds)
 	m.dash.w, m.dash.h = m.w, m.h
 	m.screen = screenDashboard
-	return m, tea.Batch(
+	// The form→dashboard switch replaces every line, so it repaints too.
+	return m, repaint(
 		func() tea.Msg { m.runReq <- req; return nil },
 		m.dash.spin.Tick,
 	)
