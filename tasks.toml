@@ -1,0 +1,185 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+#
+# evolve's repo-local tasks — the long tail the toolchain intentionally omits,
+# plus redefinitions of archetype tasks (this file is included after the
+# archetype, so a same-named task here wins). Two things drive the overrides:
+# the e2e/ module is separate (the root ./... never picks it up), and the
+# platform build-tag matrix (sandbox_*.go / proc_*.go in internal/runner)
+# needs a per-GOOS lint pass the single-GOOS archetype tasks would skip.
+
+# Redefines the archetype tidy: the e2e module tidies alongside the root.
+[tidy]
+description = "tidy the go module graphs (root + e2e)"
+dir = "{{cwd}}"
+run = ["rm -f go.sum", "go mod tidy", "rm -f e2e/go.sum", "go -C e2e mod tidy"]
+
+# Platform build-tag matrix. The host GOOS only compiles its own files, so the
+# archetype's single-GOOS go-lint/go-fmt skip every other platform's
+# build-constrained source. golangci-lint is a host binary, so run it under
+# each GOOS env var — a cross-built golangci-lint could not exec on the host.
+# gofmt itself ignores build tags, so the host pass already reaches every file.
+[go-lint-goos]
+hide = true
+dir = "{{cwd}}"
+run = """
+set -eu
+host="$(go env GOOS)"
+for goos in ${LINT_GOOS:-linux darwin windows}; do
+  [ "$goos" = "$host" ] && continue
+  echo "lint: GOOS=$goos"
+  GOOS="$goos" golangci-lint run
+done
+"""
+
+[go-fmt-goos]
+hide = true
+dir = "{{cwd}}"
+run = """
+set -eu
+host="$(go env GOOS)"
+for goos in ${LINT_GOOS:-linux darwin windows}; do
+  [ "$goos" = "$host" ] && continue
+  echo "fmt: GOOS=$goos"
+  GOOS="$goos" golangci-lint run --fix
+done
+"""
+
+# e2e is its own module, so lint/format it explicitly alongside the root.
+[lint-e2e]
+hide = true
+dir = "{{cwd}}"
+run = ["echo 'lint: e2e'", "cd e2e && golangci-lint run"]
+
+[fmt-e2e]
+hide = true
+dir = "{{cwd}}"
+run = ["echo 'fmt: e2e'", "cd e2e && golangci-lint run --fix"]
+
+# Redefined aggregates: the archetype's fmt/lint plus the GOOS matrix and the
+# e2e module.
+[fmt]
+description = "format go (all GOOS + e2e) + prose, inject license headers"
+run = [
+  { task = "go-fmt" },
+  { task = "go-fmt-goos" },
+  { task = "fmt-e2e" },
+  { task = "fmt-prose" },
+  { task = "license" },
+]
+
+[lint]
+description = "all check-mode static analysis (all GOOS + e2e)"
+run = [
+  { task = "license-check" },
+  { task = "go-lint" },
+  { task = "go-lint-goos" },
+  { task = "lint-e2e" },
+  { task = "lint-prose" },
+]
+
+# Report-viewer SPA: built into internal/web/ui/dist and embedded by go-build
+# via -tags withui (vars.build_tags). dist/ is git-ignored (a built bundle);
+# sources/outputs rerun npm only when the UI sources change.
+[ui]
+description = "build the embedded report-viewer SPA (internal/web/ui/dist)"
+dir = "{{cwd}}"
+sources = [
+  "internal/web/ui/package.json",
+  "internal/web/ui/package-lock.json",
+  "internal/web/ui/index.html",
+  "internal/web/ui/vite.config.ts",
+  "internal/web/ui/tsconfig.json",
+  "internal/web/ui/src/**/*",
+]
+outputs = ["internal/web/ui/dist/index.html"]
+run = [
+  "npm --prefix internal/web/ui ci --no-fund --no-audit",
+  "npm --prefix internal/web/ui run build",
+]
+
+# Redefines the archetype build: the withui build embeds ui/dist, so it must
+# exist before go-build compiles.
+[build]
+description = "build the application binary (embeds the report-viewer UI)"
+run = [{ task = "ui" }, { task = "go-build" }]
+
+[bench]
+description = "run benchmarks (BENCH=. all, BENCH=DashboardView one; BENCH_PKG=./internal/tui; profile with BENCH_FLAGS='-cpuprofile=cpu.prof')"
+dir = "{{cwd}}"
+run = """
+set -eu
+go test -run '^$' -bench "${BENCH:-.}" -benchmem ${BENCH_FLAGS:-} "${BENCH_PKG:-./...}"
+"""
+
+# Redefines the archetype fuzz with this repo's default target/package;
+# FUZZ/FUZZTIME/FUZZ_PKG env still override. `go test -fuzz` accepts a single
+# package, so FUZZ_PKG must name one.
+[fuzz]
+description = "fuzz one target (FUZZ=FuzzFrontmatter FUZZTIME=20s FUZZ_PKG=./internal/manifest)"
+dir = "{{cwd}}"
+run = """
+set -eu
+go test -run '^$' -fuzz "^${FUZZ:-FuzzFrontmatter}$" -fuzztime "${FUZZTIME:-20s}" "${FUZZ_PKG:-./internal/manifest}"
+"""
+
+# Smoke: the live end-to-end test in e2e/ — its own module, so the root
+# `go test ./...` never picks it up. See e2e/smoke_test.go for what it asserts.
+[smoke]
+description = "real `evolve run all` on the marketplace fixture (SMOKE_MODEL=claude-haiku-4-5, 1 run, 1 job; needs the claude CLI + credentials)"
+dir = "{{cwd}}"
+run = """
+set -eu
+command -v claude >/dev/null 2>&1 || { echo "smoke: claude CLI not found in PATH" >&2; exit 2; }
+SMOKE_MODEL="${SMOKE_MODEL:-claude-haiku-4-5}" go -C e2e test -v -count=1 -run '^TestSmoke$' .
+"""
+
+# raw: connect straight to the terminal (evolve has a TUI).
+[run]
+description = "build and run locally (override args via ARGS=...)"
+dir = "{{cwd}}"
+raw = true
+run = [{ task = "build" }, "./evolve ${ARGS:-}"]
+
+# Regenerate the CLI/config reference from the built binary, then render the
+# site. (Kept repo-local: generating a CLI reference is app-specific; `serve`,
+# `sync`, and `docs-build` come from the archetype.)
+[docs]
+description = "regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)"
+dir = "{{cwd}}"
+run = [
+  { task = "build" },
+  "./evolve docs --out docs/cli --format markdown",
+  "./evolve docs --out docs/man --format man",
+  "./evolve docs --out docs/config --format config",
+  { task = "docs-build" },
+]
+
+# Redefined gates: evolve's run fuzz, bench, docs, snapshot, and smoke on top
+# of the archetype's tidy/fmt/lint/test/build(/commit) — commit still last.
+[ci]
+description = "the gates the reusable CI workflow runs"
+run = [
+  { task = "lint" },
+  { task = "test" },
+  { task = "fuzz" },
+  { task = "build" },
+  { task = "docs" },
+  { task = "snapshot" },
+]
+
+[pr]
+description = "full local gate before a pull request"
+run = [
+  { task = "tidy" },
+  { task = "fmt" },
+  { task = "lint" },
+  { task = "test" },
+  { task = "fuzz" },
+  { task = "bench" },
+  { task = "build" },
+  { task = "docs" },
+  { task = "snapshot" },
+  { task = "smoke" },
+  { task = "commit" },
+]

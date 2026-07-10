@@ -1,4 +1,4 @@
 [submodule "make"]
-	path = make
-	url = https://github.com/bitwise-media-group/make.git
+	path = .mise
+	url = https://github.com/bitwise-media-group/toolchain.git
 	branch = release

@@ -17,18 +17,18 @@ updates:
       interval: daily
 
   # The pinned Go dev CLIs (addlicense, golangci-lint, goreleaser, ...) no longer
-  # live in a tools/go.mod — they come from the make/ submodule's .<tool>-version
-  # pins. Track the submodule so a library release (a new `release` branch head)
-  # flows here as a bump.
+  # live in a tools/go.mod — they come from the toolchain submodule's mise pins
+  # at .mise/. Track the submodule so a library release (a new `release` branch
+  # head) flows here as a bump.
   - package-ecosystem: gitsubmodule
     directory: /
     cooldown:
       default-days: 7
-      # our own make/ submodule ships straight through — no cooldown wait.
-      # Dependabot names a submodule dependency by its path, so exclude "make"
+      # our own toolchain submodule ships straight through — no cooldown wait.
+      # Dependabot names a submodule dependency by its path, so exclude ".mise"
       # (not an owner glob like the actions ecosystem uses).
       exclude:
-        - make
+        - .mise
     commit-message:
       include: scope
       prefix: build
@@ -60,8 +60,10 @@ updates:
         patterns:
           - bitwise-media-group/*
 
+  # The report-viewer SPA's deps (the root prose-only package.json is gone —
+  # the prose linters come from the toolchain's mise pins).
   - package-ecosystem: npm
-    directory: /
+    directory: /internal/web/ui
     schedule:
       interval: weekly
     commit-message:

@@ -24,12 +24,12 @@ permissions:
 
 jobs:
   ci:
-    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@176732b8b8ef2598ae0593db728b4415bcc86888 # v4.4.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@ee856f73ecea9b0c2c989d3a6aa585774b0d2a38 # v5.0.0
     with:
       # Default is go.sum; list every lockfile that affects the build. The dev
-      # CLIs (golangci-lint, govulncheck, addlicense, gotestsum, gocover-cobertura)
-      # are pinned by the make/ submodule's .<tool>-version files, which the
-      # workflow checks out (submodules: true) — no tools/go.sum anymore.
+      # CLIs (golangci-lint, govulncheck, addlicense, gotestsum, ...) are pinned
+      # by the toolchain submodule's config.toml/mise.lock, which the workflow
+      # checks out (submodules: true) — no tools/go.sum anymore.
       # e2e/ has no external deps yet (no go.sum), but is listed so the cache key
       # tracks it once it does.
       cache-dependency-path: |
