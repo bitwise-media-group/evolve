@@ -23,6 +23,7 @@ type ReportFlags struct {
 	JUnit               string
 	Cobertura           string
 	Strict              bool
+	Maturity            string
 }
 
 var reportFlags = ReportFlags{}
@@ -105,13 +106,19 @@ var reportCmd = &cobra.Command{
 				return err
 			}
 		}
-		breaches := report.Check(summary, th)
-		for _, breach := range breaches {
-			fmt.Fprintf(cmd.ErrOrStderr(), "FAIL: %s\n", breach)
+		if th.Maturity, err = opts.ResolveMaturity(cmd.Flags().Changed("maturity"), reportFlags.Maturity); err != nil {
+			return err
 		}
-		if len(breaches) > 0 {
+		fails, warns := report.Check(repo, summary, th, active)
+		for _, warn := range warns {
+			fmt.Fprintf(cmd.ErrOrStderr(), "WARN: %s\n", warn)
+		}
+		for _, fail := range fails {
+			fmt.Fprintf(cmd.ErrOrStderr(), "FAIL: %s\n", fail)
+		}
+		if len(fails) > 0 {
 			return fmt.Errorf("report: %d threshold %s: %w",
-				len(breaches), plural(len(breaches), "breach", "breaches"), cli.ErrFailures)
+				len(fails), plural(len(fails), "breach", "breaches"), cli.ErrFailures)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "report: thresholds met")
 		return nil
@@ -159,6 +166,9 @@ func init() {
 	reportCmd.Flags().BoolVar(&reportFlags.Strict, "strict", false,
 		"require the configured model matrix: --check holds every defined model to the thresholds, "+
 			"and --cobertura covers a skill only when every defined model has a current result")
+	reportCmd.Flags().StringVar(&reportFlags.Maturity, "maturity", report.DefaultGatedMaturityFlag(),
+		"comma-separated maturity levels (stable, unstable, prerelease) whose evidence issues fail --check; "+
+			"others warn (overrides report.thresholds.maturity)")
 	reportCmd.Flags().String("stale-results", "",
 		"keep|drop stored results for models outside the models restriction (default: prompt on a terminal, else keep)")
 	rootCmd.AddCommand(reportCmd)

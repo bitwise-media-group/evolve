@@ -290,6 +290,57 @@ func TestRenderingRules(t *testing.T) {
 	}
 }
 
+// TestPluginMaturityEmptyDir pins the item-3 cwd-safety invariant: a plugin
+// whose detected directory is unavailable (empty sets, or a set with an empty
+// Plugin.Dir) classifies as MaturityUnknown — pluginMaturity must never fall back
+// to reading a cwd-relative .claude-plugin/plugin.json, and MaturityUnknown is
+// never gated. Running from a directory that DOES hold a real 1.0.0 manifest
+// proves the guard short-circuits before any such read.
+func TestPluginMaturityEmptyDir(t *testing.T) {
+	// A real manifest in the process cwd would classify as MaturityStable if
+	// pluginMaturity ever read cwd-relative; the guard must ignore it.
+	cwd := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cwd, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".claude-plugin", "plugin.json"),
+		[]byte(`{"name":"cwd","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwd) // auto-restores; fails fast if this test is ever made parallel
+
+	if got := pluginMaturity(nil); got != MaturityUnknown {
+		t.Errorf("pluginMaturity(nil) = %q, want MaturityUnknown", got)
+	}
+	if got := pluginMaturity([]layout.EvalSet{{Plugin: layout.Plugin{Name: "x", Dir: ""}}}); got != MaturityUnknown {
+		t.Errorf("pluginMaturity(empty Dir) = %q, want MaturityUnknown (never a cwd-relative read)", got)
+	}
+}
+
+// TestGated pins the gate-membership rule directly: a level in the set is gated,
+// a level outside it is not, and MaturityUnknown is never gated regardless of the
+// configured set — a missing or invalid manifest version can only ever WARN.
+func TestGated(t *testing.T) {
+	th := Thresholds{Maturity: []Maturity{MaturityStable, MaturityPrerelease}}
+	if !th.gated(MaturityStable) {
+		t.Error("stable is in the set, want gated")
+	}
+	if !th.gated(MaturityPrerelease) {
+		t.Error("prerelease is in the set, want gated")
+	}
+	if th.gated(MaturityUnstable) {
+		t.Error("unstable is not in the set, want not gated")
+	}
+	if th.gated(MaturityUnknown) {
+		t.Error("MaturityUnknown must never be gated when it is absent from the set")
+	}
+	// Even if "unknown" is (improperly) placed in the set, the early guard wins.
+	th2 := Thresholds{Maturity: []Maturity{MaturityUnknown}}
+	if th2.gated(MaturityUnknown) {
+		t.Error("MaturityUnknown must never be gated even if present in the set")
+	}
+}
+
 func TestCheckThresholds(t *testing.T) {
 	repo := fixtureRepo(t)
 	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
@@ -303,46 +354,56 @@ func TestCheckThresholds(t *testing.T) {
 		t.Errorf("defaults = %v/%v, want 0.5/0.66", DefaultTriggersMinPassRate, DefaultEvalsMinPassRate)
 	}
 
+	// fixtureRepo's plugin is version 0.1.0 (MaturityUnstable); gate on that
+	// level so these evidence issues surface as FAIL exactly as the pre-maturity
+	// aggregate did, keeping this test's assertions about breach content unchanged.
+	gate := []Maturity{MaturityUnstable}
+
 	// anthropic triggers 1/2 = 50%, cursor 2/2 = 100%.
-	breaches := Check(summary, Thresholds{TriggersMinPassRate: 0.8})
-	if len(breaches) != 1 || !strings.Contains(breaches[0], "anthropic/claude-fable-5") {
-		t.Errorf("breaches = %v, want one for anthropic", breaches)
+	fails, warns := Check(repo, summary, Thresholds{TriggersMinPassRate: 0.8, Maturity: gate}, nil)
+	if len(fails) != 1 || !strings.Contains(fails[0], "anthropic/claude-fable-5") {
+		t.Errorf("fails = %v, want one for anthropic", fails)
+	}
+	if len(warns) != 0 {
+		t.Errorf("warns = %v, want none (plugin is gated)", warns)
 	}
 
 	// At the built-in defaults, anthropic triggers sit exactly on the 50% gate
 	// and only its 0/1 evals rate breaches the 66% gate.
-	breaches = Check(summary, Thresholds{
+	fails, _ = Check(repo, summary, Thresholds{
 		TriggersMinPassRate: DefaultTriggersMinPassRate,
 		EvalsMinPassRate:    DefaultEvalsMinPassRate,
-	})
-	if len(breaches) != 1 || !strings.Contains(breaches[0], "evals: anthropic/claude-fable-5") {
-		t.Errorf("breaches = %v, want one evals breach for anthropic", breaches)
+		Maturity:            gate,
+	}, nil)
+	if len(fails) != 1 || !strings.Contains(fails[0], "evals: anthropic/claude-fable-5") {
+		t.Errorf("fails = %v, want one evals breach for anthropic", fails)
 	}
 
 	// A threshold model with no results is a breach — both gates always run, so
 	// the absence surfaces once per tier.
-	breaches = Check(summary, Thresholds{EvalsMinPassRate: 0.5, Models: []string{"openai/gpt-5.5"}})
-	if len(breaches) != 2 {
-		t.Fatalf("breaches = %v, want missing-results breaches for both tiers", breaches)
+	fails, _ = Check(repo, summary, Thresholds{EvalsMinPassRate: 0.5, Models: []string{"openai/gpt-5.5"}, Maturity: gate}, nil)
+	if len(fails) != 2 {
+		t.Fatalf("fails = %v, want missing-results breaches for both tiers", fails)
 	}
-	for _, b := range breaches {
+	for _, b := range fails {
 		if !strings.Contains(b, "no stored results") {
 			t.Errorf("breach = %q, want missing-results breach", b)
 		}
 	}
 
-	if got := Check(summary, Thresholds{TriggersMinPassRate: 0.4}); len(got) != 0 {
-		t.Errorf("breaches = %v, want none at 40%%", got)
+	if got, _ := Check(repo, summary, Thresholds{TriggersMinPassRate: 0.4, Maturity: gate}, nil); len(got) != 0 {
+		t.Errorf("fails = %v, want none at 40%%", got)
 	}
 
 	// Strict holds every Defined model to the thresholds, so a configured model
 	// with no results breaches per tier where the default gate (above, at 40%)
 	// passes.
-	strict := Check(summary, Thresholds{
+	strict, _ := Check(repo, summary, Thresholds{
 		TriggersMinPassRate: 0.4,
 		Strict:              true,
 		Defined:             []string{"anthropic/claude-fable-5", "openai/gpt-5.5"},
-	})
+		Maturity:            gate,
+	}, nil)
 	if len(strict) != 2 {
 		t.Fatalf("strict breaches = %v, want missing-results breaches for openai/gpt-5.5", strict)
 	}
@@ -350,6 +411,325 @@ func TestCheckThresholds(t *testing.T) {
 		if !strings.Contains(b, "openai/gpt-5.5") {
 			t.Errorf("strict breach = %q, want it to name openai/gpt-5.5", b)
 		}
+	}
+
+	// An empty gated set (built-in default's zero value here, since the test
+	// constructs Thresholds directly) never fails, but still surfaces the same
+	// issues as warnings — evidence is not silently dropped for a non-gated plugin.
+	_, warnsOnly := Check(repo, summary, Thresholds{TriggersMinPassRate: 0.8}, nil)
+	if len(warnsOnly) != 1 || !strings.Contains(warnsOnly[0], "anthropic/claude-fable-5") {
+		t.Errorf("warns = %v, want the same issue demoted to warn when ungated", warnsOnly)
+	}
+}
+
+// staleEvalRepo builds a single-plugin (0.1.0) repo whose one eval's stored
+// SpecHash cannot match its authored definition, so run.StaleTiers reports the
+// evals tier stale. Pass rates are fine, isolating the staleness gate.
+func staleEvalRepo(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
+	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\n---\nbody\n")
+	write("evals/solo-skill/triggers.json", `{"triggers":[{"query":"q","should_trigger":true}]}`)
+	write("evals/solo-skill/evals.json", `{"evals":[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]}`)
+
+	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
+	f.SetEval("anthropic/claude-fable-5", &results.EvalEntry{
+		Header: results.Header{
+			Provider: "anthropic", Model: "claude-fable-5", Display: "Claude Fable 5",
+			ToolVersion: "test", RanAt: "2026-06-11T10:00:00Z", Executed: true,
+		},
+		Summary: results.EvalSummary{Passed: new(1), Failed: new(0), Total: 1, PassRate: new(1.0)},
+		// A non-empty SpecHash that cannot match the freshly hashed authored eval.
+		Results: []results.EvalResult{{ID: "basic", Passed: new(true), SpecHash: "stale-does-not-match"}},
+	})
+	if _, err := f.SaveDir(filepath.Join(root, "evals", "solo-skill"), "json"); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// TestCheckStaleEvidenceStrictOnly pins the gate's --strict scoping: stale
+// evidence is inspected only under --strict (a plain --check stays a pass-rate
+// gate), and under --strict the stale issue fails a gated plugin but warns an
+// ungated one.
+func TestCheckStaleEvidenceStrictOnly(t *testing.T) {
+	repo := staleEvalRepo(t)
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := []Maturity{MaturityUnstable} // the plugin is 0.1.0
+
+	// Plain --check does not inspect staleness: no fails, no warns.
+	if fails, warns := Check(repo, summary, Thresholds{Maturity: gate}, nil); len(fails) != 0 || len(warns) != 0 {
+		t.Fatalf("non-strict: fails=%v warns=%v, want none (staleness is --strict only)", fails, warns)
+	}
+
+	// --strict surfaces the stale eval evidence; the gated plugin fails on it.
+	fails, _ := Check(repo, summary, Thresholds{Strict: true, Maturity: gate}, nil)
+	if len(fails) != 1 || !strings.Contains(fails[0], "stale") || !strings.Contains(fails[0], "solo-skill") {
+		t.Fatalf("strict gated: fails=%v, want one stale-evidence breach for solo-skill", fails)
+	}
+
+	// The same strict issue is demoted to a warning for an ungated maturity.
+	if _, warns := Check(repo, summary, Thresholds{Strict: true, Maturity: []Maturity{MaturityStable}}, nil); len(warns) != 1 || !strings.Contains(warns[0], "stale") {
+		t.Fatalf("strict ungated: warns=%v, want the stale issue demoted to warn", warns)
+	}
+}
+
+// staleExcludedModelRepo builds a single-plugin (0.1.0) repo whose only stored
+// eval evidence — a stale entry — belongs to anthropic/claude-haiku-4-5. When
+// that model is outside the active `models` restriction, its stale leftover must
+// not gate the plugin; when it is inside, the staleness must surface.
+func staleExcludedModelRepo(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
+	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\n---\nbody\n")
+	write("evals/solo-skill/evals.json",
+		`{"evals":[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]}`)
+
+	f := &results.File{Schema: results.Schema, Plugin: "solo", Skill: "solo-skill"}
+	f.SetEval("anthropic/claude-haiku-4-5", &results.EvalEntry{
+		Header: results.Header{
+			Provider: "anthropic", Model: "claude-haiku-4-5", Display: "Claude Haiku 4.5",
+			ToolVersion: "test", RanAt: "2026-06-11T10:00:00Z", Executed: true,
+		},
+		Summary: results.EvalSummary{Passed: new(1), Failed: new(0), Total: 1, PassRate: new(1.0)},
+		// A non-empty SpecHash that cannot match the freshly hashed authored eval.
+		Results: []results.EvalResult{{ID: "basic", Passed: new(true), SpecHash: "stale-does-not-match"}},
+	})
+	if _, err := f.SaveDir(filepath.Join(root, "evals", "solo-skill"), "json"); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// TestCheckStaleEvidenceHonorsActiveModels pins that the strict staleness path
+// respects the active-model restriction, like the pass-rate path: a stale
+// leftover result for a model outside the `models` set must not FAIL a gated
+// plugin, but a stale result for an active model still does. Without the
+// active-model filter, the staleness path (which iterates every stored model)
+// would FAIL on an excluded model's leftover — a false CI failure.
+func TestCheckStaleEvidenceHonorsActiveModels(t *testing.T) {
+	repo := staleExcludedModelRepo(t)
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := []Maturity{MaturityUnstable} // the plugin is 0.1.0, so gated
+
+	// haiku is EXCLUDED from the active set: its stale leftover must not gate.
+	active := map[string]bool{"anthropic/claude-fable-5": true}
+	if fails, _ := Check(repo, summary, Thresholds{Strict: true, Maturity: gate}, active); len(fails) != 0 {
+		t.Errorf("excluded model's stale result must not FAIL a gated plugin; fails = %v", fails)
+	}
+
+	// haiku is ACTIVE: the same stale evidence now surfaces as a failing breach.
+	active = map[string]bool{"anthropic/claude-haiku-4-5": true}
+	fails, _ := Check(repo, summary, Thresholds{Strict: true, Maturity: gate}, active)
+	if len(fails) != 1 || !strings.Contains(fails[0], "stale") || !strings.Contains(fails[0], "solo-skill") {
+		t.Errorf("active model's stale result must FAIL; fails = %v", fails)
+	}
+
+	// A nil active set means no restriction, so the stale evidence still gates.
+	if nilFails, _ := Check(repo, summary, Thresholds{Strict: true, Maturity: gate}, nil); len(nilFails) != 1 {
+		t.Errorf("nil active (no restriction): want the stale breach, got %v", nilFails)
+	}
+}
+
+// unevidencedRepo builds a single-plugin (0.1.0) repo with authored triggers and
+// evals but NO results.* file, so Generate never adds the plugin to
+// summary.Plugins. The gate must still see it via the authored eval sets.
+func unevidencedRepo(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".claude-plugin/plugin.json", `{"name":"solo","version":"0.1.0"}`)
+	write("skills/solo-skill/SKILL.md", "---\nname: solo-skill\n---\nbody\n")
+	write("evals/solo-skill/triggers.json", `{"triggers":[{"query":"q","should_trigger":true}]}`)
+	write("evals/solo-skill/evals.json",
+		`{"evals":[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]}`)
+
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// TestCheckUnevidencedPluginGated is the pinning test for the regression where a
+// plugin with authored evals but zero stored results was invisible to the gate:
+// Generate skips it (empty rollups), so a loop over summary.Plugins never reaches
+// it, and --check --strict wrongly reported "thresholds met" for wholly
+// unevidenced work. The gate now drives from the authored eval sets, so the
+// missing evidence surfaces: FAIL for a gated plugin, WARN for an ungated one.
+func TestCheckUnevidencedPluginGated(t *testing.T) {
+	repo := unevidencedRepo(t)
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sanity: the plugin never made it into the rollup (no stored results).
+	if _, ok := summary.Plugins["solo"]; ok {
+		t.Fatal("precondition failed: unevidenced plugin should not be in summary.Plugins")
+	}
+
+	// Strict holds the whole defined matrix: an unevidenced gated plugin fails,
+	// once per tier per defined model, and every message names the plugin.
+	fails, warns := Check(repo, summary, Thresholds{
+		Strict:   true,
+		Defined:  []string{"anthropic/claude-fable-5"},
+		Maturity: []Maturity{MaturityUnstable}, // the plugin is 0.1.0
+	}, nil)
+	if len(fails) == 0 {
+		t.Fatal("gated unevidenced plugin: want failing breaches, got none (regression)")
+	}
+	if len(warns) != 0 {
+		t.Errorf("gated unevidenced plugin: warns = %v, want none", warns)
+	}
+	for _, f := range fails {
+		if !strings.Contains(f, "no stored results") || !strings.HasPrefix(f, "solo:") {
+			t.Errorf("breach = %q, want a plugin-named no-stored-results breach", f)
+		}
+	}
+
+	// The same absence WARNs (never fails) when the plugin's maturity is not gated.
+	f2, w2 := Check(repo, summary, Thresholds{
+		Strict:   true,
+		Defined:  []string{"anthropic/claude-fable-5"},
+		Maturity: []Maturity{MaturityStable}, // 0.1.0 is unstable, so ungated here
+	}, nil)
+	if len(f2) != 0 {
+		t.Errorf("ungated unevidenced plugin: fails = %v, want none", f2)
+	}
+	if len(w2) == 0 {
+		t.Error("ungated unevidenced plugin: want warnings, got none")
+	}
+
+	// Pinned thresholds.models is the non-strict path to the same breach: a model
+	// with no stored results for this plugin fails when gated.
+	f3, _ := Check(repo, summary, Thresholds{
+		Models:   []string{"anthropic/claude-fable-5"},
+		Maturity: []Maturity{MaturityUnstable},
+	}, nil)
+	if len(f3) == 0 {
+		t.Error("pinned-models unevidenced plugin: want failing breaches, got none")
+	}
+}
+
+// singleTierRepo builds a multi-plugin (0.1.0) repo where alpha authored only
+// triggers and beta only evals — the first-class single-tier shape. Neither has
+// a results.* file, so the gate's strict path exercises the "only gate an
+// authored tier" rule.
+func singleTierRepo(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// alpha: triggers only.
+	write("plugins/alpha/.claude-plugin/plugin.json", `{"name":"alpha","version":"0.1.0"}`)
+	write("plugins/alpha/skills/alpha-skill/SKILL.md", "---\nname: alpha-skill\n---\nbody\n")
+	write("plugins/alpha/evals/alpha-skill/triggers.json", `{"triggers":[{"query":"q","should_trigger":true}]}`)
+	// beta: evals only.
+	write("plugins/beta/.claude-plugin/plugin.json", `{"name":"beta","version":"0.1.0"}`)
+	write("plugins/beta/skills/beta-skill/SKILL.md", "---\nname: beta-skill\n---\nbody\n")
+	write("plugins/beta/evals/beta-skill/evals.json",
+		`{"evals":[{"id":"basic","prompt":"p","assertions":[{"type":"file_exists","path":"x"}]}]}`)
+
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+// TestCheckSingleTierPlugin pins that a plugin is gated only on the tier it
+// authored: a triggers-only plugin under --strict must not emit a spurious
+// "evals: no stored results" breach (and vice versa). The per-plugin refactor
+// removed the aggregate masking that hid this, so this is the guard against a
+// false CI failure for a legitimately single-tier plugin.
+func TestCheckSingleTierPlugin(t *testing.T) {
+	repo := singleTierRepo(t)
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fails, _ := Check(repo, summary, Thresholds{
+		Strict:   true,
+		Defined:  []string{"anthropic/claude-fable-5"},
+		Maturity: []Maturity{MaturityUnstable}, // both plugins are 0.1.0
+	}, nil)
+	if len(fails) == 0 {
+		t.Fatal("want breaches for the authored tiers, got none")
+	}
+	for _, f := range fails {
+		// alpha authored no evals; beta authored no triggers. Neither tier may
+		// surface a no-stored-results breach for the plugin that never defined it.
+		if strings.HasPrefix(f, "alpha:") && strings.Contains(f, "evals:") {
+			t.Errorf("triggers-only alpha emitted an evals breach: %q", f)
+		}
+		if strings.HasPrefix(f, "beta:") && strings.Contains(f, "triggers:") {
+			t.Errorf("evals-only beta emitted a triggers breach: %q", f)
+		}
+	}
+	// The authored tiers still gate: alpha's triggers and beta's evals each breach.
+	var alphaTriggers, betaEvals bool
+	for _, f := range fails {
+		alphaTriggers = alphaTriggers || (strings.HasPrefix(f, "alpha:") && strings.Contains(f, "triggers:"))
+		betaEvals = betaEvals || (strings.HasPrefix(f, "beta:") && strings.Contains(f, "evals:"))
+	}
+	if !alphaTriggers {
+		t.Errorf("want alpha's authored triggers tier to gate; fails = %v", fails)
+	}
+	if !betaEvals {
+		t.Errorf("want beta's authored evals tier to gate; fails = %v", fails)
 	}
 }
 

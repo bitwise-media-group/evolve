@@ -108,6 +108,13 @@ report:
     # Default: unset — every model with stored results.
     # models: ["anthropic/claude-fable-5"]
 
+    # Plugin maturity levels whose Tier 1/Tier 2 evidence issues fail report
+    # --check; other levels only warn (evidence still renders). A plugin's
+    # maturity comes from its manifest version: stable (>= 1.0.0), unstable (<
+    # 1.0.0), or prerelease (a SemVer prerelease tag). The --maturity flag
+    # overrides it.
+    maturity: ["stable","unstable","prerelease"]
+
   # Path for a JUnit XML test-results file (one testcase per eval/trigger
   # case per model); the --junit flag overrides it.
   # Default: unset — no JUnit file written.

@@ -13,6 +13,7 @@ evolve report [flags]
       --cobertura string               also write a Cobertura XML coverage file to this path (overrides report.cobertura)
   -h, --help                           help for report
       --junit string                   also write a JUnit XML test-results file to this path (overrides report.junit)
+      --maturity string                comma-separated maturity levels (stable, unstable, prerelease) whose evidence issues fail --check; others warn (overrides report.thresholds.maturity) (default "stable,unstable,prerelease")
       --migrate                        upgrade stored results files to the latest schema before generating the reports
       --min-evals-pass-rate float      minimum eval pass rate (0..1) for --check (overrides report.thresholds) (default 0.66)
       --min-triggers-pass-rate float   minimum trigger pass rate (0..1) for --check (overrides report.thresholds) (default 0.5)

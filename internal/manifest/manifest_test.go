@@ -66,6 +66,46 @@ func TestFrontmatterBlock(t *testing.T) {
 	}
 }
 
+// TestPluginVersion covers PluginVersion's contract: it reads the version off
+// dir/.claude-plugin/plugin.json and returns "" for every degenerate shape —
+// a missing manifest, a manifest without a version field, and a non-string
+// version — so a plugin never accidentally classifies from a malformed value.
+func TestPluginVersion(t *testing.T) {
+	writeManifest := func(t *testing.T, body string) string {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, ".claude-plugin", "plugin.json")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	cases := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"valid version", writeManifest(t, `{"name":"solo","version":"1.2.3"}`), "1.2.3"},
+		{"no version field", writeManifest(t, `{"name":"solo"}`), ""},
+		{"non-string version", writeManifest(t, `{"name":"solo","version":2}`), ""},
+		{"null version", writeManifest(t, `{"name":"solo","version":null}`), ""},
+		{"missing manifest", t.TempDir(), ""},
+		{"empty dir", "", ""},
+		{"invalid json", writeManifest(t, `{not json`), ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := PluginVersion(c.dir); got != c.want {
+				t.Errorf("PluginVersion(%q) = %q, want %q", c.dir, got, c.want)
+			}
+		})
+	}
+}
+
 func TestSplitLines(t *testing.T) {
 	tests := []struct {
 		in   string

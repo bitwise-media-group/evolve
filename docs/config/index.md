@@ -26,7 +26,7 @@ Settings are layered, lowest to highest precedence:
 | `max_turns`               | Default per-case turn cap for behavioral evals.                          |
 | `stale_results`           | `keep` or `drop` results outside the active `models` set.                |
 | `checks.*`                | Every rule the static checks apply.                                      |
-| `report.thresholds.*`     | Pass-rate gates for `report --check`.                                    |
+| `report.thresholds.*`     | Pass-rate and per-plugin maturity gates for `report --check`.            |
 | `providers.<name>.models` | Replace a provider's builtin model matrix.                               |
 
 === ".evolve.yaml"

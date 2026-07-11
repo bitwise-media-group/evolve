@@ -30,6 +30,10 @@ Regenerate EVALUATION.md and EVALUATION.json from the stored results
 	also write a JUnit XML test-results file to this path (overrides report.junit)
 
 .PP
+\fB--maturity\fP="stable,unstable,prerelease"
+	comma-separated maturity levels (stable, unstable, prerelease) whose evidence issues fail --check; others warn (overrides report.thresholds.maturity)
+
+.PP
 \fB--migrate\fP[=false]
 	upgrade stored results files to the latest schema before generating the reports
 

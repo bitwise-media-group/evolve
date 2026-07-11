@@ -74,7 +74,9 @@ fragments.
 - `grade` — assertion evaluation: deterministic checks (files/regex/commands) plus an LLM judge.
 - `workspace` — builds the throwaway project dirs each agent session runs in.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.
-- `report` — renders results into EVALUATION.md / EVALUATION.json.
+- `report` — renders results into EVALUATION.md / EVALUATION.json, and gates CI (`report --check`). Imports
+  `internal/run` to reuse its `StaleTiers` staleness primitive (the same fingerprint comparison `--modified` uses) for
+  the strict evidence gate — no cycle, since `run` never imports `report`.
 - `web` — the interactive report viewer: a localhost HTTP server (read-only `/api/results` + an SSE `/events` stream
   that fires when the results files change) hosting an embedded Vite/Preact single-page app. `data.go` flattens results
   into the per-case rows the browser filters/sorts/rolls-up; the SPA source lives in `ui/` (built to `ui/dist` and
@@ -88,7 +90,8 @@ fragments.
 - `telemetry` — OpenTelemetry setup: picks the exporter (JSON files when `--telemetry-dir`/`telemetry.dir` is set, else
   `autoexport` from `OTEL_*`, else disabled), builds the slog→OTEL fanout handler, decorates the `run.Reporter` to turn
   engine events into metrics/logs, and owns provider shutdown. The engines reach the global tracer/meter directly, so
-  only this package imports `internal/run` (no cycle). Off by default.
+  this package imports `internal/run` to decorate the reporter (no cycle); `internal/report` also imports it, for the
+  `StaleTiers` gate primitive. Off by default.
 - `version` — build/version info.
 
 ## Build, test, run

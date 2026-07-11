@@ -4,8 +4,12 @@
 package run
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/results"
 )
 
@@ -222,4 +226,80 @@ func lookupEval(file *results.File, key, id string) (r results.EvalResult, conte
 		}
 	}
 	return results.EvalResult{}, "", false
+}
+
+// StaleTiers reports whether set's stored triggers/evals evidence in file is
+// stale against the currently authored content — the same "would --modified
+// rerun this" comparison the sweep engine uses (fingerprints.modified), reused
+// here rather than reimplemented. A tier with no stored entries, or whose
+// authored file is absent, is never stale (nothing to compare). Staleness is
+// per skill, not per case: any model whose stored content hash or any result's
+// stored spec hash diverges from the fresh value marks the tier stale.
+func StaleTiers(set layout.EvalSet, file *results.File) (triggersStale, evalsStale bool) {
+	if file == nil {
+		return false, false
+	}
+	if set.TriggersPath != "" {
+		if tf, err := evalspec.LoadTriggers(set.TriggersPath); err == nil {
+			var content string
+			if md, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md")); err == nil {
+				content = triggerContentHash(md)
+			}
+			triggersStale = staleTriggers(file, tf.Triggers, content)
+		}
+	}
+	if set.EvalsPath != "" {
+		if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil {
+			content, _ := skillContentHash(set.SkillDir)
+			evalsStale = staleEvals(file, ef.Evals, content)
+		}
+	}
+	return triggersStale, evalsStale
+}
+
+// staleTriggers reports whether any model's stored trigger entry in file
+// diverges from the freshly authored triggers, by content hash (the entry's
+// Header.ContentHash) or per-query spec hash.
+func staleTriggers(file *results.File, triggers []evalspec.Trigger, freshContent string) bool {
+	specs := make(map[string]string, len(triggers))
+	for _, t := range triggers {
+		specs[t.Query] = specHash(t)
+	}
+	for _, key := range file.ModelKeys() {
+		entry := file.Trigger(key)
+		if entry == nil {
+			continue
+		}
+		fp := fingerprints{storedContent: entry.ContentHash, freshContent: freshContent}
+		for _, r := range entry.Results {
+			fp.freshSpec = specs[r.Query]
+			if fp.modified(r.SpecHash) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// staleEvals is staleTriggers for the eval tier, comparing each result's
+// stored spec hash against the fresh evalFingerprint (spec + fixtures).
+func staleEvals(file *results.File, evals []evalspec.Eval, freshContent string) bool {
+	specs := make(map[string]string, len(evals))
+	for _, e := range evals {
+		specs[e.ID] = evalFingerprint(e)
+	}
+	for _, key := range file.ModelKeys() {
+		entry := file.Eval(key)
+		if entry == nil {
+			continue
+		}
+		fp := fingerprints{storedContent: entry.ContentHash, freshContent: freshContent}
+		for _, r := range entry.Results {
+			fp.freshSpec = specs[r.ID]
+			if fp.modified(r.SpecHash) {
+				return true
+			}
+		}
+	}
+	return false
 }

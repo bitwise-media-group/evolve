@@ -98,3 +98,15 @@ func PluginName(dir string) string {
 	name, _ := obj["name"].(string)
 	return name
 }
+
+// PluginVersion returns the version field of dir/.claude-plugin/plugin.json,
+// or "" when the manifest is missing, unreadable, or has no string version.
+func PluginVersion(dir string) string {
+	v, err := ReadJSON(filepath.Join(dir, ".claude-plugin", "plugin.json"))
+	if err != nil {
+		return ""
+	}
+	obj, _ := v.(map[string]any)
+	version, _ := obj["version"].(string)
+	return version
+}

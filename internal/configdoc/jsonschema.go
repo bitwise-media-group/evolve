@@ -10,6 +10,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/report"
 )
 
 // schemaID is the published $id of the configuration schema: the raw URL of
@@ -86,6 +87,7 @@ func deriveProperties() *obj {
 // leafSchema builds the schema node for one configuration leaf.
 func leafSchema(o Option) *obj {
 	s := leaf().set("description", o.Doc)
+	enum := enumValues(o.Key)
 	switch o.Type {
 	case "string":
 		s.set("type", "string")
@@ -96,11 +98,17 @@ func leafSchema(o Option) *obj {
 	case "float":
 		s.set("type", "number")
 	case "list of strings":
-		s.set("type", "array").set("items", leaf().set("type", "string"))
+		items := leaf().set("type", "string")
+		if enum != nil {
+			// A list's enum constrains its items, not the array itself.
+			items.set("enum", enum)
+			enum = nil
+		}
+		s.set("type", "array").set("items", items)
 	default:
 		panic("configdoc: unhandled option type " + o.Type)
 	}
-	if enum := enumValues(o.Key); enum != nil {
+	if enum != nil {
 		s.set("enum", enum)
 	}
 	if isPassRate(o.Key) {
@@ -121,6 +129,12 @@ func enumValues(key string) any {
 		return []string{"auto", string(layout.Marketplace), string(layout.Multi), string(layout.Single)}
 	case "results_format":
 		return encfmt.Formats
+	case "report.thresholds.maturity":
+		return []string{
+			string(report.MaturityStable),
+			string(report.MaturityUnstable),
+			string(report.MaturityPrerelease),
+		}
 	}
 	return nil
 }

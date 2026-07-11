@@ -143,6 +143,14 @@ func Schema() []Option {
 			Doc:      "Model keys (provider/model-id) the thresholds apply to.",
 		},
 		{
+			Key: "report.thresholds.maturity", Type: "list of strings",
+			Value: report.DefaultGatedMaturityStrings(),
+			Doc: "Plugin maturity levels whose Tier 1/Tier 2 evidence issues fail report --check; other " +
+				"levels only warn (evidence still renders). A plugin's maturity comes from its manifest " +
+				"version: stable (>= 1.0.0), unstable (< 1.0.0), or prerelease (a SemVer prerelease tag). " +
+				"The --maturity flag overrides it.",
+		},
+		{
 			Key: "report.junit", Type: "string", Example: "coverage/junit.xml",
 			Fallback: "no JUnit file written",
 			Doc: "Path for a JUnit XML test-results file (one testcase per eval/trigger case per model); " +

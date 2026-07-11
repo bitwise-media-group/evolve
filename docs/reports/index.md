@@ -16,13 +16,14 @@ evolve report --migrate       # upgrade stored results to the latest schema firs
 evolve report --check         # also gate on configured thresholds (non-zero exit on breach)
 ```
 
-| Flag                         | Description                                                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `--check`                    | Fail (exit `1`) when a pass rate breaches its threshold (defaults: triggers `0.5`, evals `0.66`).                     |
-| `--migrate`                  | Upgrade stored results files to the latest schema before rendering.                                                   |
-| `--min-triggers-pass-rate`   | Minimum trigger pass rate `0..1` for `--check` (overrides the config threshold).                                      |
-| `--min-evals-pass-rate`      | Minimum eval pass rate `0..1` for `--check` (overrides the config threshold).                                         |
-| `--stale-results keep\|drop` | What to do with stored results for models outside the active `models` set (default: prompt on a terminal, else keep). |
+| Flag                         | Description                                                                                                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--check`                    | Fail (exit `1`) when a pass rate breaches its threshold (defaults: triggers `0.5`, evals `0.66`).                                                                                                                               |
+| `--migrate`                  | Upgrade stored results files to the latest schema before rendering.                                                                                                                                                             |
+| `--min-triggers-pass-rate`   | Minimum trigger pass rate `0..1` for `--check` (overrides the config threshold).                                                                                                                                                |
+| `--min-evals-pass-rate`      | Minimum eval pass rate `0..1` for `--check` (overrides the config threshold).                                                                                                                                                   |
+| `--maturity`                 | Comma-separated maturity levels (`stable`, `unstable`, `prerelease`) whose Tier 1/Tier 2 evidence issues fail `--check`; other levels only warn. Default `stable,unstable,prerelease` (overrides `report.thresholds.maturity`). |
+| `--stale-results keep\|drop` | What to do with stored results for models outside the active `models` set (default: prompt on a terminal, else keep).                                                                                                           |
 
 The output format follows `--results-format`; switching formats removes the stale rollup from the previous choice. What
 gets written depends on the [repository layout](../config/index.md):
@@ -150,3 +151,73 @@ The thresholds have built-in defaults — `0.5` for triggers and `0.66` for eval
 gates at those; config and the `--min-*-pass-rate` flags override them. The run dashboard classifies its rollup
 indicators against the same thresholds, so a group that would breach the gate reads as a red ✗ there. Exit codes follow
 the [reference](../reference.md#exit-codes): `0` clean, `1` on a breach, `2` on a usage or runtime error.
+
+## Maturity-aware evidence gating
+
+`--check` classifies each plugin by its manifest version and decides **per plugin** whether a Tier 1 / Tier 2 _evidence
+issue_ fails the gate or only warns. The gated set is `report.thresholds.maturity` (default `stable,unstable,prerelease`
+— every user-selectable level), or the `--maturity` flag: a plugin whose maturity is in the set **fails** on an evidence
+issue, and every other plugin **warns** without failing. Evidence still renders in the report either way — maturity
+changes the severity of an issue, not the visibility of results.
+
+A plugin's maturity comes from its manifest version:
+
+| Maturity     | Manifest version                                                 |
+| ------------ | ---------------------------------------------------------------- |
+| `stable`     | `>= 1.0.0` with no prerelease tag                                |
+| `unstable`   | `< 1.0.0` (a `0.x.y` release)                                    |
+| `prerelease` | any version carrying a SemVer prerelease tag (e.g. `2.0.0-rc.1`) |
+
+A missing or unparseable version never fails the gate — it can only warn — so a manifest/version problem surfaces
+through `evolve run checks`, never as a silently stricter report gate.
+
+By default every classified maturity level is gated (`stable,unstable,prerelease`), so `--check` fails on an evidence
+issue regardless of a plugin's release stability; only `unknown`-maturity plugins (missing or unparseable version) warn.
+Narrow `--maturity` to relax the gate for less mature plugins:
+
+```sh
+evolve report --check                              # stable, unstable, and prerelease plugins all fail on evidence issues
+evolve report --check --maturity stable             # only stable (>= 1.0.0) plugins fail; unstable/prerelease warn
+```
+
+An _evidence issue_, for a tier enabled by a non-zero threshold, is any of:
+
+- **below threshold** — the tier's pass rate is under its `report.thresholds.*` minimum. Checked on any
+  `report --check`.
+- **missing / incomplete** — a model in the pinned matrix (`--strict`, or an explicit `report.thresholds.models`) has no
+  current result.
+- **stale** — stored results no longer match the authored `SKILL.md` / eval content. Checked only under `--strict`.
+
+So plain `report --check` is a pass-rate gate; `--strict` adds the missing/incomplete and staleness requirements.
+Maturity only decides fail-vs-warn for whichever issues arise — it is not itself tied to `--strict`.
+
+Because gating is per plugin, a plugin evaluated as a standalone repository and the same plugin evaluated inside a
+marketplace reach the same verdict given equivalent evidence and config.
+
+### Marketplace CI modes
+
+The gate reads whatever current evidence is on disk when it runs; it does not care whether that evidence was generated
+in the same workflow, produced by an earlier step, or published with the plugin. Two modes are supported, and in both
+Tier 0 (`evolve run checks --strict`) stays mandatory and is never maturity-exempt:
+
+1. **Generate, then gate** — run the Tier 1 / Tier 2 sweeps in CI before the gate:
+
+    ```sh
+    evolve run checks --strict            # Tier 0, always required
+    evolve run triggers && evolve run evals
+    evolve report --check --strict
+    ```
+
+2. **Consume published evidence** — skip the expensive agent runs and gate on the `results.*` files published with the
+   plugin (for example by a dedicated plugin repository that already ran the sweeps):
+
+    ```sh
+    evolve run checks --strict            # Tier 0, always required
+    evolve report --check --strict        # gates the committed evidence as-is
+    ```
+
+If a PR changes a skill or eval suite and no matching current evidence exists when the gate runs, that evidence reads as
+missing or stale: by default every classified plugin (stable, unstable, or prerelease) fails. A plugin whose version is
+missing or unparseable classifies as `unknown` and only warns — it never fails the gate, since `unknown` is not a
+selectable `--maturity` level and so can never enter the gated set. Give a plugin a valid version to bring it under the
+gate.

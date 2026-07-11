@@ -181,6 +181,23 @@
               "items": {
                 "type": "string"
               }
+            },
+            "maturity": {
+              "description": "Plugin maturity levels whose Tier 1/Tier 2 evidence issues fail report --check; other levels only warn (evidence still renders). A plugin's maturity comes from its manifest version: stable (>= 1.0.0), unstable (< 1.0.0), or prerelease (a SemVer prerelease tag). The --maturity flag overrides it.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "stable",
+                  "unstable",
+                  "prerelease"
+                ]
+              },
+              "default": [
+                "stable",
+                "unstable",
+                "prerelease"
+              ]
             }
           },
           "additionalProperties": false
