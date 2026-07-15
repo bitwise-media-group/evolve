@@ -63,10 +63,10 @@ fragments.
 - `tui` — the interactive bubbletea selection form and live run dashboard; a presentation layer over `plan` (the form
   drives a `plan.Session`; the dashboard projects the `plan.Plan` the engine runs). **See DESIGN.md → TUI for the full
   wiring.**
-- `model` — the model vendors (Anthropic, OpenAI, Google, Cursor, xAI) and the canonical model registry: provider-qualified
-  ids, pricing, the harnesses each model can be driven by (the `Supported` map), and the vendor token-counting clients.
-  The lowest-level domain package (imports no other internal package); owns the shared value types `CommandSpec`,
-  `EvalInput`, `Usage`.
+- `model` — the model vendors (Anthropic, OpenAI, Google, Cursor, xAI) and the canonical model registry:
+  provider-qualified ids, pricing, the harnesses each model can be driven by (the `Supported` map), and the vendor
+  token-counting clients. The lowest-level domain package (imports no other internal package); owns the shared value
+  types `CommandSpec`, `EvalInput`, `Usage`.
 - `harness` — the agent CLIs evolve drives (Claude Code, Codex, Gemini, Cursor, Copilot, Antigravity, Grok): runner-CLI
   command construction, output parsing, the optional `EvalRunner` capability, and `Selection`/`RunnableHarness` that
   bind a model to the one harness that runs it (evals run once per model, never once per harness).

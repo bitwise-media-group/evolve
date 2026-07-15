@@ -15,11 +15,11 @@ import (
 // it reads only the model — so the bodies are inert stubs.
 type fakeHarness struct{ id string }
 
-func (h fakeHarness) ID() string                           { return h.id }
-func (fakeHarness) Name() string                           { return "Fake" }
-func (fakeHarness) CLI() []string                          { return []string{"sh"} }
-func (fakeHarness) EnvKeys() []string                      { return []string{"K"} }
-func (fakeHarness) SkillDirs() []string                    { return []string{".fake/skills"} }
+func (h fakeHarness) ID() string                                   { return h.id }
+func (fakeHarness) Name() string                                   { return "Fake" }
+func (fakeHarness) CLI() []string                                  { return []string{"sh"} }
+func (fakeHarness) EnvKeys() []string                              { return []string{"K"} }
+func (fakeHarness) SkillDirs() []string                            { return []string{".fake/skills"} }
 func (fakeHarness) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (fakeHarness) TriggerSpec(ws, _, _ string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"x"}, Dir: ws}

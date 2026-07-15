@@ -17,11 +17,11 @@ import (
 
 type fakeProv struct{}
 
-func (fakeProv) ID() string                             { return "fake" }
-func (fakeProv) Name() string                           { return "Fake" }
-func (fakeProv) CLI() []string                          { return []string{"sh"} }
-func (fakeProv) EnvKeys() []string                      { return []string{"K"} }
-func (fakeProv) SkillDirs() []string                    { return []string{".fake/skills"} }
+func (fakeProv) ID() string                                     { return "fake" }
+func (fakeProv) Name() string                                   { return "Fake" }
+func (fakeProv) CLI() []string                                  { return []string{"sh"} }
+func (fakeProv) EnvKeys() []string                              { return []string{"K"} }
+func (fakeProv) SkillDirs() []string                            { return []string{".fake/skills"} }
 func (fakeProv) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (fakeProv) TriggerSpec(ws, query, cliModelID string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"x"}, Dir: ws}

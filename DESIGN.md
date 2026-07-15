@@ -77,9 +77,9 @@ and Seatbelt cannot nest — a second `sandbox-exec` inside evolve's aborts ever
 harnesses disable the agent's own (`run.Options.HostSandboxed`, threaded into `TriggerSpec`/`EvalSpec`): Claude via
 `--settings` with `{"sandbox":{"enabled":false}}`, codex via `--sandbox danger-full-access`, gemini via
 `GEMINI_SANDBOX=false`, Grok via `--sandbox off`. evolve's outer sandbox is then the sole layer and still covers
-everything (file tools included, not just shell). The fallback is symmetric: with evolve unconfined (`--no-sandbox`)
-the agent keeps its own sandbox as the only protection (Grok uses `--sandbox workspace`). A `managed-settings.json`
-that forces Claude's sandbox on still wins, so those hosts must use `--no-sandbox`.
+everything (file tools included, not just shell). The fallback is symmetric: with evolve unconfined (`--no-sandbox`) the
+agent keeps its own sandbox as the only protection (Grok uses `--sandbox workspace`). A `managed-settings.json` that
+forces Claude's sandbox on still wins, so those hosts must use `--no-sandbox`.
 
 The CLI reference in `docs/cli` and the man pages in `docs/man` are generated from the cobra command tree, and the
 configuration reference plus annotated example config files in `docs/config` from `internal/configdoc`'s schema (all via

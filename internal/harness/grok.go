@@ -138,16 +138,16 @@ func splitAllowRules(tools string) []string {
 		b.Reset()
 	}
 	for _, r := range tools {
-		switch {
-		case r == '(':
+		switch r {
+		case '(':
 			depth++
 			b.WriteRune(r)
-		case r == ')':
+		case ')':
 			if depth > 0 {
 				depth--
 			}
 			b.WriteRune(r)
-		case r == ' ' || r == '\t' || r == '\n':
+		case ' ', '\t', '\n':
 			if depth == 0 {
 				flush()
 			} else {
@@ -522,7 +522,8 @@ func parseGrokResult(stdout []byte) (grokResult, bool) {
 	}
 	// Prefer a single-object decode (eval --output-format json).
 	var single grokResult
-	if json.Unmarshal(trimmed, &single) == nil && (single.Text != "" || single.Type != "" || single.Usage != nil || single.Message != "") {
+	if json.Unmarshal(trimmed, &single) == nil &&
+		(single.Text != "" || single.Type != "" || single.Usage != nil || single.Message != "") {
 		return single, true
 	}
 	// Fall back to the last meaningful event in a streaming-json stream.
