@@ -79,6 +79,24 @@ func builtins() []Model {
 		// OpenAI — Codex models priced; the Copilot-only ids carry no published
 		// per-token pricing (subscription billing), so estimate/measured render n/a.
 		{
+			ID: "openai/gpt-5.6-sol", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Sol",
+			InputUSD: usd(5.00), OutputUSD: usd(30.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-sol", HarnessCopilot: "gpt-5.6-sol"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-5.6-terra", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Terra",
+			InputUSD: usd(2.50), OutputUSD: usd(15.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-terra", HarnessCopilot: "gpt-5.6-terra"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-5.6-luna", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Luna",
+			InputUSD: usd(1.00), OutputUSD: usd(6.00),
+			Supported: map[string]string{HarnessCodex: "gpt-5.6-luna", HarnessCopilot: "gpt-5.6-luna"},
+			Preferred: HarnessCodex,
+		},
+		{
 			ID: "openai/gpt-5.3-codex-spark", ProviderID: ProviderOpenAI, Name: "GPT-5.3 Codex Spark",
 			Supported: map[string]string{HarnessCodex: "gpt-5.3-codex-spark"},
 			Preferred: HarnessCodex,

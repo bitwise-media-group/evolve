@@ -58,10 +58,12 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
     <!-- MARQUEE -->
     {# Provider/model ids (mirrors internal/model). Rendered twice so the translateX(-50%) scroll in extra.css loops
     seamlessly; aria-hidden because it is decorative and would otherwise be announced twice. #} {% set ev_marquee = [
-    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"], ["anthropic/claude-opus-4-8",
-    "magenta"], ["anthropic/claude-fable-5", "magenta"], ["openai/gpt-5.2", "green"], ["openai/gpt-5.3-codex", "green"],
-    ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"], ["openai/gpt-5.4", "green"],
-    ["openai/gpt-5.5", "green"], ["google/gemini-3-flash-preview", "cyan"], ["google/gemini-3.1-flash-lite", "cyan"],
+    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"], ["anthropic/claude-sonnet-5",
+    "magenta"], ["anthropic/claude-opus-4-8", "magenta"], ["anthropic/claude-fable-5", "magenta"],
+    ["openai/gpt-5.6-sol", "green"], ["openai/gpt-5.6-terra", "green"], ["openai/gpt-5.6-luna", "green"],
+    ["openai/gpt-5.3-codex", "green"], ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"],
+    ["openai/gpt-5.4", "green"], ["openai/gpt-5.5", "green"], ["google/gemini-3-flash-preview", "cyan"],
+    ["google/gemini-3.1-flash-lite", "cyan"],
     ["google/gemini-3.1-pro-preview", "cyan"], ["google/gemini-3.1-pro", "cyan"], ["google/gemini-3.5-flash", "cyan"],
     ["cursor/composer-2.5", "orange"] ] %}
     <div class="ev-marquee" aria-hidden="true">

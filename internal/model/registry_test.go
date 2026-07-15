@@ -63,6 +63,39 @@ func TestKeyStability(t *testing.T) {
 	}
 }
 
+func TestGPT56Models(t *testing.T) {
+	tests := []struct {
+		id, name      string
+		input, output float64
+	}{
+		{"openai/gpt-5.6-sol", "GPT-5.6 Sol", 5.00, 30.00},
+		{"openai/gpt-5.6-terra", "GPT-5.6 Terra", 2.50, 15.00},
+		{"openai/gpt-5.6-luna", "GPT-5.6 Luna", 1.00, 6.00},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m, ok := ModelByID(builtins(), tc.id)
+			if !ok {
+				t.Fatalf("%s missing from registry", tc.id)
+			}
+			if m.Name != tc.name {
+				t.Errorf("Name = %q, want %q", m.Name, tc.name)
+			}
+			if m.InputUSD == nil || *m.InputUSD != tc.input || m.OutputUSD == nil || *m.OutputUSD != tc.output {
+				t.Errorf("pricing = %v/%v, want %.2f/%.2f", m.InputUSD, m.OutputUSD, tc.input, tc.output)
+			}
+			for _, harnessID := range []string{HarnessCodex, HarnessCopilot} {
+				if id, ok := m.CLIModelID(harnessID); !ok || id != m.BareID() {
+					t.Errorf("%s CLI id = %q (%v), want %q", harnessID, id, ok, m.BareID())
+				}
+			}
+			if m.Preferred != HarnessCodex {
+				t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessCodex)
+			}
+		})
+	}
+}
+
 // TestAllModelsOverride replaces one provider's matrix and leaves the others.
 func TestAllModelsOverride(t *testing.T) {
 	override := map[string][]Model{
