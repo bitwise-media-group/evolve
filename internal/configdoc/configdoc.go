@@ -49,7 +49,7 @@ func Schema() []Option {
 		{
 			Key: "harnesses", Type: "list of strings", Example: []string{"claude", "copilot"},
 			Fallback: "every harness found on PATH",
-			Doc: "Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot, antigravity) " +
+			Doc: "Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot, antigravity, grok) " +
 				"may drive models. --harness filters within it.",
 		},
 		{

@@ -19,6 +19,7 @@ var nativeHarness = map[string]string{
 	model.ProviderOpenAI:    model.HarnessCodex,
 	model.ProviderGoogle:    model.HarnessGemini,
 	model.ProviderCursor:    model.HarnessCursor,
+	model.ProviderXAI:       model.HarnessGrok,
 }
 
 // ModelOverrides parses any providers.<name>.models lists from the config file

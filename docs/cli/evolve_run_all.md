@@ -12,7 +12,7 @@ evolve run all [flags]
       --baseline               benchmark each eval without the skill (its lift), recomputed only when the eval or its fixtures change (disable with --baseline=false; config: baseline) (default true)
       --count-only             skip agent runs; only compute token usage per model
       --failed                 only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)
-      --harness strings        only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity (repeatable / comma-separated; alias: --harnesses; filters within config harnesses)
+      --harness strings        only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity, grok (repeatable / comma-separated; alias: --harnesses; filters within config harnesses)
   -h, --help                   help for all
       --jobs int               concurrent agent runs (default: ceil(cpus/2)) (default 4)
       --keep-workspaces        keep throwaway workspaces for debugging

@@ -59,6 +59,12 @@ func CounterFor(providerID string) (TokenCounter, bool) {
 			envKeys: []string{"EVOLVE_GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"},
 			client:  defaultClient,
 		}, true
+	case ProviderXAI:
+		return xaiCounter{
+			url:     "https://api.x.ai/v1/tokenize-text",
+			envKeys: []string{"EVOLVE_XAI_API_KEY", "XAI_API_KEY"},
+			client:  defaultClient,
+		}, true
 	}
 	return nil, false
 }
@@ -76,6 +82,8 @@ func CounterEnvKeys(providerID string) []string {
 		return []string{"EVOLVE_OPENAI_API_KEY", "OPENAI_API_KEY"}
 	case ProviderGoogle:
 		return []string{"EVOLVE_GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"}
+	case ProviderXAI:
+		return []string{"EVOLVE_XAI_API_KEY", "XAI_API_KEY"}
 	}
 	return nil
 }
@@ -182,6 +190,30 @@ func (g googleCounter) CountTokens(ctx context.Context, modelID, text string) (i
 		return 0, fmt.Errorf("countTokens response missing totalTokens")
 	}
 	return *resp.TotalTokens, nil
+}
+
+// xaiCounter calls POST /v1/tokenize-text and returns the length of the
+// token_ids array (the official xAI tokenizer endpoint).
+type xaiCounter struct {
+	url     string
+	envKeys []string
+	client  *http.Client
+}
+
+func (x xaiCounter) CountTokens(ctx context.Context, modelID, text string) (int, error) {
+	key := firstEnv(x.envKeys)
+	if key == "" {
+		return 0, ErrNoCredential
+	}
+	headers := map[string]string{"authorization": "Bearer " + key}
+	body := map[string]any{"model": modelID, "text": text}
+	var resp struct {
+		TokenIDs []json.RawMessage `json:"token_ids"`
+	}
+	if err := postJSON(ctx, x.client, x.url, headers, body, &resp); err != nil {
+		return 0, fmt.Errorf("xai tokenize-text: %w", err)
+	}
+	return len(resp.TokenIDs), nil
 }
 
 func firstEnv(keys []string) string {

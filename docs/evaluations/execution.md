@@ -51,9 +51,9 @@ When the run returns, evolve captures two things from the agent's output: its **
 and the **tool calls it made**. Those feed grading — the response and workspace for `regex`/`file_exists`/`command`, the
 observed calls for `tool_call`.
 
-Driving a model for a graded eval needs a harness with the **eval-runner** capability (Claude Code and Codex today);
-harnesses without it are trigger-only. `evolve doctor` and `evolve models` show which models are runnable in your
-environment.
+Driving a model for a graded eval needs a harness with the **eval-runner** capability (every builtin harness except
+Gemini today); harnesses without it are trigger-only. `evolve doctor` and `evolve models` show which models are runnable
+in your environment.
 
 ## Running a trigger
 

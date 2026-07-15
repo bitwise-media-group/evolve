@@ -79,7 +79,7 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 		`provider ids / canonical model ids, or "all" (repeatable / comma-separated; alias: --models; `+
 			`filters within config models)`)
 	cmd.Flags().StringSliceVar(&f.Harness, "harness", nil,
-		"only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity "+
+		"only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity, grok "+
 			"(repeatable / comma-separated; alias: --harnesses; filters within config harnesses)")
 	cmd.Flags().IntVar(&f.Timeout, "timeout", defaultTimeout, "seconds per agent run")
 	cmd.Flags().IntVar(&f.Jobs, "jobs", model.DefaultJobs(), "concurrent agent runs (default: ceil(cpus/2))")

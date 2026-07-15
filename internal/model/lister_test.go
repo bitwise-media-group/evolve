@@ -12,7 +12,7 @@ import (
 )
 
 func TestListerFor(t *testing.T) {
-	for _, pid := range []string{ProviderAnthropic, ProviderOpenAI, ProviderGoogle} {
+	for _, pid := range []string{ProviderAnthropic, ProviderOpenAI, ProviderGoogle, ProviderXAI} {
 		if _, ok := ListerFor(pid); !ok {
 			t.Errorf("ListerFor(%q) = not found, want a lister", pid)
 		}

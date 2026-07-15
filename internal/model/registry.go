@@ -7,12 +7,14 @@ import "slices"
 
 // Provider ids. Cursor is both a provider (it owns Composer) and a harness
 // (its CLI runs Composer and other vendors' models); the two ids living in
-// different namespaces is intentional.
+// different namespaces is intentional. xAI owns Grok models; the Grok CLI is
+// the harness that drives them.
 const (
 	ProviderAnthropic = "anthropic"
 	ProviderOpenAI    = "openai"
 	ProviderGoogle    = "google"
 	ProviderCursor    = "cursor"
+	ProviderXAI       = "xai"
 )
 
 // Harness ids, referenced by the Supported maps below. The harness package
@@ -24,6 +26,7 @@ const (
 	HarnessCursor      = "cursor"
 	HarnessCopilot     = "copilot"
 	HarnessAntigravity = "antigravity"
+	HarnessGrok        = "grok"
 )
 
 // Providers returns the model vendors in display order.
@@ -33,6 +36,7 @@ func Providers() []Provider {
 		{ID: ProviderOpenAI, Name: "OpenAI"},
 		{ID: ProviderGoogle, Name: "Google"},
 		{ID: ProviderCursor, Name: "Cursor"},
+		{ID: ProviderXAI, Name: "xAI"},
 	}
 }
 
@@ -162,12 +166,25 @@ func builtins() []Model {
 			Preferred: HarnessAntigravity,
 		},
 
-		// Cursor — Composer is Cursor's own model, driven only by the Cursor CLI.
-		// No counting API and no usage reporting, so figures render n/a.
+		// Cursor — Composer is Cursor's own model. The Cursor CLI is preferred;
+		// the Grok CLI also serves it under a diverging id (grok-composer-2.5-fast).
+		// No counting API and no Cursor-CLI usage reporting, so figures render n/a
+		// when driven by Cursor; Grok reports usage when it is the runner.
 		{
 			ID: "cursor/composer-2.5", ProviderID: ProviderCursor, Name: "Cursor Composer 2.5",
-			Supported: map[string]string{HarnessCursor: "composer-2.5"},
+			Supported: map[string]string{
+				HarnessCursor: "composer-2.5",
+				HarnessGrok:   "grok-composer-2.5-fast",
+			},
 			Preferred: HarnessCursor,
+		},
+
+		// xAI — driven by the Grok CLI. Pricing is the short-context sticker rate.
+		{
+			ID: "xai/grok-4.5", ProviderID: ProviderXAI, Name: "Grok 4.5",
+			InputUSD: usd(2.00), OutputUSD: usd(6.00),
+			Supported: map[string]string{HarnessGrok: "grok-4.5"},
+			Preferred: HarnessGrok,
 		},
 	}
 }
@@ -217,7 +234,7 @@ func ProviderByID(id string) (Provider, bool) {
 
 // providerIDs is the set of known vendor ids, used to validate override keys.
 func providerIDs() []string {
-	ids := make([]string, 0, 4)
+	ids := make([]string, 0, 5)
 	for _, p := range Providers() {
 		ids = append(ids, p.ID)
 	}

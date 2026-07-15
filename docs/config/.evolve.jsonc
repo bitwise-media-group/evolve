@@ -20,7 +20,7 @@
   // "models": ["anthropic/claude-sonnet-4-6"],
 
   // Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot,
-  // antigravity) may drive models. --harness filters within it.
+  // antigravity, grok) may drive models. --harness filters within it.
   // Default: unset — every harness found on PATH.
   // "harnesses": ["claude","copilot"],
 

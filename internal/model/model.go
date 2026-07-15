@@ -10,7 +10,7 @@ import (
 )
 
 // Provider is a model vendor: the entity that owns and prices a family of
-// models (Anthropic, OpenAI, Google, Cursor). It is distinct from a harness —
+// models (Anthropic, OpenAI, Google, Cursor, xAI). It is distinct from a harness —
 // the CLI that drives a model — because several harnesses can run one vendor's
 // model (Claude Code and Copilot both run Claude Sonnet).
 type Provider struct {

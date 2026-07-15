@@ -96,6 +96,35 @@ func TestGPT56Models(t *testing.T) {
 	}
 }
 
+func TestGrok45Model(t *testing.T) {
+	m, ok := ModelByID(builtins(), "xai/grok-4.5")
+	if !ok {
+		t.Fatal("xai/grok-4.5 missing from registry")
+	}
+	if m.Preferred != HarnessGrok {
+		t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessGrok)
+	}
+	if id, ok := m.CLIModelID(HarnessGrok); !ok || id != "grok-4.5" {
+		t.Errorf("grok CLI id = %q (%v), want grok-4.5", id, ok)
+	}
+	if m.InputUSD == nil || *m.InputUSD != 2.00 || m.OutputUSD == nil || *m.OutputUSD != 6.00 {
+		t.Errorf("pricing = %v/%v, want 2.00/6.00", m.InputUSD, m.OutputUSD)
+	}
+}
+
+func TestComposer25GrokSupport(t *testing.T) {
+	m, ok := ModelByID(builtins(), "cursor/composer-2.5")
+	if !ok {
+		t.Fatal("cursor/composer-2.5 missing from registry")
+	}
+	if id, ok := m.CLIModelID(HarnessGrok); !ok || id != "grok-composer-2.5-fast" {
+		t.Errorf("grok CLI id = %q (%v), want grok-composer-2.5-fast", id, ok)
+	}
+	if m.Preferred != HarnessCursor {
+		t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessCursor)
+	}
+}
+
 // TestAllModelsOverride replaces one provider's matrix and leaves the others.
 func TestAllModelsOverride(t *testing.T) {
 	override := map[string][]Model{

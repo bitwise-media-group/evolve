@@ -68,12 +68,14 @@ type ToolCallReporter interface {
 var harnessOrder = []string{
 	model.HarnessClaude, model.HarnessCodex, model.HarnessGemini,
 	model.HarnessCursor, model.HarnessCopilot, model.HarnessAntigravity,
+	model.HarnessGrok,
 }
 
 // All returns the builtin harness set, in harnessOrder.
 func All() []Harness {
 	return []Harness{
 		NewClaude(), NewCodex(), NewGemini(), NewCursor(), NewCopilot(), NewAntigravity(),
+		NewGrok(),
 	}
 }
 

@@ -32,7 +32,7 @@
       }
     },
     "harnesses": {
-      "description": "Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot, antigravity) may drive models. --harness filters within it.",
+      "description": "Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot, antigravity, grok) may drive models. --harness filters within it.",
       "type": "array",
       "items": {
         "type": "string"

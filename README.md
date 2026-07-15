@@ -50,10 +50,12 @@ Built-in harnesses, each needing its runner CLI on `PATH` and whatever credentia
 | Cursor         | `cursor-agent` |
 | GitHub Copilot | `copilot`      |
 | Antigravity    | `agy`          |
+| Grok           | `grok`         |
 
-Built-in providers (the model vendors) are **Anthropic**, **OpenAI**, **Google**, and **Cursor** — the last is both a
-provider (it owns Composer) and a harness. Run `evolve doctor` from a plugin repository to check the environment,
-credentials, and runner CLIs, and `evolve models` to see the effective provider / model / harness matrix.
+Built-in providers (the model vendors) are **Anthropic**, **OpenAI**, **Google**, **Cursor**, and **xAI** — Cursor is
+both a provider (it owns Composer) and a harness; xAI models are driven by the Grok harness. Run `evolve doctor` from a
+plugin repository to check the environment, credentials, and runner CLIs, and `evolve models` to see the effective
+provider / model / harness matrix.
 
 ## Install
 

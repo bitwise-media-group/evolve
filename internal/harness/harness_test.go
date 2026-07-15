@@ -11,12 +11,13 @@ import (
 
 func TestAllAndByID(t *testing.T) {
 	all := All()
-	if len(all) != 6 {
-		t.Fatalf("All() = %d harnesses, want 6", len(all))
+	if len(all) != 7 {
+		t.Fatalf("All() = %d harnesses, want 7", len(all))
 	}
 	for _, id := range []string{
 		model.HarnessClaude, model.HarnessCodex, model.HarnessGemini,
 		model.HarnessCursor, model.HarnessCopilot, model.HarnessAntigravity,
+		model.HarnessGrok,
 	} {
 		h, ok := ByID(id)
 		if !ok {
@@ -38,6 +39,7 @@ func TestEvalRunnerCapability(t *testing.T) {
 	want := map[string]bool{
 		model.HarnessClaude: true, model.HarnessCodex: true, model.HarnessGemini: false,
 		model.HarnessCursor: true, model.HarnessCopilot: true, model.HarnessAntigravity: true,
+		model.HarnessGrok: true,
 	}
 	for _, h := range All() {
 		_, isRunner := h.(EvalRunner)
@@ -49,12 +51,14 @@ func TestEvalRunnerCapability(t *testing.T) {
 
 // TestToolCallReporterCapability pins which harnesses can report tool calls
 // from their eval output. Claude and Codex (whose output carries tool
-// invocations) implement it; the envelope/text harnesses and Gemini do not, so
-// a tool_call assertion against them is skipped.
+// invocations) implement it; the envelope/text harnesses, Gemini, and Grok
+// (headless streaming-json has no tool events) do not, so a tool_call assertion
+// against them is skipped.
 func TestToolCallReporterCapability(t *testing.T) {
 	want := map[string]bool{
 		model.HarnessClaude: true, model.HarnessCodex: true, model.HarnessGemini: false,
 		model.HarnessCursor: false, model.HarnessCopilot: false, model.HarnessAntigravity: false,
+		model.HarnessGrok: false,
 	}
 	for _, h := range All() {
 		_, isReporter := h.(ToolCallReporter)

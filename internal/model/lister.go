@@ -53,6 +53,12 @@ func ListerFor(providerID string) (ModelLister, bool) {
 			envKeys: CounterEnvKeys(ProviderGoogle),
 			client:  defaultClient,
 		}, true
+	case ProviderXAI:
+		return xaiLister{
+			url:     "https://api.x.ai/v1/models",
+			envKeys: CounterEnvKeys(ProviderXAI),
+			client:  defaultClient,
+		}, true
 	}
 	return nil, false
 }
@@ -177,6 +183,34 @@ func (g googleLister) ListModels(ctx context.Context) ([]DiscoveredModel, error)
 		}
 		pageToken = resp.NextPageToken
 	}
+}
+
+// xaiLister calls GET /v1/models (OpenAI-compatible catalog).
+type xaiLister struct {
+	url     string
+	envKeys []string
+	client  *http.Client
+}
+
+func (x xaiLister) ListModels(ctx context.Context) ([]DiscoveredModel, error) {
+	key := firstEnv(x.envKeys)
+	if key == "" {
+		return nil, ErrNoCredential
+	}
+	headers := map[string]string{"authorization": "Bearer " + key}
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := getJSON(ctx, x.client, x.url, headers, &resp); err != nil {
+		return nil, fmt.Errorf("xai list models: %w", err)
+	}
+	var out []DiscoveredModel
+	for _, m := range resp.Data {
+		out = append(out, DiscoveredModel{ID: m.ID})
+	}
+	return out, nil
 }
 
 // getJSON fetches endpoint and decodes the JSON response into out, returning

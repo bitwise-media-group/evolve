@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Package harness defines the agent CLIs evolve can drive (Claude Code, OpenAI
-// Codex, Gemini, Cursor, Copilot, Antigravity): their runner-binary candidates,
+// Codex, Gemini, Cursor, Copilot, Antigravity, Grok): their runner-binary candidates,
 // credential env vars, skill directories, command construction, and output
 // parsing. A harness drives a model — it does not own one — so the model id a
 // command targets is supplied as a harness-specific CLI string mapped from the

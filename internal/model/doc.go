@@ -1,8 +1,8 @@
 // Copyright 2026 BitWise Media Group Ltd
 // SPDX-License-Identifier: MIT
 
-// Package model defines the model vendors (Anthropic, OpenAI, Google, Cursor)
-// and their canonical models: provider-qualified ids, pricing, the harnesses
+// Package model defines the model vendors (Anthropic, OpenAI, Google, Cursor,
+// xAI) and their canonical models: provider-qualified ids, pricing, the harnesses
 // each model can be driven by, and the vendor token-counting clients.
 //
 // It is the lowest-level domain package — it imports no other internal package
