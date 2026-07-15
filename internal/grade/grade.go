@@ -44,9 +44,11 @@ Reply with ONLY a JSON object: {"passed": true|false, "evidence": "<short quote 
 const DefaultJudgeModel = "claude-sonnet-4-6"
 
 // Runner runs grading subprocesses (shell commands and the judge CLI).
+// scan is always nil here (collect mode); the *runner.Scan shape matches the
+// agent runner so one Exec implementation serves both.
 type Runner interface {
 	Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration,
-		onLine func([]byte) bool) (runner.Result, error)
+		scan *runner.Scan) (runner.Result, error)
 }
 
 // Options configures grading for one eval.

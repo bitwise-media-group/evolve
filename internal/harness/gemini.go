@@ -49,7 +49,7 @@ func (g *Gemini) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) m
 // ScanLine reports a hit when an activate_skill tool_use names the skill (a read
 // of the SKILL.md path counts as a fallback). A result/error event becomes a
 // warning note and counts as no-trigger.
-func (g *Gemini) ScanLine(line []byte, skill string) (bool, string) {
+func (g *Gemini) ScanLine(line []byte, skill, _ string) (bool, string) {
 	var event struct {
 		Type       string          `json:"type"`
 		Status     string          `json:"status"`

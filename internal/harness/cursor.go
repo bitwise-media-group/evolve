@@ -51,7 +51,7 @@ func (c *Cursor) TriggerSpec(ws, query, cliModelID string, _ bool) model.Command
 // ScanLine reports a hit when a tool_call event (e.g. a readToolCall) touches
 // the skill's SKILL.md. The match is a substring of the serialized event, scoped
 // to tool_call lines so assistant prose mentioning the path does not count.
-func (c *Cursor) ScanLine(line []byte, skill string) (bool, string) {
+func (c *Cursor) ScanLine(line []byte, skill, _ string) (bool, string) {
 	var event struct {
 		Type string `json:"type"`
 	}

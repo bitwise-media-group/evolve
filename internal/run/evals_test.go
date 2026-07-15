@@ -81,7 +81,7 @@ func (f *fakeEvalProvider) canonicalModel() model.Model {
 func (f *fakeEvalProvider) TriggerSpec(ws, query, cliModelID string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"fake-cli", query}, Dir: ws}
 }
-func (f *fakeEvalProvider) ScanLine([]byte, string) (bool, string) { return false, "" }
+func (f *fakeEvalProvider) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (f *fakeEvalProvider) EvalSpec(ws string, c model.EvalInput, cliModelID string) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"agent-cli", "AGENT", c.Prompt}, Dir: ws}
 }
@@ -123,7 +123,7 @@ type fakeEvalRunner struct {
 	agentFails bool // when set, the agent run produces no output and exits non-zero
 }
 
-func (f *fakeEvalRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (f *fakeEvalRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, scan *runner.Scan) (runner.Result, error) {
 	switch {
 	case len(spec.Argv) > 1 && spec.Argv[1] == "AGENT":
 		if f.agentFails {
@@ -136,7 +136,7 @@ func (f *fakeEvalRunner) Run(ctx context.Context, spec model.CommandSpec, timeou
 	case spec.Argv[0] == "claude": // the judge
 		return runner.Result{Stdout: []byte(`{"result": "{\"passed\": true, \"evidence\": \"verified\"}"}`)}, nil
 	default:
-		return f.exec.Run(ctx, spec, timeout, onLine)
+		return f.exec.Run(ctx, spec, timeout, scan)
 	}
 }
 
@@ -676,14 +676,14 @@ type baselineRunner struct {
 	agentRuns []bool // true when the skill under test was symlinked in
 }
 
-func (r *baselineRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (r *baselineRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, scan *runner.Scan) (runner.Result, error) {
 	if len(spec.Argv) > 1 && spec.Argv[1] == "AGENT" {
 		_, err := os.Stat(filepath.Join(spec.Dir, ".fake", "skills", "solo-skill", "SKILL.md"))
 		r.mu.Lock()
 		r.agentRuns = append(r.agentRuns, err == nil)
 		r.mu.Unlock()
 	}
-	return r.inner.Run(ctx, spec, timeout, onLine)
+	return r.inner.Run(ctx, spec, timeout, scan)
 }
 
 func TestEvalsBaseline(t *testing.T) {

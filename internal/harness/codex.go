@@ -40,7 +40,7 @@ func (c *Codex) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) mo
 
 // ScanLine is best-effort: any event-stream line mentioning the skill's
 // SKILL.md path counts as an activation.
-func (c *Codex) ScanLine(line []byte, skill string) (bool, string) {
+func (c *Codex) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 

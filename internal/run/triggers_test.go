@@ -56,7 +56,7 @@ func (f *fakeTriggerProvider) canonicalModel() model.Model {
 func (f *fakeTriggerProvider) TriggerSpec(ws, query, cliModelID string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"fake-cli", query}, Dir: ws}
 }
-func (f *fakeTriggerProvider) ScanLine(line []byte, skill string) (bool, string) {
+func (f *fakeTriggerProvider) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return bytes.Contains(line, []byte("ACTIVATE:"+skill)), ""
 }
 
@@ -96,13 +96,16 @@ func fakeCounterFor(h fakeHarness) func(string) (model.TokenCounter, bool) {
 // trigger".
 type fakeTriggerRunner struct{}
 
-func (fakeTriggerRunner) Run(_ context.Context, spec model.CommandSpec, _ time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (fakeTriggerRunner) Run(_ context.Context, spec model.CommandSpec, _ time.Duration, scan *runner.Scan) (runner.Result, error) {
 	query := spec.Argv[1]
 	line := "noise"
 	if strings.Contains(query, "please trigger") {
 		line = `ACTIVATE:solo-skill`
 	}
-	hit := onLine([]byte(line))
+	hit := false
+	if scan != nil && scan.OnLine != nil {
+		hit = scan.OnLine([]byte(line))
+	}
 	return runner.Result{Hit: hit, Elapsed: 1500 * time.Millisecond}, nil
 }
 

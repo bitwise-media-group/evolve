@@ -71,7 +71,7 @@ func (a *Antigravity) TriggerSpec(ws, query, cliModelID string, _ bool) model.Co
 // path) to stdout. If print mode emits only the final answer, trigger detection
 // via stdout under-detects; the deferred fallback is to scan the --log-file
 // transcript instead.
-func (a *Antigravity) ScanLine(line []byte, skill string) (bool, string) {
+func (a *Antigravity) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 

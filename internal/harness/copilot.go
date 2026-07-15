@@ -53,7 +53,7 @@ func (c *Copilot) TriggerSpec(ws, query, cliModelID string, _ bool) model.Comman
 
 // ScanLine is best-effort: Copilot emits no structured events, so any stdout
 // line mentioning the skill's SKILL.md path counts as an activation.
-func (c *Copilot) ScanLine(line []byte, skill string) (bool, string) {
+func (c *Copilot) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 

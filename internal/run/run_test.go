@@ -134,11 +134,11 @@ type recordingRunner struct {
 	calls int
 }
 
-func (r *recordingRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (r *recordingRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, scan *runner.Scan) (runner.Result, error) {
 	r.mu.Lock()
 	r.calls++
 	r.mu.Unlock()
-	return r.inner.Run(ctx, spec, timeout, onLine)
+	return r.inner.Run(ctx, spec, timeout, scan)
 }
 
 // seedNewerSchema writes a results file claiming a future schema into the

@@ -24,12 +24,12 @@ type judgeRunner struct {
 	gotSpec  model.CommandSpec
 }
 
-func (j *judgeRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, onLine func([]byte) bool) (runner.Result, error) {
+func (j *judgeRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, scan *runner.Scan) (runner.Result, error) {
 	if spec.Argv[0] == "claude" {
 		j.gotSpec = spec
 		return runner.Result{Stdout: []byte(j.response)}, nil
 	}
-	return j.exec.Run(ctx, spec, timeout, onLine)
+	return j.exec.Run(ctx, spec, timeout, scan)
 }
 
 func opts(t *testing.T, output string) Options {

@@ -18,7 +18,7 @@ func (stubHarness) Name() string                           { return "Stub" }
 func (stubHarness) CLI() []string                          { return []string{"sh"} }
 func (stubHarness) EnvKeys() []string                      { return nil }
 func (stubHarness) SkillDirs() []string                    { return nil }
-func (stubHarness) ScanLine([]byte, string) (bool, string) { return false, "" }
+func (stubHarness) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (stubHarness) TriggerSpec(ws, _, _ string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Dir: ws}
 }

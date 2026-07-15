@@ -24,9 +24,23 @@ type Harness interface {
 	// hostSandboxed: when set, the harness must disable the agent CLI's own OS
 	// sandbox so it does not nest illegally inside evolve's.
 	TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) model.CommandSpec
-	// ScanLine inspects one stdout line for activation of skill. A non-empty
-	// note surfaces a harness-reported run error as a warning.
-	ScanLine(line []byte, skill string) (hit bool, note string)
+	// ScanLine inspects one stdout line for activation of skill. workDir is the
+	// agent command's working directory (CommandSpec.Dir); harnesses that keep
+	// side state under the workspace (e.g. Grok's isolated GROK_HOME) use it,
+	// others ignore it. A non-empty note surfaces a harness-reported run error
+	// as a warning.
+	ScanLine(line []byte, skill, workDir string) (hit bool, note string)
+}
+
+// TriggerSideChannel is an optional capability for harnesses that can signal
+// skill activation outside stdout (e.g. Grok's PreToolUse hook writing a hit
+// file). The trigger engine type-asserts and arms SideHit on runner.Scan so the
+// agent process can be cancelled as soon as the skill is invoked.
+type TriggerSideChannel interface {
+	// ArmTriggerHit prepares a per-invocation side channel for skill under ws.
+	// env is appended to CommandSpec.Env (inherited by hook children); sideHit
+	// is polled by the runner and should become true once activation is known.
+	ArmTriggerHit(ws, skill string) (sideHit func() bool, env []string)
 }
 
 // EvalRunner is the optional capability of running behavioral evals. Harnesses

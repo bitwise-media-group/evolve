@@ -126,7 +126,7 @@ func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.To
 
 // ScanLine reports a hit when a Skill or Read tool_use in the stream-json event
 // targets the skill.
-func (c *Claude) ScanLine(line []byte, skill string) (bool, string) {
+func (c *Claude) ScanLine(line []byte, skill, _ string) (bool, string) {
 	var event claudeEvent
 	if json.Unmarshal(line, &event) != nil {
 		return false, ""

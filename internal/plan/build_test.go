@@ -20,7 +20,7 @@ func (fakeHarness) Name() string                           { return "Fake" }
 func (fakeHarness) CLI() []string                          { return []string{"sh"} }
 func (fakeHarness) EnvKeys() []string                      { return []string{"K"} }
 func (fakeHarness) SkillDirs() []string                    { return []string{".fake/skills"} }
-func (fakeHarness) ScanLine([]byte, string) (bool, string) { return false, "" }
+func (fakeHarness) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (fakeHarness) TriggerSpec(ws, _, _ string, _ bool) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"x"}, Dir: ws}
 }

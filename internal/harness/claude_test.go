@@ -117,7 +117,7 @@ func TestClaudeScanLine(t *testing.T) {
 		{"garbage", "not json", false},
 	}
 	for _, tt := range tests {
-		if hit, _ := c.ScanLine([]byte(tt.line), "my-skill"); hit != tt.want {
+		if hit, _ := c.ScanLine([]byte(tt.line), "my-skill", ""); hit != tt.want {
 			t.Errorf("%s: ScanLine = %v, want %v", tt.name, hit, tt.want)
 		}
 	}
