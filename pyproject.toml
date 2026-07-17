@@ -11,5 +11,5 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "BitWise Media Group Ltd.", email = "oss@bitwisemedia.uk" }]
 dependencies = [
-  "zensical>=0.0.46",
+  "zensical>=0.0.50",
 ]
