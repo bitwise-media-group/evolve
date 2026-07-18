@@ -91,6 +91,26 @@ scope = "/"
 icon = "fontawesome/brands/github"
 link = "https://github.com/bitwise-media-group/evolve"
 
+[[project.extra.social]]
+icon = "fontawesome/brands/youtube"
+link = "https://www.youtube.com/@bitwise-media-group"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/x-twitter"
+link = "https://x.com/BitWiseMedia"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/instagram"
+link = "https://www.instagram.com/bitwisemediagroup"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/tiktok"
+link = "https://www.tiktok.com/@bitwisemediagroup"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/bluesky"
+link = "https://bsky.app/profile/bitwisemediagroup.bsky.social"
+
 # Google Analytics 4. https://zensical.org/docs/setup/analytics/#configuration
 # The analytics snippet only renders when `property` is non-empty, so the build
 # stays clean until the measurement ID is available. Loading is also gated on
