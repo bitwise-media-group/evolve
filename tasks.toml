@@ -144,14 +144,21 @@ run = [{ task = "build" }, "./evolve ${ARGS:-}"]
 # Regenerate the CLI/config reference from the built binary, then render the
 # site. (Kept repo-local: generating a CLI reference is app-specific; `serve`,
 # `sync`, and `docs-build` come from the archetype.)
+# Shell completions are committed alongside the man pages so releases can ship
+# them as static files — the Homebrew cask must not execute the binary at
+# install time (see homebrew_casks in .goreleaser.yaml).
 [docs]
-description = "regenerate the cli reference (docs/cli, docs/man) and config docs (docs/config)"
+description = "regenerate the cli reference (docs/cli, docs/man, completions) and config docs (docs/config)"
 dir = "{{cwd}}"
 run = [
   { task = "build" },
   "./evolve docs --out docs/cli --format markdown",
   "./evolve docs --out docs/man --format man",
   "./evolve docs --out docs/config --format config",
+  "mkdir -p completions",
+  "./evolve completion bash > completions/evolve.bash",
+  "./evolve completion zsh > completions/evolve.zsh",
+  "./evolve completion fish > completions/evolve.fish",
   { task = "docs-build" },
 ]
 

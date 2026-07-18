@@ -5,3 +5,4 @@ e2e/golden/**
 dist/**
 site/**
 internal/web/ui/**
+completions/**

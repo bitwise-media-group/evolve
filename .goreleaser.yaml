@@ -58,6 +58,10 @@ archives:
       # Ship the man pages in the archive so the Homebrew cask can install
       # them from the extracted tarball (see homebrew_casks.manpages below).
       - docs/man/*.1
+      # Pre-generated shell completions (committed by `mise run docs`), so
+      # the cask installs them as static files instead of executing the
+      # binary at install time (see homebrew_casks.completions below).
+      - completions/*
 
 # ^ref: https://goreleaser.com/customization/checksum/
 checksum:
@@ -136,9 +140,18 @@ homebrew_casks:
     # emits a `manpage "..."` stanza for each match (e.g. docs/man/evolve.1).
     manpages:
       - docs/man/*.1
-    generate_completions_from_executable:
-      executable: evolve
-      shell_parameter_format: cobra
+    # Static completion stanzas, NOT generate_completions_from_executable:
+    # Homebrew installs cask artifacts in a fixed type-based order, but
+    # GeneratedCompletion is missing from that sort table (as of brew 6.0),
+    # so its position is decided by an unstable sort — it can run before the
+    # quarantine-clearing preflight below, executing the still-quarantined
+    # binary and tripping Gatekeeper mid-install. Static bash_completion /
+    # zsh_completion / fish_completion artifacts are ordered deterministically
+    # and never execute the binary.
+    completions:
+      bash: completions/evolve.bash
+      zsh: completions/evolve.zsh
+      fish: completions/evolve.fish
     homepage: https://github.com/bitwise-media-group/evolve
     description: Evaluate coding-agent plugins — static checks, trigger-accuracy evals, behavioral cases, and reports
     skip_upload: auto
