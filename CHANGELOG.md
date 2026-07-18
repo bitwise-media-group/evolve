@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/bitwise-media-group/evolve/compare/v0.5.1...v0.6.0) (2026-07-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **report:** report --check no longer errors when no thresholds are configured — it gates both tiers at the built-in defaults (triggers 0.5, evals 0.66), and a tier left unset in config is gated at its default rather than skipped.
+
+### Features
+
+* **harness:** add Grok harness with xAI models ([081bde6](https://github.com/bitwise-media-group/evolve/commit/081bde627aca3116945b8cfaa31f325db7349d99)), closes [#75](https://github.com/bitwise-media-group/evolve/issues/75)
+* **model:** add GPT-5.6 built-ins ([3a51b38](https://github.com/bitwise-media-group/evolve/commit/3a51b38e53243f6a9f6fba7bed3efa7617e672c5)), closes [#85](https://github.com/bitwise-media-group/evolve/issues/85)
+* **report:** gate report --check at default pass-rate thresholds ([1888d5d](https://github.com/bitwise-media-group/evolve/commit/1888d5d763e66d42ff902617b60111f1acbfdec0))
+* **report:** maturity-aware evidence gating for report --check ([002cf81](https://github.com/bitwise-media-group/evolve/commit/002cf819162775e079cff99c2d96b94cb229b8d9)), closes [#73](https://github.com/bitwise-media-group/evolve/issues/73)
+* **results:** refuse to overwrite newer-schema results and reports ([8279ddd](https://github.com/bitwise-media-group/evolve/commit/8279ddd3d43ed80eb2e6bae7a13b42388daab8e6)), closes [#44](https://github.com/bitwise-media-group/evolve/issues/44)
+* **tui:** add mouse support to the run form and dashboard ([4218929](https://github.com/bitwise-media-group/evolve/commit/42189295ce40322bd8e6f5e2259c8a735ab8b25a)), closes [#69](https://github.com/bitwise-media-group/evolve/issues/69)
+* **tui:** threshold-based rollup indicators and an Execution legend ([cbba998](https://github.com/bitwise-media-group/evolve/commit/cbba99873465084f7e1bccdc89546dc0b4c84ae1))
+
+
+### Bug Fixes
+
+* **harness:** make Grok trigger detection reliable ([631ef9c](https://github.com/bitwise-media-group/evolve/commit/631ef9c1b18b655feb1b1376a06e4cb16d91d124))
+* **release:** ship static shell completions in the Homebrew cask ([0447c4d](https://github.com/bitwise-media-group/evolve/commit/0447c4d2e6f1fbba054bcb7fb3e43d301dbe06b1))
+* **tui:** force full repaints around ultraviolet's broken scroll optimization ([6d279cf](https://github.com/bitwise-media-group/evolve/commit/6d279cff11f66def9586c12e3d998660ae7ddddc))
+
 ## [0.5.1](https://github.com/bitwise-media-group/evolve/compare/v0.5.0...v0.5.1) (2026-07-03)
 
 
