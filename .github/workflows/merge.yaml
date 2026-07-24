@@ -45,7 +45,7 @@ permissions: {}
 
 jobs:
   merge:
-    uses: bitwise-media-group/github-workflows/.github/workflows/merge.yaml@ee856f73ecea9b0c2c989d3a6aa585774b0d2a38 # v5.0.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge.yaml@b9c031429f149794bedb5411b08d5a787b8d9959 # v6.0.1
     with:
       app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
     secrets:

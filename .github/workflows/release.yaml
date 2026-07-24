@@ -41,13 +41,13 @@ permissions: {}
 
 jobs:
   release:
-    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@ee856f73ecea9b0c2c989d3a6aa585774b0d2a38 # v5.0.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@b9c031429f149794bedb5411b08d5a787b8d9959 # v6.0.1
     # ceiling for the reusable workflow's release-please + goreleaser + docs jobs.
     # GitHub resolves a reusable workflow's permissions as the union of every job and
     # ignores `if:`, so the caller must grant the goreleaser job's id-token /
-    # attestations / artifact-metadata and the docs job's pages even though each is
-    # only realized on its own path (goreleaser needs a .goreleaser.yaml, docs a
-    # zensical.toml).
+    # attestations / artifact-metadata / packages and the docs job's pages even
+    # though each is only realized on its own path (goreleaser needs a
+    # .goreleaser.yaml, docs a zensical.toml).
     permissions:
       # create the release/tag and upload assets
       contents: write
@@ -61,6 +61,10 @@ jobs:
       attestations: write
       # artifact storage record for the attestation
       artifact-metadata: write
+      # push container images to ghcr (goreleaser dockers_v2). evolve ships no
+      # images, but the union rule above makes this mandatory from v6.0.0 on — a
+      # missing scope startup-fails the whole run.
+      packages: write
       # publish the docs site to GitHub Pages (docs job, keyed off zensical.toml)
       pages: write
     with:
