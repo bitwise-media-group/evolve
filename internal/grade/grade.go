@@ -39,8 +39,10 @@ const judgePrompt = `You are grading an AI coding agent's work. Assertion to ver
 Files in the agent's workspace are at: %s
 Reply with ONLY a JSON object: {"passed": true|false, "evidence": "<short quote or file fact supporting the verdict>"}`
 
-// DefaultJudgeModel pins LLM-judge grading to one model so verdicts stay
-// comparable across runs and providers under test.
+// DefaultJudgeModel is the LLM-judge model used when neither the judge_model
+// config key nor --judge-model names one. The model should be consistent
+// across runs so verdicts stay comparable between them and the providers under
+// test; changing it re-bases every subsequent verdict.
 const DefaultJudgeModel = "claude-sonnet-5"
 
 // Runner runs grading subprocesses (shell commands and the judge CLI).
