@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/version"
@@ -17,8 +16,7 @@ import (
 // EvalsFlags holds the flags for `evolve run evals`.
 type EvalsFlags struct {
 	SweepFlags
-	Eval       string
-	JudgeModel string
+	Eval string
 }
 
 var evalsFlags = EvalsFlags{}
@@ -37,7 +35,7 @@ var evalsCmd = &cobra.Command{
 		}
 		if interactive {
 			return uiRun(cmd, &evalsFlags.SweepFlags, plan.Tiers{Evals: true},
-				3, evalsFlags.Eval, evalsFlags.JudgeModel, "evals: some evals failed", false)
+				3, evalsFlags.Eval, evalsFlags.judgeModel(cmd), "evals: some evals failed", false)
 		}
 
 		common, err := evalsFlags.sweepOptions(cmd)
@@ -51,7 +49,7 @@ var evalsCmd = &cobra.Command{
 		failed, runErr := run.Evals(cmd.Context(), run.EvalOptions{
 			Options:    common,
 			EvalFilter: evalsFlags.Eval,
-			JudgeModel: evalsFlags.JudgeModel,
+			JudgeModel: evalsFlags.judgeModel(cmd),
 		})
 		if err := saveCounter(common.Counter); err != nil {
 			return err
@@ -72,7 +70,5 @@ var evalsCmd = &cobra.Command{
 func init() {
 	evalsFlags.register(evalsCmd, 600)
 	evalsCmd.Flags().StringVar(&evalsFlags.Eval, "eval", "", "only run the eval with this id")
-	evalsCmd.Flags().StringVar(&evalsFlags.JudgeModel, "judge-model", grade.DefaultJudgeModel,
-		"claude model that grades llm assertions")
 	runCmd.AddCommand(evalsCmd)
 }

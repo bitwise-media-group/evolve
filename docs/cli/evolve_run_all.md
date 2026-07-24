@@ -15,6 +15,7 @@ evolve run all [flags]
       --harness strings        only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity, grok (repeatable / comma-separated; alias: --harnesses; filters within config harnesses)
   -h, --help                   help for all
       --jobs int               concurrent agent runs (default: ceil(cpus/2)) (default 4)
+      --judge-model string     claude model that grades llm assertions (config: judge_model) (default "claude-sonnet-5")
       --keep-workspaces        keep throwaway workspaces for debugging
       --max-turns int          max agent turns per eval (config: max_turns; a per-eval max_turns overrides both) (default 20)
       --model strings          provider ids / canonical model ids, or "all" (repeatable / comma-separated; alias: --models; filters within config models)

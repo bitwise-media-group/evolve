@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/report"
 	"github.com/bitwise-media-group/evolve/internal/run"
@@ -70,6 +71,11 @@ func Schema() []Option {
 		{
 			Key: "max_turns", Type: "int", Value: model.DefaultMaxTurns,
 			Doc: "Default maximum agent turns per behavioral eval; --max-turns and a per-eval max_turns override it.",
+		},
+		{
+			Key: "judge_model", Type: "string", Value: grade.DefaultJudgeModel,
+			Doc: "Claude model that grades LLM assertions; --judge-model overrides for one run. Keep it " +
+				"consistent across runs so verdicts stay comparable between them and the providers under test.",
 		},
 		{
 			Key: "baseline", Type: "bool", Value: true,

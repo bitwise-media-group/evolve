@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -61,6 +62,7 @@ type SweepFlags struct {
 	Timeout        int
 	Jobs           int
 	MaxTurns       int
+	JudgeModel     string
 	CountOnly      bool
 	Baseline       bool
 	NewOnly        bool
@@ -85,6 +87,8 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 	cmd.Flags().IntVar(&f.Jobs, "jobs", model.DefaultJobs(), "concurrent agent runs (default: ceil(cpus/2))")
 	cmd.Flags().IntVar(&f.MaxTurns, "max-turns", model.DefaultMaxTurns,
 		"max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)")
+	cmd.Flags().StringVar(&f.JudgeModel, "judge-model", grade.DefaultJudgeModel,
+		"claude model that grades llm assertions (config: judge_model)")
 	cmd.Flags().BoolVar(&f.CountOnly, "count-only", false, "skip agent runs; only compute token usage per model")
 	cmd.Flags().BoolVar(&f.Baseline, "baseline", true,
 		"benchmark each eval without the skill (its lift), recomputed only when the eval or its fixtures "+
@@ -118,6 +122,22 @@ func sweepFlagAliases(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 		name = "harness"
 	}
 	return pflag.NormalizedName(name)
+}
+
+// judgeModel resolves the LLM judge for this run: --judge-model when the user
+// set it, else the config's judge_model, else the pinned default. It is not
+// part of run.Options because only the eval tier grades with a judge; the
+// triggers/evals/sweep entry points take it alongside those options.
+func (f *SweepFlags) judgeModel(cmd *cobra.Command) string {
+	if cmd.Flags().Changed("judge-model") {
+		return f.JudgeModel
+	}
+	if opts.Viper != nil && opts.Viper.IsSet("judge_model") {
+		if m := opts.Viper.GetString("judge_model"); m != "" {
+			return m
+		}
+	}
+	return grade.DefaultJudgeModel
 }
 
 // sweepOptions resolves the global flags and the sweep flags into the engine

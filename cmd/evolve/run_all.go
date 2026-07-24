@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/version"
@@ -34,7 +33,7 @@ var runAllCmd = &cobra.Command{
 		}
 		if interactive {
 			return uiRun(cmd, &allFlags.SweepFlags, plan.Tiers{Triggers: true, Evals: true},
-				allFlags.Runs, "", grade.DefaultJudgeModel, "run: some checks or cases failed", true)
+				allFlags.Runs, "", allFlags.judgeModel(cmd), "run: some checks or cases failed", true)
 		}
 
 		// Checks first, then one interleaved triggers+evals sweep (so a skill/model
@@ -57,7 +56,7 @@ var runAllCmd = &cobra.Command{
 			Options:        common,
 			Tiers:          plan.Tiers{Triggers: true, Evals: true},
 			Runs:           allFlags.Runs,
-			JudgeModel:     grade.DefaultJudgeModel,
+			JudgeModel:     allFlags.judgeModel(cmd),
 			TriggerTimeout: triggerTO,
 			EvalTimeout:    evalTO,
 		})

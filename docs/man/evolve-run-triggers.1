@@ -38,6 +38,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 	concurrent agent runs (default: ceil(cpus/2))
 
 .PP
+\fB--judge-model\fP="claude-sonnet-5"
+	claude model that grades llm assertions (config: judge_model)
+
+.PP
 \fB--keep-workspaces\fP[=false]
 	keep throwaway workspaces for debugging
 

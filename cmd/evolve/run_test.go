@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/grade"
 )
 
 // TestFailOrWarn covers the two outcomes of a run that completed with
@@ -118,5 +119,66 @@ func TestWriteCommandsEnforceVersionPin(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "invalid version constraint") {
 			t.Errorf("%s: err = %v, want the version-pin error before any work", name, err)
 		}
+	}
+}
+
+// TestJudgeModelPrecedence pins the resolution order for the LLM judge:
+// --judge-model wins when the user set it, otherwise the config's judge_model,
+// otherwise the pinned default. Verdicts are only comparable across runs that
+// used the same judge, so a silently wrong precedence here would re-base every
+// stored grade.
+func TestJudgeModelPrecedence(t *testing.T) {
+	tests := []struct {
+		name   string
+		config any // nil leaves judge_model unset
+		args   []string
+		want   string
+	}{
+		{name: "default when unset", want: grade.DefaultJudgeModel},
+		{name: "config wins over default", config: "claude-opus-5", want: "claude-opus-5"},
+		{
+			name: "flag wins over config", config: "claude-opus-5",
+			args: []string{"--judge-model", "claude-haiku-4-5"}, want: "claude-haiku-4-5",
+		},
+		{
+			name: "flag wins over default",
+			args: []string{"--judge-model", "claude-opus-5"}, want: "claude-opus-5",
+		},
+		{name: "empty config falls back to default", config: "", want: grade.DefaultJudgeModel},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			saved := opts.Viper
+			t.Cleanup(func() { opts.Viper = saved })
+			opts.Viper = viper.New()
+			if tc.config != nil {
+				opts.Viper.Set("judge_model", tc.config)
+			}
+
+			var f SweepFlags
+			cmd := &cobra.Command{Use: "x", RunE: func(*cobra.Command, []string) error { return nil }}
+			f.register(cmd, 600)
+			if err := cmd.Flags().Parse(tc.args); err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if got := f.judgeModel(cmd); got != tc.want {
+				t.Errorf("judgeModel() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestJudgeModelNilViper covers the no-config-file case: Options.Viper is nil
+// before any config is loaded, and the resolver must not panic on it.
+func TestJudgeModelNilViper(t *testing.T) {
+	saved := opts.Viper
+	t.Cleanup(func() { opts.Viper = saved })
+	opts.Viper = nil
+
+	var f SweepFlags
+	cmd := &cobra.Command{Use: "x", RunE: func(*cobra.Command, []string) error { return nil }}
+	f.register(cmd, 600)
+	if got := f.judgeModel(cmd); got != grade.DefaultJudgeModel {
+		t.Errorf("judgeModel() = %q, want %q", got, grade.DefaultJudgeModel)
 	}
 }

@@ -42,6 +42,11 @@ telemetry:
 # per-eval max_turns override it.
 max_turns: 20
 
+# Claude model that grades LLM assertions; --judge-model overrides for one
+# run. Keep it consistent across runs so verdicts stay comparable between
+# them and the providers under test.
+judge_model: "claude-sonnet-5"
+
 # Benchmark each eval without the skill (the skill's lift over no skill),
 # recomputed only when the eval or its fixtures change. --baseline
 # overrides for one run.
