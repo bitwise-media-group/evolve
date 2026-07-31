@@ -74,6 +74,12 @@ func builtins() []Model {
 			Preferred: HarnessClaude,
 		},
 		{
+			ID: "anthropic/claude-opus-5", ProviderID: ProviderAnthropic, Name: "Claude Opus 5",
+			InputUSD: usd(5.00), OutputUSD: usd(25.00),
+			Supported: map[string]string{HarnessClaude: "claude-opus-5", HarnessCopilot: "claude-opus-5"},
+			Preferred: HarnessClaude,
+		},
+		{
 			ID: "anthropic/claude-fable-5", ProviderID: ProviderAnthropic, Name: "Claude Fable 5",
 			InputUSD: usd(10.00), OutputUSD: usd(50.00),
 			Supported: map[string]string{HarnessClaude: "claude-fable-5", HarnessCopilot: "claude-fable-5"},
