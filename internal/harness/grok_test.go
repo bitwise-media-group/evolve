@@ -167,6 +167,9 @@ func TestGrokTriggerSpec(t *testing.T) {
 	if !slices.Contains(spec.Argv, "--no-memory") {
 		t.Errorf("want --no-memory: %v", spec.Argv)
 	}
+	if !containsPair(spec.Argv, "--permission-mode", "dontAsk") {
+		t.Errorf("want --permission-mode dontAsk: %v", spec.Argv)
+	}
 	assertNoYolo(t, spec.Argv)
 	assertGrokIsolatedEnv(t, spec, ws)
 
@@ -191,6 +194,12 @@ func TestGrokEvalSpec(t *testing.T) {
 	}
 	if !containsPair(spec.Argv, "--allow", "Read") || !containsPair(spec.Argv, "--allow", "Bash(terraform *)") {
 		t.Errorf("want default allow rules: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--allow", "Bash(find *)") {
+		t.Errorf("want Bash(find *) in default allows: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--permission-mode", "dontAsk") {
+		t.Errorf("want --permission-mode dontAsk: %v", spec.Argv)
 	}
 	if !slices.Contains(spec.Argv, "--no-memory") {
 		t.Errorf("want --no-memory: %v", spec.Argv)

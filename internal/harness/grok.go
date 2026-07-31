@@ -18,7 +18,10 @@ import (
 
 // grokDefaultAllowedTools mirrors claudeDefaultAllowedTools as Claude-compatible
 // --allow rules (Grok documents --allow as the Claude Code --allowedTools analog).
-const grokDefaultAllowedTools = "Read Write Edit Glob Grep Skill Bash(terraform *) Bash(tflint *) Bash(mkdir *)"
+// Bash(find *) is grok-only: find is the model's go-to exploration command but is
+// not on grok's built-in read-only shell list, so without a rule every eval's
+// first `find` would be denied.
+const grokDefaultAllowedTools = "Read Write Edit Glob Grep Skill Bash(terraform *) Bash(tflint *) Bash(mkdir *) Bash(find *)"
 
 // grokHomeRel is the workspace-relative GROK_HOME evolve gives the grok CLI.
 // Sessions, config, and (later) hooks live here so trigger/eval runs do not
@@ -272,6 +275,9 @@ func (g *Grok) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) mod
 		"--model", cliModelID,
 		"--output-format", "streaming-json",
 		"--max-turns", "2",
+		// dontAsk: deny would-prompt tool calls instead of cancelling the
+		// session (see EvalSpec); triggers only need the SKILL.md read anyway.
+		"--permission-mode", "dontAsk",
 		"--disable-web-search",
 		"--no-memory",
 		"--sandbox", grokSandboxArg(hostSandboxed),
@@ -294,6 +300,10 @@ func (g *Grok) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.
 		"--model", cliModelID,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(maxTurns),
+		// Headless grok in the default (ask) permission mode cancels the whole
+		// session when a tool call would prompt; dontAsk denies just that call
+		// so the model can adapt, matching Claude Code's headless behavior.
+		"--permission-mode", "dontAsk",
 		"--disable-web-search",
 		"--no-memory",
 		"--sandbox", grokSandboxArg(in.HostSandboxed),
