@@ -5,7 +5,9 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +93,51 @@ func TestNewLinksOnlyGivenSkills(t *testing.T) {
 	defer cleanupAll()
 	if got := linkedNames(t, wsAll, dir); len(got) != len(all) {
 		t.Fatalf("trigger workspace linked %v, want all %d", got, len(all))
+	}
+}
+
+// git runs a git command in ws with operator/system config nulled out, so the
+// assertions see the same repository state initRepo produced.
+func git(t *testing.T, ws string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = ws
+	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// New leaves the workspace a git repository with the fixture state committed
+// and nothing untracked, so repo-root-detecting tools find a project and the
+// agent's changes are exactly the diff against HEAD.
+func TestNewInitialisesGitRepo(t *testing.T) {
+	root := t.TempDir()
+	skills := mkSkills(t, root, "one")
+	fixture := filepath.Join(root, "fixture.txt")
+	if err := os.WriteFile(fixture, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws, cleanup, err := New("", "evals.", skills, []string{".claude/skills"},
+		map[string]string{"docs/fixture.txt": fixture}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	if status := git(t, ws, "status", "--porcelain"); status != "" {
+		t.Errorf("workspace not clean after New:\n%s", status)
+	}
+	if count := git(t, ws, "rev-list", "--count", "HEAD"); count != "1" {
+		t.Errorf("commit count = %s, want 1", count)
+	}
+	if branch := git(t, ws, "branch", "--show-current"); branch != "main" {
+		t.Errorf("branch = %s, want main", branch)
 	}
 }
