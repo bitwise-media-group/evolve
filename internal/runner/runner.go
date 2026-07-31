@@ -151,6 +151,9 @@ func (e *Exec) Run(ctx context.Context, spec model.CommandSpec, timeout time.Dur
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = spec.Dir
 	cmd.Env = append(os.Environ(), spec.Env...)
+	if spec.Stdin != nil {
+		cmd.Stdin = bytes.NewReader(spec.Stdin)
+	}
 	configureProcessTreeKill(cmd)
 	cmd.WaitDelay = waitDelay
 

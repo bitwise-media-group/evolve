@@ -42,9 +42,10 @@ type Model struct {
 // touch os/exec; the runner package executes specs, so tests can fake
 // execution entirely.
 type CommandSpec struct {
-	Argv []string // Argv[0] is replaced with the resolved CLI path before exec
-	Dir  string   // workspace the agent runs in
-	Env  []string // extras appended to os.Environ()
+	Argv  []string // Argv[0] is replaced with the resolved CLI path before exec
+	Dir   string   // workspace the agent runs in
+	Env   []string // extras appended to os.Environ()
+	Stdin []byte   // fed to the process's stdin, then closed; nil = no stdin
 }
 
 // Usage is the harness-reported consumption of one live agent session. Fields

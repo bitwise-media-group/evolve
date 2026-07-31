@@ -32,6 +32,18 @@ func TestRunCollectsStdout(t *testing.T) {
 	}
 }
 
+func TestRunFeedsStdin(t *testing.T) {
+	spec := sh(`cat`)
+	spec.Stdin = []byte("fed via stdin\n")
+	res, err := (&Exec{}).Run(context.Background(), spec, 5*time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(res.Stdout); got != "fed via stdin\n" {
+		t.Errorf("stdout = %q, want the stdin payload echoed back", got)
+	}
+}
+
 func TestRunSurfacesExitCode(t *testing.T) {
 	// A non-zero exit is data the eval runtime-error classifier relies on, not
 	// an error the runner should swallow or return.
