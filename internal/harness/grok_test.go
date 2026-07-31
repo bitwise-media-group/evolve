@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -73,6 +74,8 @@ func TestGrokRuntimeError(t *testing.T) {
 		{"plain text clean exit", "hello\n", 0, ""},
 		{"plain text crash", "boom\n", 1, "unparseable CLI output"},
 		{"error envelope", grokJSONError, 1, "grok run error: Couldn't start session: auth failed"},
+		{"cancelled session", `{"text":"partial answer","stopReason":"cancelled"}`, 0,
+			"grok session cancelled (headless permission prompt)"},
 	}
 	for _, tt := range tests {
 		if got := g.RuntimeError([]byte(tt.stdout), tt.exitCode, false); got != tt.want {
@@ -167,8 +170,9 @@ func TestGrokTriggerSpec(t *testing.T) {
 	if !slices.Contains(spec.Argv, "--no-memory") {
 		t.Errorf("want --no-memory: %v", spec.Argv)
 	}
-	if !containsPair(spec.Argv, "--permission-mode", "dontAsk") {
-		t.Errorf("want --permission-mode dontAsk: %v", spec.Argv)
+	// No Bash allow rules: the bash-guard hook must deny every shell command.
+	if !slices.Contains(spec.Env, "EVOLVE_BASH_ALLOW=") {
+		t.Errorf("want empty EVOLVE_BASH_ALLOW: %v", spec.Env)
 	}
 	assertNoYolo(t, spec.Argv)
 	assertGrokIsolatedEnv(t, spec, ws)
@@ -198,8 +202,10 @@ func TestGrokEvalSpec(t *testing.T) {
 	if !containsPair(spec.Argv, "--allow", "Bash(find *)") {
 		t.Errorf("want Bash(find *) in default allows: %v", spec.Argv)
 	}
-	if !containsPair(spec.Argv, "--permission-mode", "dontAsk") {
-		t.Errorf("want --permission-mode dontAsk: %v", spec.Argv)
+	// The bash-guard hook gets the inner Bash patterns of the same allow set.
+	wantAllow := "EVOLVE_BASH_ALLOW=terraform *\x1ftflint *\x1fmkdir *\x1ffind *"
+	if !slices.Contains(spec.Env, wantAllow) {
+		t.Errorf("want %q in env: %v", wantAllow, spec.Env)
 	}
 	if !slices.Contains(spec.Argv, "--no-memory") {
 		t.Errorf("want --no-memory: %v", spec.Argv)
@@ -225,6 +231,66 @@ func TestGrokEvalSpec(t *testing.T) {
 	}
 	if !containsPair(spec.Argv, "--allow", "Grep") {
 		t.Errorf("want Grep allow: %v", spec.Argv)
+	}
+	if !slices.Contains(spec.Env, "EVOLVE_BASH_ALLOW=") {
+		t.Errorf("want empty EVOLVE_BASH_ALLOW with Bash-free override: %v", spec.Env)
+	}
+}
+
+// TestGrokBashGuardHookScript exercises the seeded PreToolUse guard: commands
+// matching an EVOLVE_BASH_ALLOW pattern fall through silently (grok's own
+// allow rules then approve them); everything else — chained commands
+// included, since allow rules match the whole string only — is denied with a
+// reason. Unparseable payloads fall through to grok's own permission flow.
+func TestGrokBashGuardHookScript(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	ws := t.TempDir()
+	ensureGrokHome(grokHomeDir(ws))
+	script := filepath.Join(grokHomeDir(ws), "hooks", "evolve-bash-guard.sh")
+	if st, err := os.Stat(script); err != nil || st.Mode()&0o111 == 0 {
+		t.Fatalf("guard script missing or not executable: %v", err)
+	}
+	run := func(payload string) string {
+		t.Helper()
+		cmd := exec.Command(script)
+		cmd.Env = append(os.Environ(), "EVOLVE_BASH_ALLOW=go *\x1fmkdir *")
+		cmd.Stdin = strings.NewReader(payload)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("hook: %v\n%s", err, out)
+		}
+		return string(out)
+	}
+	tests := []struct {
+		name    string
+		command string
+		deny    bool
+	}{
+		{"allowed prefix", "go build ./...", false},
+		{"allowed exact-ish", "mkdir -p .github/workflows", false},
+		{"chained all segments allowed", "mkdir -p x && go build ./...", false},
+		{"chained unlisted segment", "mkdir -p x && cp a x/b", true},
+		{"heredoc write", "mkdir -p x && cat > x/y.yaml << 'EOF'\nname: y\nEOF", true},
+		{"read-only but unlisted", "ls -la && find . -type f", true},
+		{"unlisted command", "cp a b", true},
+	}
+	for _, tt := range tests {
+		payload := `{"toolName":"run_terminal_command","toolInput":{"command":` +
+			strconv.Quote(tt.command) + `}}`
+		out := run(payload)
+		if got := strings.Contains(out, `"decision": "deny"`); got != tt.deny {
+			t.Errorf("%s: deny = %v, want %v (output %q)", tt.name, got, tt.deny, out)
+		}
+		if tt.deny && !strings.Contains(out, "go, mkdir") {
+			t.Errorf("%s: deny reason should list allowed prefixes: %q", tt.name, out)
+		}
+	}
+	// Payload without a command falls through (no decision) so grok's own
+	// permission flow stays authoritative.
+	if out := run(`{"toolName":"run_terminal_command"}`); strings.TrimSpace(out) != "" {
+		t.Errorf("commandless payload: want silent fall-through, got %q", out)
 	}
 }
 

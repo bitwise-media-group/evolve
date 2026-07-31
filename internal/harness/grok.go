@@ -93,6 +93,104 @@ printf '%s\n' '{"decision":"allow"}'
 exit 0
 `
 
+// grokBashGuardHookJSON registers a PreToolUse hook that denies shell commands
+// not covered by the run's Bash allow rules. Headless grok resolves a
+// would-prompt permission request by cancelling the entire session
+// (permission_cancelled) — --permission-mode dontAsk does not change this — so
+// the only way to keep a session alive is to deny the call before the
+// permission system sees it; a hook deny is fed back to the model, which then
+// adapts (file tools, or an allowed command).
+const grokBashGuardHookJSON = `{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "run_terminal_command|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./evolve-bash-guard.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
+// grokBashGuardHookScript approves (falls through, exit 0 with no decision) a
+// shell command only when every chained segment (split on &&, ||, ;, | and
+// newlines) matches an allow pattern from EVOLVE_BASH_ALLOW (unit-separator
+// 0x1f separated, the inner text of the run's Bash(...) rules; a trailing *
+// or :* is a prefix wildcard) and the command uses no construct the splitter
+// cannot see through (redirects, heredocs, command substitution, background
+// &). Everything else is denied with a reason the model can act on.
+//
+// The observed grok build approves a chained command only when every segment
+// matches an allow rule (its documented whole-string-only allow matching is
+// looser than reality), so per-segment matching keeps the hook's pass-through
+// set a subset of what grok then approves itself — anything else would fall
+// through to a headless permission prompt, which cancels the session. An
+// unparseable payload falls through to grok's own permission flow rather than
+// denying blind.
+const grokBashGuardHookScript = `#!/bin/sh
+# evolve: deny non-allowlisted shell commands with feedback (PreToolUse).
+if ! command -v python3 >/dev/null 2>&1; then
+  printf '%s\n' '{"decision":"deny","reason":"Shell commands are unavailable in this environment; use the file tools instead."}'
+  exit 0
+fi
+exec python3 -c '
+import json, os, re, sys
+
+def find_cmd(node):
+    if isinstance(node, dict):
+        v = node.get("command")
+        if isinstance(v, str):
+            return v
+        for child in node.values():
+            found = find_cmd(child)
+            if found is not None:
+                return found
+    elif isinstance(node, list):
+        for child in node:
+            found = find_cmd(child)
+            if found is not None:
+                return found
+    return None
+
+try:
+    cmd = find_cmd(json.load(sys.stdin))
+except Exception:
+    cmd = None
+if not isinstance(cmd, str) or not cmd.strip():
+    sys.exit(0)
+cmd = cmd.strip()
+pats = [p.strip() for p in os.environ.get("EVOLVE_BASH_ALLOW", "").split("\x1f") if p.strip()]
+
+def match_one(seg):
+    for pat in pats:
+        if pat.endswith(":*"):
+            if seg.startswith(pat[:-2]):
+                return True
+        elif pat.endswith("*"):
+            if seg.startswith(pat[:-1]):
+                return True
+        elif seg == pat or seg.startswith(pat + " "):
+            return True
+    return False
+
+opaque = re.search(r"\$\(|\x60|<<|[<>]", cmd) or "&" in cmd.replace("&&", "")
+segs = [s.strip() for s in re.split(r"&&|\|\||[;|\n]", cmd)]
+if not opaque and segs and all(s and match_one(s) for s in segs):
+    sys.exit(0)
+msg = "Shell command denied: it is not in the allowlist for this task. Prefer the dedicated file tools (read, write, edit, grep)"
+names = ", ".join(sorted({p.rstrip("*:").strip() for p in pats if p.rstrip("*:").strip()}))
+if names:
+    msg = msg + "; every chained segment must start with one of: " + names
+print(json.dumps({"decision": "deny", "reason": msg}))
+'
+`
+
 // grokHitSeq allocates unique per-invocation hit-file names under a shared
 // trigger workspace (jobs > 1).
 var grokHitSeq atomic.Uint64
@@ -201,7 +299,42 @@ func ensureGrokHome(home string) {
 		_ = os.WriteFile(cfg, []byte(grokIsolatedConfig), 0o644)
 	}
 	seedGrokTriggerHitHook(home)
+	seedGrokBashGuardHook(home)
 	linkGrokAuth(home)
+}
+
+// seedGrokBashGuardHook writes the PreToolUse bash-guard hook under
+// $GROK_HOME/hooks (see grokBashGuardHookJSON for why it exists).
+func seedGrokBashGuardHook(home string) {
+	hooksDir := filepath.Join(home, "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		return
+	}
+	script := filepath.Join(hooksDir, "evolve-bash-guard.sh")
+	if err := os.WriteFile(script, []byte(grokBashGuardHookScript), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(hooksDir, "evolve-bash-guard.json"),
+		[]byte(grokBashGuardHookJSON), 0o644)
+}
+
+// grokBashAllowEnv renders the Bash(...) patterns from a Claude-style
+// allowed-tools string as the EVOLVE_BASH_ALLOW variable the bash-guard hook
+// matches against (unit-separator 0x1f separated; empty when no Bash rules).
+func grokBashAllowEnv(tools string) string {
+	var pats []string
+	for _, rule := range splitAllowRules(tools) {
+		inner, ok := strings.CutPrefix(rule, "Bash(")
+		if !ok {
+			continue
+		}
+		inner, ok = strings.CutSuffix(inner, ")")
+		if !ok {
+			continue
+		}
+		pats = append(pats, inner)
+	}
+	return "EVOLVE_BASH_ALLOW=" + strings.Join(pats, "\x1f")
 }
 
 // seedGrokTriggerHitHook writes the PreToolUse hook used for trigger early-exit
@@ -275,15 +408,17 @@ func (g *Grok) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) mod
 		"--model", cliModelID,
 		"--output-format", "streaming-json",
 		"--max-turns", "2",
-		// dontAsk: deny would-prompt tool calls instead of cancelling the
-		// session (see EvalSpec); triggers only need the SKILL.md read anyway.
-		"--permission-mode", "dontAsk",
 		"--disable-web-search",
 		"--no-memory",
 		"--sandbox", grokSandboxArg(hostSandboxed),
 	}
-	argv = appendAllowRules(argv, "Skill Read")
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: grokEnv(ws)}
+	const tools = "Skill Read"
+	argv = appendAllowRules(argv, tools)
+	// No Bash rules → the bash-guard hook denies every shell command with
+	// feedback, instead of a would-prompt call cancelling the session before
+	// the skill read that decides the trigger.
+	env := append(grokEnv(ws), grokBashAllowEnv(tools))
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: env}
 }
 
 func (g *Grok) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.CommandSpec {
@@ -300,16 +435,18 @@ func (g *Grok) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.
 		"--model", cliModelID,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(maxTurns),
-		// Headless grok in the default (ask) permission mode cancels the whole
-		// session when a tool call would prompt; dontAsk denies just that call
-		// so the model can adapt, matching Claude Code's headless behavior.
-		"--permission-mode", "dontAsk",
 		"--disable-web-search",
 		"--no-memory",
 		"--sandbox", grokSandboxArg(in.HostSandboxed),
 	}
 	argv = appendAllowRules(argv, tools)
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: grokEnv(ws)}
+	// The bash-guard hook (seeded into the isolated home) denies shell
+	// commands outside the allow rules with feedback the model can act on.
+	// Without it any such command cancels the whole headless session
+	// (--permission-mode dontAsk does not prevent that), killing the eval
+	// after a couple of turns with an empty workspace.
+	env := append(grokEnv(ws), grokBashAllowEnv(tools))
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: env}
 }
 
 // ScanLine detects skill activation for a trigger query.
@@ -478,6 +615,12 @@ func (g *Grok) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 			return "grok run error"
 		}
 		return "grok run error: " + msg
+	}
+	if result.StopReason == "cancelled" {
+		// Headless grok cancels the whole session when a tool call would
+		// prompt (the bash-guard hook exists to prevent this). The agent never
+		// finished, so report infrastructure, not a graded failure.
+		return "grok session cancelled (headless permission prompt)"
 	}
 	if result.Text != "" {
 		return "" // there is an answer to grade
