@@ -5,6 +5,7 @@ package harness
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -34,6 +35,38 @@ func NewCopilot() *Copilot {
 	}}
 }
 
+// copilotHomeRel is the workspace-relative COPILOT_HOME evolve gives the
+// copilot CLI (COPILOT_HOME replaces the whole ~/.copilot path). Session state
+// and logs live here so runs do not touch the operator's real ~/.copilot; the
+// tree dies with the workspace. Project skills stay at .copilot/skills (the
+// skillDirs mount).
+const copilotHomeRel = ".evolve/copilot-home"
+
+// copilotEnv returns the process env extras for a copilot invocation in ws:
+// isolated COPILOT_HOME with the operator's config copied in.
+func copilotEnv(ws string) []string {
+	home := isolatedDir(ws, copilotHomeRel)
+	ensureCopilotHome(home)
+	return []string{"COPILOT_HOME=" + home}
+}
+
+// ensureCopilotHome creates the isolated home and copies the operator's
+// config.json. Keychain-stored auth is global to the user and needs no
+// bridging; config.json carries the token only on plaintext-fallback
+// platforms, and mixes it with mutable config, so a 0600 copy — never a
+// symlink — keeps run writes out of the real file. Best-effort per the
+// isolate.go contract.
+func ensureCopilotHome(home string) {
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		return
+	}
+	src := operatorDir("COPILOT_HOME", ".copilot")
+	if src == "" || sameFilePath(src, home) {
+		return
+	}
+	copyFile0600(filepath.Join(src, "config.json"), filepath.Join(home, "config.json"))
+}
+
 // TriggerSpec builds the headless invocation. --allow-all-tools runs tools
 // without interactive approval and --no-ask-user keeps the run from pausing; -s
 // is deliberately omitted so the CLI's tool/file activity stays visible to
@@ -48,6 +81,7 @@ func (c *Copilot) TriggerSpec(ws, query, cliModelID string, _ bool) model.Comman
 			"--no-ask-user",
 		},
 		Dir: ws,
+		Env: copilotEnv(ws),
 	}
 }
 
@@ -70,6 +104,7 @@ func (c *Copilot) EvalSpec(ws string, in model.EvalInput, cliModelID string) mod
 			"--no-ask-user",
 		},
 		Dir: ws,
+		Env: copilotEnv(ws),
 	}
 }
 

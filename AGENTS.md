@@ -72,7 +72,9 @@ snippet-includes the generated config fragments.
 - `harness` — the agent CLIs evolve drives (Claude Code, Codex, Gemini, Cursor, Copilot, Antigravity, Grok): runner-CLI
   command construction, output parsing, the optional `EvalRunner` capability, and `Selection`/`RunnableHarness` that
   bind a model to the one harness that runs it (evals run once per model, never once per harness).
-- `runner` — executes `model.CommandSpec`s; the only package touching `os/exec` (so engines test against a fake).
+- `runner` — executes `model.CommandSpec`s; the only package touching `os/exec` for agent execution, so engines test
+  against a fake (lone exception: the claude harness's setup-time macOS Keychain bridge in `internal/harness/claude.go`
+  shells out to `/usr/bin/security`).
 - `grade` — assertion evaluation: deterministic checks (files/regex/commands) plus an LLM judge.
 - `workspace` — builds the throwaway project dirs each agent session runs in.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.

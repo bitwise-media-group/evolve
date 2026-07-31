@@ -59,7 +59,8 @@ tiers). Shared global state lives in the package-level `opts` (`cli.Options`).
 `internal/cli` owns the resolved global state (`Options`) and the helpers that turn it into a detected repository, an
 effective harness/model set, a token counter, and report thresholds. The engines (`run`, `report`) take what they need
 as explicit options — the trigger and case engines embed the shared `run.Options` — and write through the interfaces
-they declare, so they test against fakes; `runner` is the only package that touches `os/exec`.
+they declare, so they test against fakes; `runner` is the only package that touches `os/exec` for agent execution (the
+lone exception is the claude harness's setup-time macOS Keychain bridge, covered under session isolation below).
 
 Because `runner` is that single exec chokepoint, it also enforces filesystem isolation: agent CLIs run in full-auto
 (`--dangerously-skip-permissions` and the like), so `cmd.Dir` alone would not stop a run from wandering into other
@@ -80,6 +81,29 @@ harnesses disable the agent's own (`run.Options.HostSandboxed`, threaded into `T
 everything (file tools included, not just shell). The fallback is symmetric: with evolve unconfined (`--no-sandbox`) the
 agent keeps its own sandbox as the only protection (Grok uses `--sandbox workspace`). A `managed-settings.json` that
 forces Claude's sandbox on still wins, so those hosts must use `--no-sandbox`.
+
+Filesystem confinement covers what a run may write; session isolation covers what it may remember. Every harness also
+points its CLI at a throwaway state directory inside the workspace (`.evolve/<name>-home`) so trigger/eval sessions —
+and the LLM judge's own `claude` sessions — never land in the operator's real session history, and no long-term memory
+carries across runs. CLIs with a dedicated config-dir variable get that (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+`COPILOT_HOME`, `GROK_HOME`); the rest run under an overridden `$HOME` (gemini and agy, which hard-wire their state
+roots to the home directory, and cursor, which gets `CURSOR_CONFIG_DIR` too but keeps its chat store at an undocumented
+path under `~/.cursor`). Auth is bridged in from the operator's real config root: symlinked for auth-only files so a
+mid-run token refresh writes through (grok's and codex's `auth.json`, claude's `.credentials.json`, gemini's
+`oauth_creds.json`, agy's oauth token), copied `0600` for files that mix credentials with mutable config so a run can
+never write back (cursor's `cli-config.json`, copilot's `config.json`, gemini's `settings.json`); Keychain-stored
+credentials (claude and copilot on macOS) are global to the user and need no bridging. HOME-overridden harnesses also
+get `~/.gitconfig` and the XDG `~/.config/git` tree linked in so git identity keeps working. (The `EVOLVE_*`-prefixed
+credential variables are deliberately not bridged: they scope credentials to the token-counting APIs, and the prefix
+exists precisely so they never override what the harness CLIs authenticate with.) Claude on macOS needs one extra
+bridge: the CLI namespaces its Keychain entry by config dir (`Claude Code-credentials-` + the first 8 hex chars of
+`sha256(dir)`), so an isolated `CLAUDE_CONFIG_DIR` can never see the operator's entry — when no credential env var the
+CLI reads is set, evolve reads the operator's entry back via `/usr/bin/security` (the CLI's own storage mechanism) into
+the isolated `.credentials.json`, which the CLI accepts as its fallback store. That `security` call is the one exec
+outside `internal/runner`; harness specs stay pure, so the engines still test against a fake runner. The shared helpers
+live in `internal/harness/isolate.go` and are best-effort: a failure still leaves the env override set, so the CLI
+builds its own tree and an auth gap surfaces as a runtime error on the case rather than an evolve crash. The isolated
+state dies with the workspace; `--keep-workspaces` preserves it for debugging.
 
 The CLI reference in `docs/cli` and the man pages in `docs/man` are generated from the cobra command tree, and the
 configuration reference plus annotated example config files in `docs/config` from `internal/configdoc`'s schema (all via

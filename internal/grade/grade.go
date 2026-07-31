@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/runner"
 )
@@ -223,6 +224,10 @@ func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
 			"--max-turns", "4",
 			"--allowedTools", "Read Glob Grep"},
 		Dir: opts.Workspace,
+		// The judge is a claude session too: isolate it into the workspace's
+		// throwaway config dir so verdict runs never land in the operator's
+		// real session history.
+		Env: harness.ClaudeEnv(opts.Workspace),
 	}, opts.Timeout, nil)
 	if err != nil {
 		slog.DebugContext(ctx, "judge error",

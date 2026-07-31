@@ -6,6 +6,7 @@ package harness
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,6 +32,42 @@ func NewCursor() *Cursor {
 	}}
 }
 
+// cursorHomeRel is the workspace-relative fake $HOME evolve gives the cursor
+// agent CLI. CURSOR_CONFIG_DIR relocates cli-config.json, but the chat/session
+// store under ~/.cursor is undocumented and may not follow it, so isolation
+// sets both the variable and HOME; all agent state lands here and dies with
+// the workspace. Project skills stay at .cursor/skills (the skillDirs mount).
+const cursorHomeRel = ".evolve/cursor-home"
+
+// cursorEnv returns the process env extras for a cursor invocation in ws: a
+// fake HOME plus CURSOR_CONFIG_DIR pointing inside it, with the operator's
+// auth copied in.
+func cursorEnv(ws string) []string {
+	home := isolatedDir(ws, cursorHomeRel)
+	dir := filepath.Join(home, ".cursor")
+	ensureCursorHome(home, dir)
+	return []string{
+		"HOME=" + home,
+		"CURSOR_CONFIG_DIR=" + dir,
+	}
+}
+
+// ensureCursorHome creates the isolated config dir, copies the operator's
+// cli-config.json (it mixes the auth token with mutable config, so a 0600 copy
+// — never a symlink — keeps run writes out of the real file), and bridges git
+// config into the fake HOME. Best-effort per the isolate.go contract.
+func ensureCursorHome(home, dir string) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	src := operatorDir("CURSOR_CONFIG_DIR", ".cursor")
+	if src == "" || sameFilePath(src, dir) {
+		return
+	}
+	copyFile0600(filepath.Join(src, "cli-config.json"), filepath.Join(dir, "cli-config.json"))
+	linkGitConfig(home)
+}
+
 // TriggerSpec builds the headless invocation. --force allows tool calls without
 // interactive approval; stream-json emits tool_call events that make skill
 // activation observable. Cursor applies no OS sandbox of its own (its
@@ -45,6 +82,7 @@ func (c *Cursor) TriggerSpec(ws, query, cliModelID string, _ bool) model.Command
 			"--force",
 		},
 		Dir: ws,
+		Env: cursorEnv(ws),
 	}
 }
 
@@ -73,6 +111,7 @@ func (c *Cursor) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 			"--force",
 		},
 		Dir: ws,
+		Env: cursorEnv(ws),
 	}
 }
 

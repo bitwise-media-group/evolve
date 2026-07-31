@@ -5,10 +5,18 @@ package harness
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
@@ -47,6 +55,109 @@ func NewClaude() *Claude {
 // that forces the sandbox on still wins, so those hosts must use --no-sandbox.
 const claudeSandboxOff = `{"sandbox":{"enabled":false}}`
 
+// claudeConfigRel is the workspace-relative CLAUDE_CONFIG_DIR evolve gives the
+// claude CLI. Sessions, project history, and auto-memory live here so runs do
+// not touch the operator's real ~/.claude; the tree dies with the workspace.
+// Project skills stay at .claude/skills (the skillDirs mount).
+const claudeConfigRel = ".evolve/claude-home"
+
+// ClaudeEnv returns the process env extras that point a claude invocation in
+// ws at a throwaway workspace-rooted config dir. Exported because
+// internal/grade's LLM judge is a claude invocation too and must be isolated
+// the same way.
+func ClaudeEnv(ws string) []string {
+	dir := isolatedDir(ws, claudeConfigRel)
+	ensureClaudeConfig(dir)
+	return []string{
+		"CLAUDE_CONFIG_DIR=" + dir,
+		"DISABLE_AUTOUPDATER=1",
+	}
+}
+
+// ensureClaudeConfig creates the isolated config dir, seeds the state file,
+// and links the operator's OAuth credentials. macOS stores those in the
+// Keychain (global, no bridging needed); Linux keeps .credentials.json beside
+// the config, so the link is what carries auth there. Best-effort per the
+// isolate.go contract.
+func ensureClaudeConfig(dir string) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	seedClaudeState(dir)
+	opDir := operatorDir("CLAUDE_CONFIG_DIR", ".claude")
+	dst := filepath.Join(dir, ".credentials.json")
+	linkFile(filepath.Join(opDir, ".credentials.json"), dst)
+	bridgeClaudeKeychain(opDir, dst)
+}
+
+// claudeKeychainService is the macOS Keychain service name the claude CLI uses
+// for the OAuth credentials of a given config dir. The CLI namespaces the
+// entry per config dir — "Claude Code-credentials-" + the first 8 hex chars of
+// sha256(dir) — so a claude run pointed at an isolated CLAUDE_CONFIG_DIR can
+// never see the operator's entry. Observed against claude 2.1.220 by shimming
+// `security` and diffing the find-generic-password service across config dirs.
+func claudeKeychainService(dir string) string {
+	sum := sha256.Sum256([]byte(dir))
+	return "Claude Code-credentials-" + hex.EncodeToString(sum[:4])
+}
+
+// bridgeClaudeKeychain (macOS) copies the operator's Keychain-held OAuth
+// payload into the isolated config dir's .credentials.json — the CLI falls
+// back to that file when its per-config-dir Keychain entry is missing (see
+// claudeKeychainService), which is exactly the isolated case. The legacy
+// unsuffixed service name covers installs that logged in before the CLI
+// namespaced its entries. Skipped when a credential env var the CLI itself
+// reads already authenticates the run (the EVOLVE_-prefixed variables are
+// token-counting credentials and deliberately never reach the CLI), when the
+// file exists (bridged from an operator .credentials.json), or off darwin;
+// best-effort like the rest of isolate.go.
+//
+// This is the one exec outside internal/runner: the payload lives in the
+// Keychain, not in a file, and /usr/bin/security is the claude CLI's own
+// storage mechanism, so reading it back the same way is the only bridge
+// available. Harness specs stay pure — this is setup, not agent execution.
+func bridgeClaudeKeychain(opDir, dst string) {
+	if runtime.GOOS != "darwin" || opDir == "" {
+		return
+	}
+	for _, k := range []string{"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN"} {
+		if os.Getenv(k) != "" {
+			return
+		}
+	}
+	if _, err := os.Lstat(dst); err == nil {
+		return
+	}
+	u, err := user.Current()
+	if err != nil || u.Username == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, service := range []string{claudeKeychainService(opDir), "Claude Code-credentials"} {
+		out, err := exec.CommandContext(ctx, "/usr/bin/security",
+			"find-generic-password", "-a", u.Username, "-w", "-s", service).Output()
+		if err != nil || len(bytes.TrimSpace(out)) == 0 {
+			continue
+		}
+		_ = os.WriteFile(dst, out, 0o600)
+		return
+	}
+}
+
+// seedClaudeState writes the isolated .claude.json (with CLAUDE_CONFIG_DIR
+// set, the state file lives inside the config dir) with onboarding marked done
+// so headless -p runs never stall on first-run prompts. Nothing else carries
+// over: logged-in state is purely a matter of reachable credentials (env var,
+// .credentials.json, or the Keychain bridge), and the operator's session
+// history, project state, and caches deliberately stay behind.
+func seedClaudeState(dir string) {
+	state := filepath.Join(dir, ".claude.json")
+	if _, err := os.Lstat(state); err != nil {
+		_ = os.WriteFile(state, []byte(`{"hasCompletedOnboarding":true}`+"\n"), 0o600)
+	}
+}
+
 func (c *Claude) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) model.CommandSpec {
 	argv := []string{
 		"claude", "-p", query,
@@ -59,7 +170,7 @@ func (c *Claude) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) m
 	if hostSandboxed {
 		argv = append(argv, "--settings", claudeSandboxOff)
 	}
-	return model.CommandSpec{Argv: argv, Dir: ws}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: ClaudeEnv(ws)}
 }
 
 // claudeContentBlock is one content block of a Claude message in stream-json
@@ -166,7 +277,7 @@ func (c *Claude) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 	if in.HostSandboxed {
 		argv = append(argv, "--settings", claudeSandboxOff)
 	}
-	return model.CommandSpec{Argv: argv, Dir: ws}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: ClaudeEnv(ws)}
 }
 
 // ParseEvalOutput reads the final answer and usage from the terminal result

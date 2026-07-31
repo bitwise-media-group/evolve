@@ -34,6 +34,9 @@ func (j *judgeRunner) Run(ctx context.Context, spec model.CommandSpec, timeout t
 
 func opts(t *testing.T, output string) Options {
 	t.Helper()
+	// Keep judge-spec construction hermetic: a set credential var stops the
+	// harness isolation setup from consulting the host's real Keychain.
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
 	return Options{
 		Runner:    &judgeRunner{},
 		Workspace: t.TempDir(),
@@ -166,6 +169,12 @@ func TestLLMJudge(t *testing.T) {
 	cmdline := strings.Join(j.gotSpec.Argv, " ")
 	if !strings.Contains(cmdline, "--model "+DefaultJudgeModel) || !strings.Contains(cmdline, "Read Glob Grep") {
 		t.Errorf("judge invocation = %q", cmdline)
+	}
+	// The judge session is isolated into the workspace's throwaway config dir,
+	// never the operator's real session history.
+	envline := strings.Join(j.gotSpec.Env, " ")
+	if !strings.Contains(envline, "CLAUDE_CONFIG_DIR="+o.Workspace) {
+		t.Errorf("judge env = %q, want workspace-rooted CLAUDE_CONFIG_DIR", envline)
 	}
 }
 

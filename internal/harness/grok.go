@@ -174,24 +174,14 @@ func grokSandboxArg(hostSandboxed bool) string {
 
 // grokHomeDir is the absolute GROK_HOME for a workspace-rooted run.
 func grokHomeDir(ws string) string {
-	if ws == "" {
-		return grokHomeRel
-	}
-	return filepath.Join(ws, filepath.FromSlash(grokHomeRel))
+	return isolatedDir(ws, grokHomeRel)
 }
 
 // operatorGrokHome is the operator's real Grok config root (source of browser
 // auth), not the per-workspace isolated home. Honors GROK_HOME when the parent
 // evolve process itself has it set; otherwise ~/.grok.
 func operatorGrokHome() string {
-	if h := os.Getenv("GROK_HOME"); h != "" {
-		return h
-	}
-	userHome, err := os.UserHomeDir()
-	if err != nil || userHome == "" {
-		return ""
-	}
-	return filepath.Join(userHome, ".grok")
+	return operatorDir("GROK_HOME", ".grok")
 }
 
 // ensureGrokHome creates the isolated home, seeds a minimal config.toml that
@@ -259,32 +249,7 @@ func linkGrokAuth(isolatedHome string) {
 	if srcHome == "" || sameFilePath(srcHome, isolatedHome) {
 		return
 	}
-	src := filepath.Join(srcHome, "auth.json")
-	dst := filepath.Join(isolatedHome, "auth.json")
-	if _, err := os.Lstat(dst); err == nil {
-		return
-	}
-	if _, err := os.Stat(src); err != nil {
-		return
-	}
-	if err := os.Symlink(src, dst); err == nil {
-		return
-	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(dst, data, 0o600)
-}
-
-// sameFilePath reports whether a and b name the same path after cleaning.
-func sameFilePath(a, b string) bool {
-	a, errA := filepath.Abs(a)
-	b, errB := filepath.Abs(b)
-	if errA != nil || errB != nil {
-		return a == b
-	}
-	return a == b
+	linkFile(filepath.Join(srcHome, "auth.json"), filepath.Join(isolatedHome, "auth.json"))
 }
 
 // grokEnv returns the process env extras for a grok invocation in ws: isolated

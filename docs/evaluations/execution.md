@@ -30,6 +30,12 @@ your machine (disable with `--no-sandbox`). When the case finishes and grading i
 `--keep-workspaces` to leave them on disk for debugging — useful when an assertion fails and you want to see exactly
 what the agent produced.
 
+The workspace is also the agent's entire session footprint. Each harness points its CLI at a throwaway state directory
+under `<workspace>/.evolve/` — via the CLI's config-dir variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `COPILOT_HOME`,
+`GROK_HOME`) or an overridden `$HOME` for CLIs without one — with your login credentials bridged in read-through. Eval
+sessions never appear in your real session history, and no long-term memory carries across runs. Under
+`--keep-workspaces`, session transcripts survive in that directory alongside the workspace files.
+
 ```mermaid
 flowchart LR
   A[eval case] --> B[mkdir temp<br/>workspace]

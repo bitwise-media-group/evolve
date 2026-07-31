@@ -5,6 +5,7 @@ package harness
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -20,8 +21,10 @@ import (
 // estimate/measured fields stay absent and render n/a.
 //
 // Operational note: agy must be able to write its app-data under
-// ~/.gemini/antigravity-cli (logs, project config, OAuth token); a probe under a
-// filesystem sandbox that blocked those writes failed to start a conversation.
+// <home>/.gemini/antigravity-cli (logs, project config, OAuth token); a probe
+// under a filesystem sandbox that blocked those writes failed to start a
+// conversation. evolve therefore runs agy under an isolated fake $HOME inside
+// the workspace (see agyEnv), which is always writable.
 type Antigravity struct {
 	base
 }
@@ -61,7 +64,42 @@ func (a *Antigravity) TriggerSpec(ws, query, cliModelID string, _ bool) model.Co
 			"--dangerously-skip-permissions",
 		},
 		Dir: ws,
+		Env: agyEnv(ws),
 	}
+}
+
+// agyHomeRel is the workspace-relative fake $HOME evolve gives the agy CLI.
+// agy hard-wires its state root to <home>/.gemini/antigravity-cli (a hidden
+// --gemini_dir flag exists but its relocation semantics are unverified), so
+// isolation overrides HOME itself: conversations, brain state, history, and
+// logs all land here and die with the workspace. Project skills stay at
+// .antigravity/skills (the skillDirs mount).
+const agyHomeRel = ".evolve/agy-home"
+
+// agyEnv returns the process env extras for an agy invocation in ws: a fake
+// HOME with the operator's OAuth token bridged in.
+func agyEnv(ws string) []string {
+	home := isolatedDir(ws, agyHomeRel)
+	ensureAgyHome(home)
+	return []string{"HOME=" + home}
+}
+
+// ensureAgyHome creates <fake>/.gemini/antigravity-cli, links the operator's
+// OAuth token (write-through so a mid-run refresh sticks), and bridges git
+// config into the fake HOME. Best-effort per the isolate.go contract.
+func ensureAgyHome(home string) {
+	dir := filepath.Join(home, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	src := filepath.Join(operatorDir("", ".gemini"), "antigravity-cli")
+	if sameFilePath(src, dir) {
+		return
+	}
+	for _, name := range []string{"antigravity-oauth-token", "installation_id"} {
+		linkFile(filepath.Join(src, name), filepath.Join(dir, name))
+	}
+	linkGitConfig(home)
 }
 
 // ScanLine is best-effort: agy emits no structured events, so any stdout line
@@ -86,6 +124,7 @@ func (a *Antigravity) EvalSpec(ws string, in model.EvalInput, cliModelID string)
 			"--dangerously-skip-permissions",
 		},
 		Dir: ws,
+		Env: agyEnv(ws),
 	}
 }
 
