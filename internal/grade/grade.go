@@ -41,7 +41,7 @@ Reply with ONLY a JSON object: {"passed": true|false, "evidence": "<short quote 
 
 // DefaultJudgeModel pins LLM-judge grading to one model so verdicts stay
 // comparable across runs and providers under test.
-const DefaultJudgeModel = "claude-sonnet-4-6"
+const DefaultJudgeModel = "claude-sonnet-5"
 
 // Runner runs grading subprocesses (shell commands and the judge CLI).
 // scan is always nil here (collect mode); the *runner.Scan shape matches the
