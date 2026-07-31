@@ -16,13 +16,6 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
 
-// grokDefaultAllowedTools mirrors claudeDefaultAllowedTools as Claude-compatible
-// --allow rules (Grok documents --allow as the Claude Code --allowedTools analog).
-// Bash(find *) is grok-only: find is the model's go-to exploration command but is
-// not on grok's built-in read-only shell list, so without a rule every eval's
-// first `find` would be denied.
-const grokDefaultAllowedTools = "Read Write Edit Glob Grep Skill Bash(terraform *) Bash(tflint *) Bash(mkdir *) Bash(find *)"
-
 // grokHomeRel is the workspace-relative GROK_HOME evolve gives the grok CLI.
 // Sessions, config, and (later) hooks live here so trigger/eval runs do not
 // touch the operator's real ~/.grok. Project skills stay at .grok/skills (the
@@ -94,12 +87,13 @@ exit 0
 `
 
 // grokBashGuardHookJSON registers a PreToolUse hook that denies shell commands
-// not covered by the run's Bash allow rules. Headless grok resolves a
+// not covered by EVOLVE_BASH_ALLOW; when that variable is unset (eval runs,
+// which bypass permissions) the hook stays silent. Headless grok resolves a
 // would-prompt permission request by cancelling the entire session
 // (permission_cancelled) — --permission-mode dontAsk does not change this — so
-// the only way to keep a session alive is to deny the call before the
-// permission system sees it; a hook deny is fed back to the model, which then
-// adapts (file tools, or an allowed command).
+// the only way to keep a restricted trigger session alive is to deny the call
+// before the permission system sees it; a hook deny is fed back to the model,
+// which then adapts (file tools, or an allowed command).
 const grokBashGuardHookJSON = `{
   "hooks": {
     "PreToolUse": [
@@ -158,6 +152,9 @@ def find_cmd(node):
                 return found
     return None
 
+raw = os.environ.get("EVOLVE_BASH_ALLOW")
+if raw is None:
+    sys.exit(0)
 try:
     cmd = find_cmd(json.load(sys.stdin))
 except Exception:
@@ -165,7 +162,7 @@ except Exception:
 if not isinstance(cmd, str) or not cmd.strip():
     sys.exit(0)
 cmd = cmd.strip()
-pats = [p.strip() for p in os.environ.get("EVOLVE_BASH_ALLOW", "").split("\x1f") if p.strip()]
+pats = [p.strip() for p in raw.split("\x1f") if p.strip()]
 
 def match_one(seg):
     for pat in pats:
@@ -421,32 +418,31 @@ func (g *Grok) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) mod
 	return model.CommandSpec{Argv: argv, Dir: ws, Env: env}
 }
 
+// EvalSpec runs grok with permissions bypassed rather than under
+// in.AllowedTools. Headless grok cancels the whole session on any tool call
+// its permission system would prompt for — --permission-mode dontAsk does not
+// prevent it, and its allow rules only approve a chained command when every
+// segment matches — so an allowlist reliably kills eval sessions a few turns
+// in. The allowlist was a safety net, not part of the eval contract;
+// confinement comes from the workspace sandbox (grok's own, or the host's
+// when evolve is sandboxed). EVOLVE_BASH_ALLOW stays unset so the seeded
+// bash-guard hook (a trigger-run concern) passes every command through.
 func (g *Grok) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.CommandSpec {
 	maxTurns := in.MaxTurns
 	if maxTurns == 0 {
 		maxTurns = model.DefaultMaxTurns
-	}
-	tools := in.AllowedTools
-	if tools == "" {
-		tools = grokDefaultAllowedTools
 	}
 	argv := []string{
 		"grok", "-p", in.Prompt,
 		"--model", cliModelID,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(maxTurns),
+		"--permission-mode", "bypassPermissions",
 		"--disable-web-search",
 		"--no-memory",
 		"--sandbox", grokSandboxArg(in.HostSandboxed),
 	}
-	argv = appendAllowRules(argv, tools)
-	// The bash-guard hook (seeded into the isolated home) denies shell
-	// commands outside the allow rules with feedback the model can act on.
-	// Without it any such command cancels the whole headless session
-	// (--permission-mode dontAsk does not prevent that), killing the eval
-	// after a couple of turns with an empty workspace.
-	env := append(grokEnv(ws), grokBashAllowEnv(tools))
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: env}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: grokEnv(ws)}
 }
 
 // ScanLine detects skill activation for a trigger query.

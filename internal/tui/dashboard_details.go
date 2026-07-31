@@ -228,9 +228,6 @@ func (d dashboardModel) writeSpec(b *strings.Builder, e execItem, w int) {
 		b.WriteString("\n")
 	}
 	var meta []string
-	if ev.AllowedTools != "" {
-		meta = append(meta, "tools: "+ev.AllowedTools)
-	}
 	if ev.MaxTurns > 0 {
 		meta = append(meta, fmt.Sprintf("max turns: %d", ev.MaxTurns))
 	}

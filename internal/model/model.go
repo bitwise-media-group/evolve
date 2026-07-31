@@ -74,11 +74,12 @@ type ToolCall struct {
 // runner, the CLI flag, and the config docs share one source of truth.
 const DefaultMaxTurns = 20
 
-// EvalInput is the runner-relevant subset of a behavioral case.
+// EvalInput is the runner-relevant subset of a behavioral case. Evals run
+// with the harness's permissions bypassed — confinement is the workspace
+// sandbox, not a tool allowlist — so there is no tool restriction here.
 type EvalInput struct {
-	Prompt       string
-	MaxTurns     int    // 0 = the harness default (DefaultMaxTurns)
-	AllowedTools string // "" = the harness default tool set
+	Prompt   string
+	MaxTurns int // 0 = the harness default (DefaultMaxTurns)
 	// HostSandboxed reports that evolve already confines this run in its own OS
 	// sandbox. Harnesses whose agent CLI applies its own OS sandbox must then
 	// disable it: macOS Seatbelt (and the Linux equivalents) cannot nest, so a

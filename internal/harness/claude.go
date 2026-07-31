@@ -21,10 +21,6 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
 
-// claudeDefaultAllowedTools is the Claude tool grammar evals run with when they
-// do not specify their own (ported from the Python harness's DEFAULT_TOOLS).
-const claudeDefaultAllowedTools = "Read Write Edit Glob Grep Skill Bash(terraform *) Bash(tflint *) Bash(mkdir *)"
-
 // Claude drives the `claude` CLI (Claude Code).
 type Claude struct {
 	base
@@ -257,14 +253,14 @@ func (c *Claude) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return false, ""
 }
 
+// EvalSpec runs claude with permissions bypassed: evals grade what the agent
+// builds, not what a tool allowlist happens to permit, and confinement comes
+// from the sandbox (evolve's when HostSandboxed, Claude Code's own Bash
+// sandbox otherwise) rather than from permission prompts.
 func (c *Claude) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.CommandSpec {
 	maxTurns := in.MaxTurns
 	if maxTurns == 0 {
 		maxTurns = model.DefaultMaxTurns
-	}
-	tools := in.AllowedTools
-	if tools == "" {
-		tools = claudeDefaultAllowedTools
 	}
 	argv := []string{
 		"claude", "-p", in.Prompt,
@@ -272,7 +268,7 @@ func (c *Claude) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 		"--output-format", "stream-json",
 		"--verbose",
 		"--max-turns", strconv.Itoa(maxTurns),
-		"--allowedTools", tools,
+		"--permission-mode", "bypassPermissions",
 	}
 	if in.HostSandboxed {
 		argv = append(argv, "--settings", claudeSandboxOff)

@@ -18,7 +18,6 @@ scaffolding task starts from an empty workspace. This is [`go-project`](https://
 {
     "id": "project-scaffold",
     "prompt": "Scaffold a new Go service called orderd with our canonical cmd / tools-module / Makefile layout.",
-    "allowed_tools": "Read Write Edit Glob Grep Skill Bash(go *) Bash(gofmt *) Bash(mkdir *)",
     "assertions": [
         { "type": "file_exists", "path": "go.mod" },
         { "type": "file_exists", "path": "cmd/orderd/main.go" },
@@ -43,15 +42,15 @@ result matches: the files exist, the `Makefile` has a `pr` target, and the whole
 | `name`            | no              | Human-readable label surfaced in reports                                         |
 | `expected_output` | no              | Prose description of success; context for the judge, never graded on its own     |
 | `files`           | no              | Input paths staged into the workspace before the run (below)                     |
-| `allowed_tools`   | no              | Space-separated tool allowlist for the agent (e.g. `Read Write Edit Bash(go *)`) |
 | `max_turns`       | no              | Cap on agent turns for this case; overrides the run's `--max-turns`              |
 | `timeout_seconds` | no              | Wall-clock cap for this case; overrides the run's `--timeout`                    |
 
 \* A case must declare at least one `expectations` entry **or** one `assertions` entry, or it fails to load.
 
-`allowed_tools` is worth tuning per case. It both protects the workspace and sharpens the signal: scoping `Bash` to
-`Bash(go *) Bash(gofmt *)` lets the agent build and format but not reach for unrelated tooling, so a pass reflects the
-skill rather than the model improvising around it.
+Evals run with the agent's permission prompts bypassed: the workspace sandbox is the confinement boundary, and the
+agent is free to use whatever tools it would reach for in real use. There is no per-case tool allowlist — several
+agent CLIs kill a headless session outright on a would-prompt tool call, and a restricted toolset grades the
+allowlist as much as the skill.
 
 ## Restricting models
 
@@ -92,7 +91,6 @@ asks for a new subcommand:
 {
     "id": "cli-subcommand",
     "prompt": "Add a serve subcommand (internal/cli/serve.go) with a --port flag, also set via MYCLI_PORT, per our Go style.",
-    "allowed_tools": "Read Write Edit Glob Grep Skill Bash(go *) Bash(gofmt *) Bash(mkdir *)",
     "files": ["fixtures/clidemo/go.mod", "files/cmd/mycli/main.go", "files/internal/cli/root.go"],
     "assertions": [
         { "type": "file_exists", "path": "internal/cli/serve.go" },

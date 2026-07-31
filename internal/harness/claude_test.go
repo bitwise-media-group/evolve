@@ -4,8 +4,11 @@
 package harness
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/bitwise-media-group/evolve/internal/model"
 )
 
 // Claude Code emits one JSON event per line under --output-format stream-json
@@ -26,6 +29,35 @@ const (
 	claudeStreamMaxTurns = `{"type":"system","subtype":"init"}
 {"type":"result","subtype":"error_max_turns","is_error":true,"result":"","errors":["hit max turns"]}`
 )
+
+// TestClaudeEvalSpec locks in the bypass-permissions eval posture: no tool
+// allowlist, and Claude's own Bash sandbox disabled only when evolve's host
+// sandbox already confines the run (the two cannot nest).
+func TestClaudeEvalSpec(t *testing.T) {
+	c := NewClaude()
+	ws := t.TempDir()
+	spec := c.EvalSpec(ws, model.EvalInput{Prompt: "fix it", HostSandboxed: true}, "opus")
+	if !containsPair(spec.Argv, "--permission-mode", "bypassPermissions") {
+		t.Errorf("want --permission-mode bypassPermissions: %v", spec.Argv)
+	}
+	if slices.Contains(spec.Argv, "--allowedTools") {
+		t.Errorf("want no --allowedTools on evals: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--max-turns", "20") {
+		t.Errorf("want default max-turns 20: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--settings", claudeSandboxOff) {
+		t.Errorf("want sandbox-off settings when host-sandboxed: %v", spec.Argv)
+	}
+
+	spec = c.EvalSpec(ws, model.EvalInput{Prompt: "x", MaxTurns: 5}, "opus")
+	if !containsPair(spec.Argv, "--max-turns", "5") {
+		t.Errorf("want max-turns 5: %v", spec.Argv)
+	}
+	if slices.Contains(spec.Argv, "--settings") {
+		t.Errorf("claude keeps its own sandbox when evolve is unconfined: %v", spec.Argv)
+	}
+}
 
 func TestClaudeParseToolCalls(t *testing.T) {
 	c := NewClaude()

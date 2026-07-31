@@ -113,9 +113,9 @@ func (a *Antigravity) ScanLine(line []byte, skill, _ string) (bool, string) {
 	return strings.Contains(string(line), "skills/"+skill+"/SKILL.md"), ""
 }
 
-// EvalSpec builds the eval invocation. agy has no --max-turns/--allowedTools
-// analogs; tool gating is runner-level (--dangerously-skip-permissions in a
-// throwaway workspace), so in.MaxTurns/in.AllowedTools are intentionally unused.
+// EvalSpec builds the eval invocation. agy has no --max-turns analog
+// (--dangerously-skip-permissions in a throwaway workspace is the shared
+// bypass-permissions eval posture), so in.MaxTurns is intentionally unused.
 func (a *Antigravity) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.CommandSpec {
 	return model.CommandSpec{
 		Argv: []string{

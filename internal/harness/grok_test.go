@@ -196,27 +196,28 @@ func TestGrokEvalSpec(t *testing.T) {
 	if !containsPair(spec.Argv, "--max-turns", "20") {
 		t.Errorf("want default max-turns 20: %v", spec.Argv)
 	}
-	if !containsPair(spec.Argv, "--allow", "Read") || !containsPair(spec.Argv, "--allow", "Bash(terraform *)") {
-		t.Errorf("want default allow rules: %v", spec.Argv)
+	// Evals bypass grok's permission system (a would-prompt call cancels the
+	// whole headless session); confinement is the workspace sandbox.
+	if !containsPair(spec.Argv, "--permission-mode", "bypassPermissions") {
+		t.Errorf("want --permission-mode bypassPermissions: %v", spec.Argv)
 	}
-	if !containsPair(spec.Argv, "--allow", "Bash(find *)") {
-		t.Errorf("want Bash(find *) in default allows: %v", spec.Argv)
+	if slices.Contains(spec.Argv, "--allow") {
+		t.Errorf("want no --allow rules on evals: %v", spec.Argv)
 	}
-	// The bash-guard hook gets the inner Bash patterns of the same allow set.
-	wantAllow := "EVOLVE_BASH_ALLOW=terraform *\x1ftflint *\x1fmkdir *\x1ffind *"
-	if !slices.Contains(spec.Env, wantAllow) {
-		t.Errorf("want %q in env: %v", wantAllow, spec.Env)
+	// EVOLVE_BASH_ALLOW must stay unset so the bash-guard hook is a no-op.
+	for _, e := range spec.Env {
+		if strings.HasPrefix(e, "EVOLVE_BASH_ALLOW=") {
+			t.Errorf("EVOLVE_BASH_ALLOW must be unset for evals: %v", spec.Env)
+		}
 	}
 	if !slices.Contains(spec.Argv, "--no-memory") {
 		t.Errorf("want --no-memory: %v", spec.Argv)
 	}
-	assertNoYolo(t, spec.Argv)
 	assertGrokIsolatedEnv(t, spec, ws)
 
 	spec = g.EvalSpec(ws, model.EvalInput{
 		Prompt:        "x",
 		MaxTurns:      5,
-		AllowedTools:  "Read Grep",
 		HostSandboxed: false,
 	}, "grok-4.5")
 	if !containsPair(spec.Argv, "--sandbox", "workspace") {
@@ -225,23 +226,17 @@ func TestGrokEvalSpec(t *testing.T) {
 	if !containsPair(spec.Argv, "--max-turns", "5") {
 		t.Errorf("want max-turns 5: %v", spec.Argv)
 	}
-	// Case override replaces the default set entirely.
-	if containsPair(spec.Argv, "--allow", "Write") {
-		t.Errorf("did not expect Write allow with override: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--allow", "Grep") {
-		t.Errorf("want Grep allow: %v", spec.Argv)
-	}
-	if !slices.Contains(spec.Env, "EVOLVE_BASH_ALLOW=") {
-		t.Errorf("want empty EVOLVE_BASH_ALLOW with Bash-free override: %v", spec.Env)
+	if slices.Contains(spec.Argv, "--allow") {
+		t.Errorf("want no --allow rules on evals: %v", spec.Argv)
 	}
 }
 
-// TestGrokBashGuardHookScript exercises the seeded PreToolUse guard: commands
-// matching an EVOLVE_BASH_ALLOW pattern fall through silently (grok's own
-// allow rules then approve them); everything else — chained commands
-// included, since allow rules match the whole string only — is denied with a
-// reason. Unparseable payloads fall through to grok's own permission flow.
+// TestGrokBashGuardHookScript exercises the seeded PreToolUse guard: with
+// EVOLVE_BASH_ALLOW set (trigger runs), a command falls through silently only
+// when every chained segment matches a pattern; everything else is denied
+// with a reason. With the variable unset (eval runs, which bypass
+// permissions) the hook stays silent, and unparseable payloads fall through
+// to grok's own permission flow.
 func TestGrokBashGuardHookScript(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not available")
@@ -252,10 +247,10 @@ func TestGrokBashGuardHookScript(t *testing.T) {
 	if st, err := os.Stat(script); err != nil || st.Mode()&0o111 == 0 {
 		t.Fatalf("guard script missing or not executable: %v", err)
 	}
-	run := func(payload string) string {
+	run := func(payload string, env ...string) string {
 		t.Helper()
 		cmd := exec.Command(script)
-		cmd.Env = append(os.Environ(), "EVOLVE_BASH_ALLOW=go *\x1fmkdir *")
+		cmd.Env = append(os.Environ(), env...)
 		cmd.Stdin = strings.NewReader(payload)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -276,10 +271,11 @@ func TestGrokBashGuardHookScript(t *testing.T) {
 		{"read-only but unlisted", "ls -la && find . -type f", true},
 		{"unlisted command", "cp a b", true},
 	}
+	const allowEnv = "EVOLVE_BASH_ALLOW=go *\x1fmkdir *"
 	for _, tt := range tests {
 		payload := `{"toolName":"run_terminal_command","toolInput":{"command":` +
 			strconv.Quote(tt.command) + `}}`
-		out := run(payload)
+		out := run(payload, allowEnv)
 		if got := strings.Contains(out, `"decision": "deny"`); got != tt.deny {
 			t.Errorf("%s: deny = %v, want %v (output %q)", tt.name, got, tt.deny, out)
 		}
@@ -287,9 +283,13 @@ func TestGrokBashGuardHookScript(t *testing.T) {
 			t.Errorf("%s: deny reason should list allowed prefixes: %q", tt.name, out)
 		}
 	}
+	// Unset EVOLVE_BASH_ALLOW (eval runs, which bypass permissions): silent.
+	if out := run(`{"toolName":"run_terminal_command","toolInput":{"command":"cp a b"}}`); strings.TrimSpace(out) != "" {
+		t.Errorf("unset allowlist: want silent fall-through, got %q", out)
+	}
 	// Payload without a command falls through (no decision) so grok's own
 	// permission flow stays authoritative.
-	if out := run(`{"toolName":"run_terminal_command"}`); strings.TrimSpace(out) != "" {
+	if out := run(`{"toolName":"run_terminal_command"}`, allowEnv); strings.TrimSpace(out) != "" {
 		t.Errorf("commandless payload: want silent fall-through, got %q", out)
 	}
 }

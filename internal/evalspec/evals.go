@@ -76,7 +76,6 @@ type Eval struct {
 	Assertions     []Assertion `json:"assertions,omitempty"`
 	MaxTurns       int         `json:"max_turns,omitempty"`
 	TimeoutSeconds int         `json:"timeout_seconds,omitempty"`
-	AllowedTools   string      `json:"allowed_tools,omitempty"`
 }
 
 // UnmarshalJSON resolves the superset unions: id as a string or an integer

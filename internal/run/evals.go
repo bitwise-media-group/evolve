@@ -446,7 +446,6 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 	spec := evalRunner.EvalSpec(ws, model.EvalInput{
 		Prompt:        c.Prompt,
 		MaxTurns:      maxTurns,
-		AllowedTools:  c.AllowedTools,
 		HostSandboxed: opts.HostSandboxed,
 	}, cliModelID)
 	spec.Argv[0] = cli

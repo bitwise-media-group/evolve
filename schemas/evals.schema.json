@@ -56,8 +56,7 @@
           "items": { "$ref": "#/$defs/assertion" }
         },
         "max_turns": { "type": "integer", "minimum": 1 },
-        "timeout_seconds": { "type": "integer", "minimum": 1 },
-        "allowed_tools": { "type": "string" }
+        "timeout_seconds": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": true
     },

@@ -252,7 +252,6 @@ the part only prose can describe.
 {
     "id": "parametrize",
     "prompt": "Write parametrized tests for parse in src/myapp/kv.py, including the error paths, in tests/test_kv.py.",
-    "allowed_tools": "Read Write Edit Glob Grep Skill Bash(uv *) Bash(pytest *) Bash(python3 *)",
     "files": ["files/src/myapp/kv.py"],
     "expectations": ["The agent explains which error paths it parametrized and why."],
     "assertions": [
