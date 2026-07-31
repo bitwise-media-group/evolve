@@ -471,6 +471,18 @@ func (f formModel) modelRunnable(key string) bool {
 	return false
 }
 
+// modelOffered reports whether the resolved harness's CLI offers the model to
+// the operator (unknown counts as offered). Unlike modelRunnable this is
+// advisory: an unoffered model renders muted but stays toggleable.
+func (f formModel) modelOffered(key string) bool {
+	for _, m := range f.session.Models() {
+		if m.Key() == key {
+			return f.session.ModelOffered(m)
+		}
+	}
+	return true
+}
+
 // toggleProvider enables every runnable model under a provider, or disables them
 // all when they are already enabled — the group analogue of EnableModel.
 func (f *formModel) toggleProvider(provID string) {
@@ -659,7 +671,10 @@ func (f formModel) renderHarness(w, h int) string {
 
 // renderModels draws the model rows under per-provider header rows: a header
 // carries a tri-state box for its whole vendor; model rows are indented beneath
-// it and greyed when not runnable under the enabled harnesses.
+// it and greyed when not runnable under the enabled harnesses. A model the
+// resolved harness's CLI does not offer the operator (per its offered-models
+// probe) renders muted with an "(unavail.)" tag but keeps a live checkbox — it
+// starts deselected, not unselectable.
 func (f formModel) renderModels(w, h int) string {
 	return renderRows(f.models.items, f.models.cursor, f.focus == paneModels, w, h,
 		func(it listItem) string {
@@ -669,6 +684,10 @@ func (f formModel) renderModels(w, h int) string {
 			}
 			if !f.modelRunnable(it.id) {
 				return "  " + mutedStyle.Render("[·] "+it.label+" (uns.)")
+			}
+			if !f.modelOffered(it.id) {
+				return "  " + checkGlyph(f.session.ModelEnabled(it.id)) + " " +
+					mutedStyle.Render(it.label+" (unavail.)")
 			}
 			return "  " + checkGlyph(f.session.ModelEnabled(it.id)) + " " + it.label
 		})

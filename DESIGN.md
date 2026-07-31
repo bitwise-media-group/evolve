@@ -60,7 +60,8 @@ tiers). Shared global state lives in the package-level `opts` (`cli.Options`).
 effective harness/model set, a token counter, and report thresholds. The engines (`run`, `report`) take what they need
 as explicit options — the trigger and case engines embed the shared `run.Options` — and write through the interfaces
 they declare, so they test against fakes; `runner` is the only package that touches `os/exec` for agent execution (the
-lone exception is the claude harness's setup-time macOS Keychain bridge, covered under session isolation below).
+setup-time exceptions are the claude harness's macOS Keychain bridge, covered under session isolation below, and
+`internal/workspace` shelling out to `git` to initialise each workspace as a repository).
 
 Because `runner` is that single exec chokepoint, it also enforces filesystem isolation: agent CLIs run in full-auto
 (`--dangerously-skip-permissions` and the like), so `cmd.Dir` alone would not stop a run from wandering into other
@@ -172,9 +173,14 @@ flat regions use a minimal `list` (`list.go`). The Session holds the per-(model,
 the filters act on, derives the queued baseline from the active filters, and resolves the whole state into a `plan.Plan`
 through the same `plan.Build` the engine runs. A case renders as force-on (`☑`), force-off (`☐`), or one of the auto
 states — queued for all (`◉`), some (`◷`), or none (`○`) of its applicable enabled models; a harness off PATH and a
-model unsupported by the enabled harnesses render disabled. `request()` returns a `tui.RunRequest` carrying the
-Session's enabled selections and resolved `plan.Selection`; the engine and dashboard re-`Build` from those, so the form
-preview, the dashboard, and the engine cannot drift.
+model unsupported by the enabled harnesses render disabled. Before the form is built, each installed CLI that can report
+its account's model list is probed (`run.ProbeOfferedModels` over the optional `harness.OfferedModels` capability —
+Claude's client-side `/model` alias list, Codex's app-server `model/list`, Grok's `grok models`); a model the resolved
+harness does not offer starts deselected and renders muted with an `(unavail.)` tag, but stays toggleable. The probe
+fails open (no capability, error, or timeout deselects nothing) and is skipped entirely when `--model` names models
+explicitly. `request()` returns a `tui.RunRequest` carrying the Session's enabled selections and resolved
+`plan.Selection`; the engine and dashboard re-`Build` from those, so the form preview, the dashboard, and the engine
+cannot drift.
 
 ### Live dashboard
 

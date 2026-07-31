@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
+	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/runner"
 	"github.com/bitwise-media-group/evolve/internal/version"
 )
 
@@ -40,6 +43,21 @@ var doctorCmd = &cobra.Command{
 			fmt.Fprintf(w, "%s\t%s\t%s\n", h.ID(), cliPath, credentialStatus(h.EnvKeys()))
 		}
 		if err := w.Flush(); err != nil {
+			return err
+		}
+
+		// Offered-models probes: what each installed CLI reports the operator's
+		// account actually serves — the list the interactive form deselects
+		// against. Absent capability or a failed probe reads "unknown", the
+		// fail-open verdict.
+		offered := run.ProbeOfferedModels(cmd.Context(), &runner.Exec{}, harnesses,
+			offeredModelsProbeTimeout)
+		wm := tabwriter.NewWriter(cmd.OutOrStdout(), 2, 4, 2, ' ', 0)
+		fmt.Fprintln(wm, "\nHARNESS\tOFFERED MODELS")
+		for _, h := range harnesses {
+			fmt.Fprintf(wm, "%s\t%s\n", h.ID(), offeredStatus(h, offered))
+		}
+		if err := wm.Flush(); err != nil {
 			return err
 		}
 
@@ -90,6 +108,20 @@ func versionPinStatus() string {
 	default:
 		return fmt.Sprintf("%q satisfied by evolve %s", pin, version.Version)
 	}
+}
+
+// offeredStatus renders one harness's offered-models probe verdict.
+func offeredStatus(h harness.Harness, offered map[string][]string) string {
+	if list, ok := offered[h.ID()]; ok {
+		return strings.Join(list, ", ")
+	}
+	if _, ok := h.(harness.OfferedModels); !ok {
+		return "n/a (no listing surface)"
+	}
+	if _, onPath := harness.Available(h); !onPath {
+		return "skipped (CLI not on PATH)"
+	}
+	return "unknown (probe failed; all models treated as offered)"
 }
 
 // credentialStatus reports the first set credential env var, or that none of

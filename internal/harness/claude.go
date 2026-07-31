@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
@@ -339,6 +340,110 @@ func (c *Claude) RuntimeError(stdout []byte, exitCode int, timedOut bool) string
 		return claudeErrorReason(result.Subtype, result.Errors)
 	}
 	return "" // empty-result success: grade it (assertions may inspect the workspace)
+}
+
+// ListOfferedModels asks the installed claude CLI which models the operator's
+// account is offered. `claude -p "/model"` is handled client-side (no API
+// call) and prints the model-picker alias list — "Available: sonnet, opus,
+// haiku, fable, …" — which tracks the account's plan and gated extras. Each
+// bare alias is then resolved to its display name ("Sonnet 5") with a second
+// client-side invocation, because aliases name families while the picker
+// offers specific models: "sonnet" resolving to Sonnet 5 must not read as
+// Sonnet 4.6 being offered. Bracketed variants (sonnet[1m]) duplicate a base
+// alias's model and are skipped. Probes run against the operator's real
+// config on purpose — an isolated CLAUDE_CONFIG_DIR would hide the account's
+// gated model options.
+func (c *Claude) ListOfferedModels(ctx context.Context, probe ProbeExec) ([]string, error) {
+	out, err := probe(ctx, claudeProbeSpec(""), nil)
+	if err != nil {
+		return nil, err
+	}
+	aliases := parseClaudeModelAliases(out)
+	if len(aliases) == 0 {
+		return nil, nil
+	}
+
+	names := make([]string, len(aliases))
+	var wg sync.WaitGroup
+	for i, alias := range aliases {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out, err := probe(ctx, claudeProbeSpec(alias), nil)
+			if err != nil {
+				return
+			}
+			names[i] = parseClaudeCurrentModel(out)
+		}()
+	}
+	wg.Wait()
+
+	var offered []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		if n != "" && !seen[n] {
+			seen[n] = true
+			offered = append(offered, n)
+		}
+	}
+	return offered, nil
+}
+
+// claudeProbeSpec builds the client-side "/model" probe invocation, optionally
+// pinning an alias to resolve. DISABLE_AUTOUPDATER keeps the probe from
+// kicking off an update check; everything else uses the operator's config.
+func claudeProbeSpec(alias string) model.CommandSpec {
+	argv := []string{"claude", "-p", "/model"}
+	if alias != "" {
+		argv = append(argv, "--model", alias)
+	}
+	return model.CommandSpec{Argv: argv, Env: []string{"DISABLE_AUTOUPDATER=1"}}
+}
+
+// claudeMetaAliases are the "/model" aliases that name a selection mode, not a
+// model: they resolve to a model some concrete alias already names (best,
+// default) or to a mode description rather than a model name (opusplan —
+// "Opus in plan mode, else Sonnet"). Resolving them adds nothing but junk
+// tokens, so they are skipped.
+var claudeMetaAliases = map[string]bool{"best": true, "default": true, "opusplan": true}
+
+// parseClaudeModelAliases extracts the bare aliases from the "/model" usage
+// line: `Usage: /model <name>. Available: sonnet, opus, …, or a full model
+// ID.` Tokens with brackets (context-window variants of a base alias), the
+// meta aliases, and the trailing "or a full model ID" prose are dropped.
+func parseClaudeModelAliases(out []byte) []string {
+	_, rest, found := strings.Cut(string(out), "Available:")
+	if !found {
+		return nil
+	}
+	if line, _, ok := strings.Cut(rest, "\n"); ok {
+		rest = line
+	}
+	var aliases []string
+	for tok := range strings.SplitSeq(rest, ",") {
+		tok = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(tok), "."))
+		if tok == "" || strings.ContainsAny(tok, "[] ") || claudeMetaAliases[tok] {
+			continue
+		}
+		aliases = append(aliases, tok)
+	}
+	return aliases
+}
+
+// parseClaudeCurrentModel extracts the display name from a `Current model:
+// Sonnet 5 (effort: high)` line, stripping any trailing parenthetical.
+func parseClaudeCurrentModel(out []byte) string {
+	_, rest, found := strings.Cut(string(out), "Current model:")
+	if !found {
+		return ""
+	}
+	if line, _, ok := strings.Cut(rest, "\n"); ok {
+		rest = line
+	}
+	if name, _, ok := strings.Cut(rest, "("); ok {
+		rest = name
+	}
+	return strings.TrimSpace(rest)
 }
 
 // claudeErrorReason renders the claude error envelope into one diagnostic line.

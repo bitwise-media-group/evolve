@@ -12,6 +12,10 @@
 // interface only when its CLI supports a gradable headless run (Gemini does
 // not), and engines type-assert and degrade. Cursor, Copilot, and Antigravity
 // report no usage (ReportsUsage is false), so their estimate/measured fields
-// stay absent end-to-end. Token counting is a vendor concern and lives in
+// stay absent end-to-end. OfferedModels is the same pattern for model
+// discovery: Claude, Codex, and Grok can report which models the operator's
+// installed CLI actually serves (the account-dependent picker list), and
+// callers fail open — a harness without the capability, or a failed probe,
+// deselects nothing. Token counting is a vendor concern and lives in
 // internal/model, not here.
 package harness

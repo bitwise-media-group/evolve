@@ -43,6 +43,12 @@ func (f Filters) any() bool { return f.New || f.Modified || f.Failed }
 type HarnessState struct {
 	Harness   harness.Harness
 	Available bool
+	// Models is the offered-models probe result for this harness (see
+	// harness.OfferedModels): tokens naming the models the operator's installed
+	// CLI actually serves. nil means unknown — no probe ran, the harness has no
+	// listing surface, or the probe failed — and fails open: every supported
+	// model counts as offered.
+	Models []string
 }
 
 // NodeSel is the resolved selection state of a tree node (a case, or a
@@ -106,6 +112,14 @@ func NewSession(
 	for _, k := range enabledModelKeys {
 		s.modelOn[k] = true
 	}
+	// A model the resolved harness's CLI does not offer the operator starts
+	// deselected: it stays toggleable (the CLI may still accept it explicitly),
+	// but a default run should span only models the account actually serves.
+	for _, m := range models {
+		if s.modelOn[m.Key()] && !s.ModelOffered(m) {
+			s.modelOn[m.Key()] = false
+		}
+	}
 	return s
 }
 
@@ -167,6 +181,24 @@ func (s *Session) ModelEnabled(key string) bool { return s.modelOn[key] }
 func (s *Session) ModelRunnable(m model.Model) bool {
 	_, ok := harness.RunnableHarness(m, s.eligible())
 	return ok
+}
+
+// ModelOffered reports whether the harness that would run m under the current
+// selection offers it to the operator's account, per that harness's
+// offered-models probe (HarnessState.Models). Unknown — no probe result, or no
+// resolvable harness — is true, so a failed or absent probe never hides a
+// model; ModelRunnable separately covers the no-harness case.
+func (s *Session) ModelOffered(m model.Model) bool {
+	id, ok := harness.RunnableHarness(m, s.eligible())
+	if !ok {
+		return true
+	}
+	for _, h := range s.harnesses {
+		if h.Harness.ID() == id {
+			return h.Models == nil || harness.OffersModel(m, id, h.Models)
+		}
+	}
+	return true
 }
 
 // AnyQueued reports whether the resolved plan would run at least one case.

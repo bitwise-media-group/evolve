@@ -6,6 +6,7 @@ package harness
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -130,7 +131,8 @@ const grokBashGuardHookJSON = `{
 const grokBashGuardHookScript = `#!/bin/sh
 # evolve: deny non-allowlisted shell commands with feedback (PreToolUse).
 if ! command -v python3 >/dev/null 2>&1; then
-  printf '%s\n' '{"decision":"deny","reason":"Shell commands are unavailable in this environment; use the file tools instead."}'
+  printf '%s\n' \
+    '{"decision":"deny","reason":"Shell commands are unavailable in this environment; use the file tools instead."}'
   exit 0
 fi
 exec python3 -c '
@@ -180,7 +182,8 @@ opaque = re.search(r"\$\(|\x60|<<|[<>]", cmd) or "&" in cmd.replace("&&", "")
 segs = [s.strip() for s in re.split(r"&&|\|\||[;|\n]", cmd)]
 if not opaque and segs and all(s and match_one(s) for s in segs):
     sys.exit(0)
-msg = "Shell command denied: it is not in the allowlist for this task. Prefer the dedicated file tools (read, write, edit, grep)"
+msg = ("Shell command denied: it is not in the allowlist for this task."
+       " Prefer the dedicated file tools (read, write, edit, grep)")
 names = ", ".join(sorted({p.rstrip("*:").strip() for p in pats if p.rstrip("*:").strip()}))
 if names:
     msg = msg + "; every chained segment must start with one of: " + names
@@ -586,6 +589,45 @@ func (g *Grok) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 		OutputTokens:    result.Usage.OutputTokens,
 		CostUSD:         result.TotalCostUSD,
 	}
+}
+
+// ListOfferedModels asks the installed grok CLI which models the operator's
+// account is offered, via `grok models` — the account-dependent list the CLI
+// fetches from its backend. The probe runs against the operator's real
+// GROK_HOME on purpose: an isolated home would hide the logged-in account's
+// list being probed.
+func (g *Grok) ListOfferedModels(ctx context.Context, probe ProbeExec) ([]string, error) {
+	out, err := probe(ctx, model.CommandSpec{Argv: []string{"grok", "models"}}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return parseGrokModels(out), nil
+}
+
+// parseGrokModels extracts the model ids from `grok models` output: the
+// bulleted lines under the "Available models:" heading, e.g.
+// `  * grok-4.5 (default)`.
+func parseGrokModels(out []byte) []string {
+	var offered []string
+	inList := false
+	for line := range strings.Lines(string(out)) {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Available models:"):
+			inList = true
+		case inList && strings.HasPrefix(line, "*"):
+			id := strings.TrimSpace(strings.TrimPrefix(line, "*"))
+			if name, _, ok := strings.Cut(id, " "); ok {
+				id = name
+			}
+			if id != "" {
+				offered = append(offered, id)
+			}
+		case inList && line != "":
+			inList = false // the list ended; ignore any trailing sections
+		}
+	}
+	return offered
 }
 
 // ReportsUsage reports that the grok CLI reports session usage and cost in its

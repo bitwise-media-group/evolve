@@ -5,6 +5,7 @@ package harness
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -223,6 +224,71 @@ func codexToolCall(itemType string, raw json.RawMessage) (model.ToolCall, bool) 
 	default:
 		return model.ToolCall{}, false
 	}
+}
+
+// codexModelListStdin is the JSON-RPC conversation fed to `codex app-server`
+// to read the operator's model-picker list: the mandatory initialize
+// handshake, then model/list (id 2). Hidden models are deliberately excluded —
+// the probe mirrors what the CLI's own picker offers the account. The server
+// serves stdio forever, so the probe's done predicate kills it once the id-2
+// response line arrives.
+const codexModelListStdin = `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
+	`"params":{"clientInfo":{"name":"evolve","title":"evolve","version":"0.0.0"}}}` + "\n" +
+	`{"jsonrpc":"2.0","method":"initialized"}` + "\n" +
+	`{"jsonrpc":"2.0","id":2,"method":"model/list","params":{}}` + "\n"
+
+// ListOfferedModels asks the installed codex CLI which models the operator's
+// account is offered, via the app-server protocol's model/list request — the
+// same source the CLI's interactive picker renders. Probes run against the
+// operator's real CODEX_HOME on purpose; the isolated home agent runs use
+// would hide the account-dependent list being probed.
+func (c *Codex) ListOfferedModels(ctx context.Context, probe ProbeExec) ([]string, error) {
+	spec := model.CommandSpec{
+		Argv:  []string{"codex", "app-server"},
+		Stdin: []byte(codexModelListStdin),
+	}
+	out, err := probe(ctx, spec, func(line []byte) bool {
+		_, done := parseCodexModelList(line)
+		return done
+	})
+	if err != nil {
+		return nil, err
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if offered, ok := parseCodexModelList([]byte(line)); ok {
+			return offered, nil
+		}
+	}
+	return nil, nil
+}
+
+// parseCodexModelList decodes one app-server stdout line, returning the
+// offered model tokens when the line is the model/list response (id 2). Each
+// model contributes its CLI model id (`model`, what -m accepts) and its
+// display name, deduplicated.
+func parseCodexModelList(line []byte) (offered []string, ok bool) {
+	var resp struct {
+		ID     *int `json:"id"`
+		Result *struct {
+			Data []struct {
+				Model       string `json:"model"`
+				DisplayName string `json:"displayName"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(line, &resp) != nil || resp.ID == nil || *resp.ID != 2 || resp.Result == nil {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for _, m := range resp.Result.Data {
+		for _, tok := range []string{m.Model, m.DisplayName} {
+			if tok != "" && !seen[tok] {
+				seen[tok] = true
+				offered = append(offered, tok)
+			}
+		}
+	}
+	return offered, true
 }
 
 // ReportsUsage reports that codex reports token usage (cost is computed from

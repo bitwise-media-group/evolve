@@ -70,13 +70,16 @@ snippet-includes the generated config fragments.
   token-counting clients. The lowest-level domain package (imports no other internal package); owns the shared value
   types `CommandSpec`, `EvalInput`, `Usage`.
 - `harness` — the agent CLIs evolve drives (Claude Code, Codex, Gemini, Cursor, Copilot, Antigravity, Grok): runner-CLI
-  command construction, output parsing, the optional `EvalRunner` capability, and `Selection`/`RunnableHarness` that
-  bind a model to the one harness that runs it (evals run once per model, never once per harness).
+  command construction, output parsing, the optional `EvalRunner` and `OfferedModels` capabilities (the latter probes
+  which models the operator's installed CLI actually serves, so the TUI can deselect the rest by default), and
+  `Selection`/`RunnableHarness` that bind a model to the one harness that runs it (evals run once per model, never once
+  per harness).
 - `runner` — executes `model.CommandSpec`s; the only package touching `os/exec` for agent execution, so engines test
-  against a fake (lone exception: the claude harness's setup-time macOS Keychain bridge in `internal/harness/claude.go`
-  shells out to `/usr/bin/security`).
+  against a fake (setup-time exceptions: the claude harness's macOS Keychain bridge in `internal/harness/claude.go`
+  shells out to `/usr/bin/security`, and `internal/workspace` shells out to `git` to initialise each workspace).
 - `grade` — assertion evaluation: deterministic checks (files/regex/commands) plus an LLM judge.
-- `workspace` — builds the throwaway project dirs each agent session runs in.
+- `workspace` — builds the throwaway project dirs each agent session runs in, each a fresh git repo with the fixture
+  state as its initial commit.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.
 - `report` — renders results into EVALUATION.md / EVALUATION.json, and gates CI (`report --check`). Imports
   `internal/run` to reuse its `StaleTiers` staleness primitive (the same fingerprint comparison `--modified` uses) for

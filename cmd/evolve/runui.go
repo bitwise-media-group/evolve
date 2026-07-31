@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
@@ -18,9 +19,15 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/runner"
 	"github.com/bitwise-media-group/evolve/internal/telemetry"
 	"github.com/bitwise-media-group/evolve/internal/tui"
 )
+
+// offeredModelsProbeTimeout bounds the pre-form offered-models probes. All
+// installed CLIs are probed concurrently; each answers client-side in a couple
+// of seconds, so this is a wedge guard, not an expected wait.
+const offeredModelsProbeTimeout = 10 * time.Second
 
 // interactiveTUI reports whether the interactive TUI should run: stdout is a
 // real terminal and the user has not opted out via --no-tui or EVOLVE_NO_TUI.
@@ -192,10 +199,23 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 	if err != nil {
 		return err
 	}
+	// Ask each installed CLI which models it actually offers the operator so the
+	// form deselects registry models the account cannot pick (fail open: a
+	// harness with no listing surface or a failed probe deselects nothing).
+	// Skipped when --model names models explicitly — that selection is intent,
+	// not a default to second-guess. Probes run unconfined: they only list, and
+	// the CLIs write their own operator-side state a workspace sandbox would
+	// break.
+	offered := map[string][]string{}
+	if len(sweep.Models) == 0 {
+		probeCtx, cancelProbe := context.WithTimeout(cmd.Context(), offeredModelsProbeTimeout)
+		offered = run.ProbeOfferedModels(probeCtx, &runner.Exec{}, harnesses, offeredModelsProbeTimeout)
+		cancelProbe()
+	}
 	var hstates []plan.HarnessState
 	for _, h := range harnesses {
 		_, avail := harness.Available(h)
-		hstates = append(hstates, plan.HarnessState{Harness: h, Available: avail})
+		hstates = append(hstates, plan.HarnessState{Harness: h, Available: avail, Models: offered[h.ID()]})
 	}
 	eligible, err := opts.EligibleHarnesses(sweep.Harness)
 	if err != nil {

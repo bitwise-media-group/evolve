@@ -4,7 +4,9 @@
 package harness
 
 import (
+	"context"
 	"os/exec"
+	"strings"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
@@ -74,6 +76,54 @@ type ToolCallReporter interface {
 	// calls (a tool_call assertion then fails); nil is reserved for harnesses
 	// that cannot report tool calls at all (the assertion is skipped).
 	ParseToolCalls(stdout []byte) []model.ToolCall
+}
+
+// ProbeExec executes one CLI probe command and returns the stdout observed.
+// done, when non-nil, is consulted per stdout line (newline included);
+// returning true ends the probe early by killing the CLI — for probes that
+// speak a request/response protocol to a server that never exits on its own
+// (codex app-server). The executor resolves Argv[0] to the installed CLI and
+// owns the timeout; implementations live beside the engines, so harnesses stay
+// free of os/exec.
+type ProbeExec func(ctx context.Context, spec model.CommandSpec, done func(line []byte) bool) ([]byte, error)
+
+// OfferedModels is the optional capability of reporting which models the
+// operator's installed CLI actually offers — the account/plan-dependent list
+// behind the CLI's own model picker, not the static registry. Harnesses
+// implement it only when their CLI has a discovery surface; callers
+// type-assert and treat absence, an error, or a nil list as unknown, which
+// fails open (no model is deselected on a failed probe). Probes deliberately
+// run against the operator's real CLI configuration — availability is a fact
+// about the operator's account, so the workspace isolation agent runs use
+// would hide exactly the signal being probed.
+type OfferedModels interface {
+	// ListOfferedModels returns tokens naming the offered models:
+	// harness-specific CLI model ids and/or the display names the CLI reports
+	// (OffersModel matches either). nil with a nil error means the probe ran
+	// but learned nothing — treat as unknown.
+	ListOfferedModels(ctx context.Context, probe ProbeExec) ([]string, error)
+}
+
+// OffersModel reports whether tokens — an OfferedModels probe result for
+// harness hid — include model m: an exact match on the harness-specific CLI
+// model id, or a display-name match. CLIs report bare display names ("Sonnet
+// 5") where the registry qualifies them ("Claude Sonnet 5"), so a token also
+// matches as a word-boundary suffix of the registry name. Comparisons are
+// case-insensitive.
+func OffersModel(m model.Model, hid string, tokens []string) bool {
+	id, _ := m.CLIModelID(hid)
+	cid := strings.ToLower(id)
+	name := strings.ToLower(m.Name)
+	for _, t := range tokens {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" {
+			continue
+		}
+		if t == cid || t == name || strings.HasSuffix(name, " "+t) {
+			return true
+		}
+	}
+	return false
 }
 
 // harnessOrder is the deterministic preference order used to pick a harness for

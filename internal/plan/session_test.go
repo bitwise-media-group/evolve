@@ -114,6 +114,55 @@ func TestSessionEnableHarness(t *testing.T) {
 	}
 }
 
+// offeredFixtureSession builds the standard fixture with an offered-models
+// probe result on h1: only "m1-other" is offered, so m1 (cli id "m1") is not.
+func offeredFixtureSession(h1Models []string) *Session {
+	cat, models, harnesses, reasons := sessionFixture()
+	harnesses[0].Models = h1Models
+	return NewSession(cat, models, harnesses, PriorMetrics{}, reasons, Filters{},
+		[]string{"h1", "h2"}, []string{"v/m1", "v/m2"})
+}
+
+func TestSessionOfferedModelsDeselects(t *testing.T) {
+	s := offeredFixtureSession([]string{"m1-other"})
+	if s.ModelEnabled("v/m1") {
+		t.Error("m1 is not offered by h1's CLI; it should start deselected")
+	}
+	if !s.ModelEnabled("v/m2") {
+		t.Error("m2's harness has no probe result (unknown); it should stay selected")
+	}
+	if s.ModelOffered(s.models[0]) {
+		t.Error("ModelOffered(m1) = true, want false")
+	}
+	if !s.ModelOffered(s.models[1]) {
+		t.Error("ModelOffered(m2) = false, want true (unknown fails open)")
+	}
+	// Deselected is not unselectable: the user can still force it on.
+	s.EnableModel("v/m1", true)
+	if !s.ModelEnabled("v/m1") {
+		t.Error("an unoffered model must stay toggleable")
+	}
+}
+
+func TestSessionOfferedModelsMatch(t *testing.T) {
+	for _, tokens := range [][]string{{"m1"}, {"M1"}} {
+		s := offeredFixtureSession(tokens)
+		if !s.ModelEnabled("v/m1") {
+			t.Errorf("m1 offered as %v; it should stay selected", tokens)
+		}
+	}
+}
+
+func TestSessionOfferedIgnoredWhenNotRunnable(t *testing.T) {
+	s := offeredFixtureSession([]string{"m1-other"})
+	s.EnableHarness("h1", false)
+	// With h1 disabled m1 has no harness at all; ModelOffered defers to the
+	// ModelRunnable gate rather than double-reporting.
+	if !s.ModelOffered(s.models[0]) {
+		t.Error("ModelOffered = false for an unrunnable model, want true (uns. path covers it)")
+	}
+}
+
 func TestSessionForceCases(t *testing.T) {
 	s := newFixtureSession(Filters{New: true}) // baseline queues only q1s
 	q2 := CaseRef{Skill: "s", Kind: KindTriggers, Case: "q2"}
