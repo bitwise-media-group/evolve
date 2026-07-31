@@ -51,8 +51,8 @@ flowchart LR
 
 For Tier 2, the harness driving the model builds the actual CLI invocation from the case: the `prompt`, `max_turns`,
 `timeout_seconds`, and the provider-specific model id, with the agent's permission prompts bypassed (the workspace
-sandbox is the confinement boundary). evolve runs it through the one harness bound to that model — evals execute
-**once per model**, never once per harness.
+sandbox is the confinement boundary). evolve runs it through the one harness bound to that model — evals execute **once
+per model**, never once per harness.
 
 When the run returns, evolve captures two things from the agent's output: its **final response text** (ANSI-stripped)
 and the **tool calls it made**. Those feed grading — the response and workspace for `regex`/`file_exists`/`command`, the

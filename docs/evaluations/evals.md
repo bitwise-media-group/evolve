@@ -33,24 +33,24 @@ result matches: the files exist, the `Makefile` has a `pr` target, and the whole
 
 ## Anatomy of a case
 
-| Field             | Required        | Meaning                                                                          |
-| ----------------- | --------------- | -------------------------------------------------------------------------------- |
-| `id`              | yes             | Stable identifier; the results key. Lowercase-kebab by convention                |
-| `prompt`          | yes             | The task sent to the agent                                                       |
-| `assertions`      | one of these \* | Deterministic + judge checks — see [Assertions](assertions.md)                   |
-| `expectations`    | one of these \* | Plain-language statements, each graded by the LLM judge before the assertions    |
-| `name`            | no              | Human-readable label surfaced in reports                                         |
-| `expected_output` | no              | Prose description of success; context for the judge, never graded on its own     |
-| `files`           | no              | Input paths staged into the workspace before the run (below)                     |
-| `max_turns`       | no              | Cap on agent turns for this case; overrides the run's `--max-turns`              |
-| `timeout_seconds` | no              | Wall-clock cap for this case; overrides the run's `--timeout`                    |
+| Field             | Required        | Meaning                                                                       |
+| ----------------- | --------------- | ----------------------------------------------------------------------------- |
+| `id`              | yes             | Stable identifier; the results key. Lowercase-kebab by convention             |
+| `prompt`          | yes             | The task sent to the agent                                                    |
+| `assertions`      | one of these \* | Deterministic + judge checks — see [Assertions](assertions.md)                |
+| `expectations`    | one of these \* | Plain-language statements, each graded by the LLM judge before the assertions |
+| `name`            | no              | Human-readable label surfaced in reports                                      |
+| `expected_output` | no              | Prose description of success; context for the judge, never graded on its own  |
+| `files`           | no              | Input paths staged into the workspace before the run (below)                  |
+| `max_turns`       | no              | Cap on agent turns for this case; overrides the run's `--max-turns`           |
+| `timeout_seconds` | no              | Wall-clock cap for this case; overrides the run's `--timeout`                 |
 
 \* A case must declare at least one `expectations` entry **or** one `assertions` entry, or it fails to load.
 
-Evals run with the agent's permission prompts bypassed: the workspace sandbox is the confinement boundary, and the
-agent is free to use whatever tools it would reach for in real use. There is no per-case tool allowlist — several
-agent CLIs kill a headless session outright on a would-prompt tool call, and a restricted toolset grades the
-allowlist as much as the skill.
+Evals run with the agent's permission prompts bypassed: the workspace sandbox is the confinement boundary, and the agent
+is free to use whatever tools it would reach for in real use. There is no per-case tool allowlist — several agent CLIs
+kill a headless session outright on a would-prompt tool call, and a restricted toolset grades the allowlist as much as
+the skill.
 
 ## Restricting models
 
