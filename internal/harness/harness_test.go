@@ -4,6 +4,7 @@
 package harness
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
@@ -45,6 +46,25 @@ func TestEvalRunnerCapability(t *testing.T) {
 		_, isRunner := h.(EvalRunner)
 		if isRunner != want[h.ID()] {
 			t.Errorf("%s EvalRunner = %v, want %v", h.ID(), isRunner, want[h.ID()])
+		}
+	}
+}
+
+// TestJudgeSpecEvalParity pins that the harnesses with no read-only or
+// turn-cap analog (cursor, copilot, antigravity) judge under their eval
+// posture — the documented trade-off for CLIs that cannot confine a judge
+// session to inspection.
+func TestJudgeSpecEvalParity(t *testing.T) {
+	for _, h := range []Harness{NewCursor(), NewCopilot(), NewAntigravity()} {
+		er, ok := h.(EvalRunner)
+		if !ok {
+			t.Fatalf("%s does not implement EvalRunner", h.ID())
+		}
+		ws := t.TempDir()
+		judge := er.JudgeSpec(ws, model.JudgeInput{Prompt: "p", HostSandboxed: true}, "m1")
+		eval := er.EvalSpec(ws, model.EvalInput{Prompt: "p", HostSandboxed: true}, "m1")
+		if !slices.Equal(judge.Argv, eval.Argv) {
+			t.Errorf("%s JudgeSpec argv = %v, want eval parity %v", h.ID(), judge.Argv, eval.Argv)
 		}
 	}
 }

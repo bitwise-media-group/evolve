@@ -35,7 +35,7 @@ var triggersCmd = &cobra.Command{
 		}
 		if interactive {
 			return uiRun(cmd, &triggersFlags.SweepFlags, plan.Tiers{Triggers: true},
-				triggersFlags.Runs, "", triggersFlags.judgeModel(cmd), "triggers: some queries failed", false)
+				triggersFlags.Runs, "", "triggers: some queries failed", false)
 		}
 
 		common, err := triggersFlags.sweepOptions(cmd)

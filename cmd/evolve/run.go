@@ -88,7 +88,8 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 	cmd.Flags().IntVar(&f.MaxTurns, "max-turns", model.DefaultMaxTurns,
 		"max agent turns per eval (config: max_turns; a per-eval max_turns overrides both)")
 	cmd.Flags().StringVar(&f.JudgeModel, "judge-model", grade.DefaultJudgeModel,
-		"claude model that grades llm assertions (config: judge_model)")
+		"model that grades llm assertions, run via any installed harness that supports it "+
+			"(config: judge_model)")
 	cmd.Flags().BoolVar(&f.CountOnly, "count-only", false, "skip agent runs; only compute token usage per model")
 	cmd.Flags().BoolVar(&f.Baseline, "baseline", true,
 		"benchmark each eval without the skill (its lift), recomputed only when the eval or its fixtures "+
@@ -124,10 +125,11 @@ func sweepFlagAliases(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 	return pflag.NormalizedName(name)
 }
 
-// judgeModel resolves the LLM judge for this run: --judge-model when the user
-// set it, else the config's judge_model, else the pinned default. It is not
-// part of run.Options because only the eval tier grades with a judge; the
-// triggers/evals/sweep entry points take it alongside those options.
+// judgeModel resolves the LLM judge model for this run: --judge-model when the
+// user set it, else the config's judge_model, else the pinned default. It is
+// not part of run.Options because only the eval tier grades with a judge; the
+// triggers/evals/sweep entry points take the resolved judge alongside those
+// options.
 func (f *SweepFlags) judgeModel(cmd *cobra.Command) string {
 	if cmd.Flags().Changed("judge-model") {
 		return f.JudgeModel
@@ -138,6 +140,26 @@ func (f *SweepFlags) judgeModel(cmd *cobra.Command) string {
 		}
 	}
 	return grade.DefaultJudgeModel
+}
+
+// resolveJudge binds the judge model to an installed harness that can run it.
+// An explicitly named judge model (flag or config) that cannot run is a
+// command-start error; an unresolvable default degrades to a warned
+// UnavailableJudge so repos without llm assertions are not blocked. Warnings
+// go to warn — the TUI path routes them into the dashboard, the plain paths
+// pass stderr.
+func (f *SweepFlags) resolveJudge(cmd *cobra.Command, common run.Options, warn io.Writer) (grade.Judge, error) {
+	sel, err := opts.JudgeSelection(f.judgeModel(cmd))
+	if err == nil {
+		return run.NewHarnessJudge(sel, common.Runner, common.HostSandboxed)
+	}
+	explicit := cmd.Flags().Changed("judge-model") ||
+		(opts.Viper != nil && opts.Viper.IsSet("judge_model") && opts.Viper.GetString("judge_model") != "")
+	if explicit {
+		return nil, err
+	}
+	fmt.Fprintf(warn, "WARN: %v; llm assertions will fail\n", err)
+	return run.UnavailableJudge{Reason: err.Error()}, nil
 }
 
 // sweepOptions resolves the global flags and the sweep flags into the engine

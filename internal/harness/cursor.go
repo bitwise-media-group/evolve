@@ -115,6 +115,14 @@ func (c *Cursor) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 	}
 }
 
+// JudgeSpec reuses the eval posture: cursor has no read-only or turn-cap
+// analogs, so a judge session could in principle mutate the workspace it
+// grades. Prefer a claude/codex-drivable judge model when evals mix llm with
+// later file assertions.
+func (c *Cursor) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
+	return c.EvalSpec(ws, model.EvalInput{Prompt: in.Prompt, HostSandboxed: in.HostSandboxed}, cliModelID)
+}
+
 // ReportsUsage reports that the Cursor CLI exposes no usage or cost in any
 // output format.
 func (c *Cursor) ReportsUsage() bool { return false }

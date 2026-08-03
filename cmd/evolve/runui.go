@@ -149,7 +149,7 @@ func runSub(cmd, sub *cobra.Command, failures *bool) error {
 // refine the initial selection. withChecksReport adds `run all`'s static-checks step
 // before and report step after.
 func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
-	triggerRuns int, evalFilter, judgeModel, failMsg string, withChecksReport bool) error {
+	triggerRuns int, evalFilter, failMsg string, withChecksReport bool) error {
 	var failures bool
 	if withChecksReport {
 		if err := runSub(cmd, checksCmd, &failures); err != nil {
@@ -159,6 +159,10 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 
 	counterOut := newSwitchWriter(io.Discard)
 	common, err := sweep.sweepOptionsW(cmd, counterOut)
+	if err != nil {
+		return err
+	}
+	judge, err := sweep.resolveJudge(cmd, common, counterOut)
 	if err != nil {
 		return err
 	}
@@ -267,7 +271,7 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 			Tiers:          plan.Tiers{Triggers: true, Evals: true},
 			Runs:           triggerRuns,
 			EvalFilter:     evalFilter,
-			JudgeModel:     judgeModel,
+			Judge:          judge,
 			TriggerTimeout: triggerTO,
 			EvalTimeout:    evalTO,
 			Filters:        p.Filters(),

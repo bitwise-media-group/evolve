@@ -6,6 +6,7 @@ package grade
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,31 +18,27 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/runner"
 )
 
-// judgeRunner fakes the claude CLI; everything else runs for real.
-type judgeRunner struct {
-	exec     runner.Exec
-	response string
-	gotSpec  model.CommandSpec
+// fakeJudge returns a canned judge response and records what it was asked.
+type fakeJudge struct {
+	response  string
+	err       error
+	gotWS     string
+	gotPrompt string
 }
 
-func (j *judgeRunner) Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration, scan *runner.Scan) (runner.Result, error) {
-	if spec.Argv[0] == "claude" {
-		j.gotSpec = spec
-		return runner.Result{Stdout: []byte(j.response)}, nil
-	}
-	return j.exec.Run(ctx, spec, timeout, scan)
+func (f *fakeJudge) Judge(_ context.Context, ws, prompt string, _ time.Duration) (string, error) {
+	f.gotWS, f.gotPrompt = ws, prompt
+	return f.response, f.err
 }
 
 func opts(t *testing.T, output string) Options {
 	t.Helper()
-	// Keep judge-spec construction hermetic: a set credential var stops the
-	// harness isolation setup from consulting the host's real Keychain.
-	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
 	return Options{
-		Runner:    &judgeRunner{},
+		Runner:    &runner.Exec{},
 		Workspace: t.TempDir(),
 		Output:    output,
 		Timeout:   10 * time.Second,
+		Judge:     &fakeJudge{},
 	}
 }
 
@@ -158,32 +155,41 @@ func TestToolCallAssertions(t *testing.T) {
 
 func TestLLMJudge(t *testing.T) {
 	o := opts(t, "the readme explains tradeoffs")
-	j := o.Runner.(*judgeRunner)
-	j.response = `{"result": "Sure! Here is the verdict:\n{\"passed\": true, \"evidence\": \"README covers omissions\"}"}`
+	j := o.Judge.(*fakeJudge)
+	// The verdict blob is extracted from surrounding prose, whatever harness
+	// produced the text.
+	j.response = "Sure! Here is the verdict:\n{\"passed\": true, \"evidence\": \"README covers omissions\"}"
 
 	passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "README explains omissions"}, o)
 	if boolish(passed) != "pass" || evidence != "README covers omissions" {
 		t.Errorf("judge = (%s, %q)", boolish(passed), evidence)
 	}
-	// The judge is pinned to a model and read-only tools.
-	cmdline := strings.Join(j.gotSpec.Argv, " ")
-	if !strings.Contains(cmdline, "--model "+DefaultJudgeModel) || !strings.Contains(cmdline, "Read Glob Grep") {
-		t.Errorf("judge invocation = %q", cmdline)
+	// The judge session runs in the eval's workspace and is asked exactly the
+	// authored assertion.
+	if j.gotWS != o.Workspace {
+		t.Errorf("judge workspace = %q, want %q", j.gotWS, o.Workspace)
 	}
-	// The judge session is isolated into the workspace's throwaway config dir,
-	// never the operator's real session history.
-	envline := strings.Join(j.gotSpec.Env, " ")
-	if !strings.Contains(envline, "CLAUDE_CONFIG_DIR="+o.Workspace) {
-		t.Errorf("judge env = %q, want workspace-rooted CLAUDE_CONFIG_DIR", envline)
+	if !strings.Contains(j.gotPrompt, "README explains omissions") {
+		t.Errorf("judge prompt missing assertion text:\n%s", j.gotPrompt)
 	}
 }
 
 func TestLLMJudgeErrorsFailLoudly(t *testing.T) {
-	o := opts(t, "x")
-	o.Runner.(*judgeRunner).response = `total garbage`
-	passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "anything"}, o)
-	if boolish(passed) != "fail" || !strings.Contains(evidence, "judge error") {
-		t.Errorf("judge garbage = (%s, %q), want loud failure", boolish(passed), evidence)
+	tests := []struct {
+		name string
+		set  func(o *Options)
+	}{
+		{"garbage response", func(o *Options) { o.Judge.(*fakeJudge).response = "total garbage" }},
+		{"judge error", func(o *Options) { o.Judge.(*fakeJudge).err = errors.New("judge unavailable: no harness") }},
+		{"nil judge", func(o *Options) { o.Judge = nil }},
+	}
+	for _, tt := range tests {
+		o := opts(t, "x")
+		tt.set(&o)
+		passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "anything"}, o)
+		if boolish(passed) != "fail" || !strings.Contains(evidence, "judge error") {
+			t.Errorf("%s: judge = (%s, %q), want loud failure", tt.name, boolish(passed), evidence)
+		}
 	}
 }
 
@@ -196,18 +202,18 @@ func TestUnknownAssertionType(t *testing.T) {
 
 func TestLLMJudgeExpectedOutputContext(t *testing.T) {
 	o := opts(t, "output")
-	j := o.Runner.(*judgeRunner)
-	j.response = `{"result": "{\"passed\": true, \"evidence\": \"ok\"}"}`
+	j := o.Judge.(*fakeJudge)
+	j.response = `{"passed": true, "evidence": "ok"}`
 
 	// Without expected output the prompt carries no author-context block.
 	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
-	if strings.Contains(j.gotSpec.Argv[2], "expected output") {
-		t.Errorf("prompt unexpectedly mentions expected output:\n%s", j.gotSpec.Argv[2])
+	if strings.Contains(j.gotPrompt, "expected output") {
+		t.Errorf("prompt unexpectedly mentions expected output:\n%s", j.gotPrompt)
 	}
 
 	o.ExpectedOutput = "a tidy summary table"
 	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
-	if !strings.Contains(j.gotSpec.Argv[2], "a tidy summary table") {
-		t.Errorf("prompt missing expected-output context:\n%s", j.gotSpec.Argv[2])
+	if !strings.Contains(j.gotPrompt, "a tidy summary table") {
+		t.Errorf("prompt missing expected-output context:\n%s", j.gotPrompt)
 	}
 }

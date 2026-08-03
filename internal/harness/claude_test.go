@@ -59,6 +59,47 @@ func TestClaudeEvalSpec(t *testing.T) {
 	}
 }
 
+// TestClaudeJudgeSpec locks in the read-only judge posture: inspection tools
+// only (never a permission bypass — the judge must not mutate the workspace it
+// grades), the judge turn ceiling, stream-json output (the shared
+// ParseEvalOutput path), and the same isolation/sandbox handling as evals.
+func TestClaudeJudgeSpec(t *testing.T) {
+	// Keep judge-spec construction hermetic: a set credential var stops the
+	// harness isolation setup from consulting the host's real Keychain.
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
+	c := NewClaude()
+	ws := t.TempDir()
+	spec := c.JudgeSpec(ws, model.JudgeInput{Prompt: "verdict?"}, "sonnet")
+	if !containsPair(spec.Argv, "--allowedTools", "Read Glob Grep") {
+		t.Errorf("want read-only allowlist: %v", spec.Argv)
+	}
+	if slices.Contains(spec.Argv, "--permission-mode") {
+		t.Errorf("want no permission bypass on the judge: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--max-turns", "4") {
+		t.Errorf("want judge max-turns 4: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--output-format", "stream-json") {
+		t.Errorf("want stream-json for the shared eval parse path: %v", spec.Argv)
+	}
+	if !containsPair(spec.Argv, "--model", "sonnet") {
+		t.Errorf("want --model sonnet: %v", spec.Argv)
+	}
+	if slices.Contains(spec.Argv, "--settings") {
+		t.Errorf("claude keeps its own sandbox when evolve is unconfined: %v", spec.Argv)
+	}
+	// The judge session is isolated into the workspace's throwaway config dir,
+	// never the operator's real session history.
+	if envline := strings.Join(spec.Env, " "); !strings.Contains(envline, "CLAUDE_CONFIG_DIR="+ws) {
+		t.Errorf("judge env = %q, want workspace-rooted CLAUDE_CONFIG_DIR", envline)
+	}
+
+	spec = c.JudgeSpec(ws, model.JudgeInput{Prompt: "x", HostSandboxed: true}, "sonnet")
+	if !containsPair(spec.Argv, "--settings", claudeSandboxOff) {
+		t.Errorf("want sandbox-off settings when host-sandboxed: %v", spec.Argv)
+	}
+}
+
 func TestClaudeParseToolCalls(t *testing.T) {
 	c := NewClaude()
 	calls := c.ParseToolCalls([]byte(claudeStreamSuccess))

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/plan"
@@ -32,7 +33,8 @@ type SweepOptions struct {
 	Tiers      plan.Tiers
 	Runs       int    // runs per query (triggers tier)
 	EvalFilter string // restrict evals to a single id ("" = all)
-	JudgeModel string
+	// Judge grades llm assertions in the evals tier; resolved at the cmd layer.
+	Judge grade.Judge
 
 	// Per-tier timeouts; each falls back to Options.Timeout when zero.
 	TriggerTimeout time.Duration
@@ -218,7 +220,7 @@ func runSweepModel(ctx context.Context, u sweepUnit, sel harness.Selection) (fai
 		eo := u.opts.Options
 		eo.Filter = filter
 		eo.Timeout = pickTimeout(u.opts.EvalTimeout, u.opts.Timeout)
-		ef, err := runEvalUnit(ctx, EvalOptions{Options: eo, EvalFilter: u.opts.EvalFilter, JudgeModel: u.opts.JudgeModel},
+		ef, err := runEvalUnit(ctx, EvalOptions{Options: eo, EvalFilter: u.opts.EvalFilter, Judge: u.opts.Judge},
 			u.set, sel, u.file, u.skillMD, u.evalContent, u.evals, u.allowedModels)
 		failed = failed || ef
 		if err != nil {

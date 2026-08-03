@@ -35,10 +35,14 @@ var evalsCmd = &cobra.Command{
 		}
 		if interactive {
 			return uiRun(cmd, &evalsFlags.SweepFlags, plan.Tiers{Evals: true},
-				3, evalsFlags.Eval, evalsFlags.judgeModel(cmd), "evals: some evals failed", false)
+				3, evalsFlags.Eval, "evals: some evals failed", false)
 		}
 
 		common, err := evalsFlags.sweepOptions(cmd)
+		if err != nil {
+			return err
+		}
+		judge, err := evalsFlags.resolveJudge(cmd, common, cmd.ErrOrStderr())
 		if err != nil {
 			return err
 		}
@@ -49,7 +53,7 @@ var evalsCmd = &cobra.Command{
 		failed, runErr := run.Evals(cmd.Context(), run.EvalOptions{
 			Options:    common,
 			EvalFilter: evalsFlags.Eval,
-			JudgeModel: evalsFlags.judgeModel(cmd),
+			Judge:      judge,
 		})
 		if err := saveCounter(common.Counter); err != nil {
 			return err

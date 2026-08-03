@@ -78,6 +78,8 @@ var doctorCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "WARN: %s\n", msg)
 		}
 
+		fmt.Fprintf(cmd.OutOrStdout(), "\nLLM judge: %s\n", judgeStatus())
+
 		fmt.Fprintf(cmd.OutOrStdout(), "\nVersion pin: %s\n", versionPinStatus())
 
 		fmt.Fprintln(cmd.OutOrStdout(), "\nCursor model ids are config-driven: run `agent models` for the live list and"+
@@ -108,6 +110,22 @@ func versionPinStatus() string {
 	default:
 		return fmt.Sprintf("%q satisfied by evolve %s", pin, version.Version)
 	}
+}
+
+// judgeStatus renders the resolved LLM judge — the model that grades llm
+// assertions and the installed harness that will drive it — or why no judge
+// can run (llm assertions would then fail loudly).
+func judgeStatus() string {
+	token := ""
+	if opts.Viper != nil {
+		token = opts.Viper.GetString("judge_model")
+	}
+	sel, err := opts.JudgeSelection(token)
+	if err != nil {
+		return fmt.Sprintf("UNAVAILABLE — %v", err)
+	}
+	cli, _ := harness.Available(sel.Harness)
+	return fmt.Sprintf("%s via %s (%s)", sel.Model.ID, sel.Harness.ID(), cli)
 }
 
 // offeredStatus renders one harness's offered-models probe verdict.

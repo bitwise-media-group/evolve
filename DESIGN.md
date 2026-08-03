@@ -85,7 +85,7 @@ forces Claude's sandbox on still wins, so those hosts must use `--no-sandbox`.
 
 Filesystem confinement covers what a run may write; session isolation covers what it may remember. Every harness also
 points its CLI at a throwaway state directory inside the workspace (`.evolve/<name>-home`) so trigger/eval sessions —
-and the LLM judge's own `claude` sessions — never land in the operator's real session history, and no long-term memory
+and the LLM judge's own agent sessions — never land in the operator's real session history, and no long-term memory
 carries across runs. CLIs with a dedicated config-dir variable get that (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
 `COPILOT_HOME`, `GROK_HOME`); the rest run under an overridden `$HOME` (gemini and agy, which hard-wire their state
 roots to the home directory, and cursor, which gets `CURSOR_CONFIG_DIR` too but keeps its chat store at an undocumented

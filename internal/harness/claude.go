@@ -58,11 +58,9 @@ const claudeSandboxOff = `{"sandbox":{"enabled":false}}`
 // Project skills stay at .claude/skills (the skillDirs mount).
 const claudeConfigRel = ".evolve/claude-home"
 
-// ClaudeEnv returns the process env extras that point a claude invocation in
-// ws at a throwaway workspace-rooted config dir. Exported because
-// internal/grade's LLM judge is a claude invocation too and must be isolated
-// the same way.
-func ClaudeEnv(ws string) []string {
+// claudeEnv returns the process env extras that point a claude invocation in
+// ws at a throwaway workspace-rooted config dir.
+func claudeEnv(ws string) []string {
 	dir := isolatedDir(ws, claudeConfigRel)
 	ensureClaudeConfig(dir)
 	return []string{
@@ -167,7 +165,7 @@ func (c *Claude) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) m
 	if hostSandboxed {
 		argv = append(argv, "--settings", claudeSandboxOff)
 	}
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: ClaudeEnv(ws)}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: claudeEnv(ws)}
 }
 
 // claudeContentBlock is one content block of a Claude message in stream-json
@@ -274,7 +272,26 @@ func (c *Claude) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 	if in.HostSandboxed {
 		argv = append(argv, "--settings", claudeSandboxOff)
 	}
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: ClaudeEnv(ws)}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: claudeEnv(ws)}
+}
+
+// JudgeSpec runs claude read-only: unlike an eval, the judge grades a finished
+// workspace, so its tools are limited to inspection (--allowedTools) and the
+// session is capped at the judge turn ceiling. stream-json keeps the output on
+// the same ParseEvalOutput/RuntimeError path as evals.
+func (c *Claude) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
+	argv := []string{
+		"claude", "-p", in.Prompt,
+		"--model", cliModelID,
+		"--output-format", "stream-json",
+		"--verbose",
+		"--max-turns", strconv.Itoa(model.DefaultJudgeMaxTurns),
+		"--allowedTools", "Read Glob Grep",
+	}
+	if in.HostSandboxed {
+		argv = append(argv, "--settings", claudeSandboxOff)
+	}
+	return model.CommandSpec{Argv: argv, Dir: ws, Env: claudeEnv(ws)}
 }
 
 // ParseEvalOutput reads the final answer and usage from the terminal result

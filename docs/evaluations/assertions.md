@@ -191,10 +191,13 @@ match, the assertion **fails**. Unlike `regex`, `tool` and `pattern` are not com
 
 ## `llm`
 
-Graded by an LLM judge instead of a fixed rule. The judge is pinned to `claude-sonnet-4-6` regardless of the model under
-test, so verdicts stay comparable across providers. It reads the assertion text, the agent's final response, the eval's
-`expected_output` (as context, never a separate check), and may `Read`/`Glob`/`Grep` the workspace before returning a
-pass/fail verdict with a short evidence quote.
+Graded by an LLM judge instead of a fixed rule. The judge is one pinned model (`anthropic/claude-sonnet-5` unless the
+`judge_model` config key or `--judge-model` overrides it) regardless of the model under test, so verdicts stay
+comparable across providers; it is driven by whichever installed harness supports that model. It reads the assertion
+text, the agent's final response, the eval's `expected_output` (as context, never a separate check), and may inspect the
+workspace before returning a pass/fail verdict with a short evidence quote. Claude judges read-only (`Read`/`Glob`/
+`Grep`) and codex judges under a read-only sandbox; the other harnesses have no read-only mode, so prefer a
+claude/codex-drivable judge model when evals mix `llm` with later file assertions.
 
 ```json
 {

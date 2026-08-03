@@ -108,6 +108,14 @@ func (c *Copilot) EvalSpec(ws string, in model.EvalInput, cliModelID string) mod
 	}
 }
 
+// JudgeSpec reuses the eval posture: copilot has no read-only or turn-cap
+// analogs, so a judge session could in principle mutate the workspace it
+// grades. Prefer a claude/codex-drivable judge model when evals mix llm with
+// later file assertions.
+func (c *Copilot) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
+	return c.EvalSpec(ws, model.EvalInput{Prompt: in.Prompt, HostSandboxed: in.HostSandboxed}, cliModelID)
+}
+
 // ReportsUsage reports that the Copilot CLI exposes no usage or cost; it never
 // does.
 func (c *Copilot) ReportsUsage() bool { return false }

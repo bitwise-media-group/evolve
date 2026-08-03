@@ -80,10 +80,11 @@ Grading runs in two passes, both against the finished workspace and the captured
 - **Deterministic assertions** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`. These stat
   files, match RE2 patterns, run shell commands through the real toolchain, and inspect observed tool calls. Fast and
   reproducible.
-- **The LLM judge** — `llm` assertions and `expectations`. The judge is pinned to `claude-sonnet-4-6` _regardless of the
-  model under test_, so verdicts stay comparable across providers. It reads the assertion text, the eval's
-  `expected_output` as context, and the agent's final response, and may `Read`/`Glob`/`Grep` the workspace before
-  returning a pass/fail verdict with a short evidence quote.
+- **The LLM judge** — `llm` assertions and `expectations`. The judge is one pinned model (`anthropic/claude-sonnet-5`
+  unless `judge_model`/`--judge-model` overrides it) _regardless of the model under test_, so verdicts stay comparable
+  across providers; any installed harness that supports the judge model may drive it. It reads the assertion text, the
+  eval's `expected_output` as context, and the agent's final response, and may inspect the workspace before returning a
+  pass/fail verdict with a short evidence quote.
 
 Every check is **tri-state**: pass, fail, or _skipped_. A `command` whose `requires` binary is missing, or a `tool_call`
 against a harness that can't report tool calls, is skipped — it counts neither for nor against the case, so a suite

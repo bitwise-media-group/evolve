@@ -8,7 +8,7 @@
 | `results_format` | string | `"json"` | Format for committed results files and the EVALUATION rollup: json, jsonc, or yaml. |
 | `telemetry.dir` | string | unset — telemetry disabled | Directory for the OpenTelemetry JSON exporter (traces.json, metrics.json, logs.json); the --telemetry-dir flag overrides it and both win over OTEL_* env vars. |
 | `max_turns` | int | `20` | Default maximum agent turns per behavioral eval; --max-turns and a per-eval max_turns override it. |
-| `judge_model` | string | `"claude-sonnet-5"` | Claude model that grades LLM assertions; --judge-model overrides for one run. Keep it consistent across runs so verdicts stay comparable between them and the providers under test. |
+| `judge_model` | string | `"anthropic/claude-sonnet-5"` | Model that grades LLM assertions (a canonical or bare model id), driven by any installed harness that supports it; --judge-model overrides for one run. Keep it consistent across runs so verdicts stay comparable between them and the providers under test. |
 | `baseline` | bool | `true` | Benchmark each eval without the skill (the skill's lift over no skill), recomputed only when the eval or its fixtures change. --baseline overrides for one run. |
 | `stale_results` | string | unset — prompt on a terminal, otherwise keep | How run/report treat stored results for models outside the `models` restriction: keep or drop. --stale-results overrides. |
 | `sandbox.enabled` | bool | `true` | Confine agent writes with an OS sandbox (sandbox-exec on macOS, bubblewrap on Linux); --no-sandbox overrides for one run. |

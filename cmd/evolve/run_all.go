@@ -33,7 +33,7 @@ var runAllCmd = &cobra.Command{
 		}
 		if interactive {
 			return uiRun(cmd, &allFlags.SweepFlags, plan.Tiers{Triggers: true, Evals: true},
-				allFlags.Runs, "", allFlags.judgeModel(cmd), "run: some checks or cases failed", true)
+				allFlags.Runs, "", "run: some checks or cases failed", true)
 		}
 
 		// Checks first, then one interleaved triggers+evals sweep (so a skill/model
@@ -48,6 +48,10 @@ var runAllCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		judge, err := allFlags.resolveJudge(cmd, common, cmd.ErrOrStderr())
+		if err != nil {
+			return err
+		}
 		if !allFlags.CountOnly {
 			fmt.Fprintf(cmd.OutOrStdout(), "parallelism: %d concurrent agent runs\n", allFlags.Jobs)
 		}
@@ -56,7 +60,7 @@ var runAllCmd = &cobra.Command{
 			Options:        common,
 			Tiers:          plan.Tiers{Triggers: true, Evals: true},
 			Runs:           allFlags.Runs,
-			JudgeModel:     allFlags.judgeModel(cmd),
+			Judge:          judge,
 			TriggerTimeout: triggerTO,
 			EvalTimeout:    evalTO,
 		})

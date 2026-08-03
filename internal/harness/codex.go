@@ -120,6 +120,28 @@ func (c *Codex) EvalSpec(ws string, in model.EvalInput, cliModelID string) model
 	}
 }
 
+// JudgeSpec runs codex under its native read-only sandbox: the judge grades a
+// finished workspace and must not mutate the evidence. Under HostSandboxed the
+// read-only Seatbelt profile cannot nest inside evolve's sandbox, so codex
+// falls back to danger-full-access there (same as EvalSpec) and evolve's
+// sandbox is the sole confinement. Codex has no turn-cap flag.
+func (c *Codex) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
+	sandboxMode := "read-only"
+	if in.HostSandboxed {
+		sandboxMode = "danger-full-access"
+	}
+	return model.CommandSpec{
+		Argv: []string{
+			"codex", "exec", in.Prompt,
+			"--json", "--skip-git-repo-check",
+			"--sandbox", sandboxMode,
+			"-m", cliModelID,
+		},
+		Dir: ws,
+		Env: codexEnv(ws),
+	}
+}
+
 // ParseEvalOutput concatenates agent messages from the codex event stream and
 // captures the last turn's usage. Codex reports tokens but not cost; the engine
 // prices the tokens from the model matrix.

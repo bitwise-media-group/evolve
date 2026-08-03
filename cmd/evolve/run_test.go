@@ -6,6 +6,8 @@ package main
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/grade"
+	"github.com/bitwise-media-group/evolve/internal/run"
+	"github.com/bitwise-media-group/evolve/internal/runner"
 )
 
 // TestFailOrWarn covers the two outcomes of a run that completed with
@@ -166,6 +170,83 @@ func TestJudgeModelPrecedence(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResolveJudge pins the judge failure surface: an explicitly named judge
+// model (flag or config) that cannot run aborts at command start, while an
+// unresolvable default degrades to a warned UnavailableJudge so repos without
+// llm assertions keep running.
+func TestResolveJudge(t *testing.T) {
+	newCmd := func(t *testing.T, args ...string) (*SweepFlags, *cobra.Command) {
+		t.Helper()
+		var f SweepFlags
+		cmd := &cobra.Command{Use: "x", RunE: func(*cobra.Command, []string) error { return nil }}
+		f.register(cmd, 600)
+		if err := cmd.Flags().Parse(args); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		return &f, cmd
+	}
+	common := run.Options{Runner: &runner.Exec{}}
+	saved := opts.Viper
+	t.Cleanup(func() { opts.Viper = saved })
+
+	t.Run("default resolves", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir)
+		opts.Viper = viper.New()
+		f, cmd := newCmd(t)
+		var warn bytes.Buffer
+		j, err := f.resolveJudge(cmd, common, &warn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := j.(*run.HarnessJudge); !ok {
+			t.Errorf("judge = %T, want *run.HarnessJudge", j)
+		}
+		if warn.Len() != 0 {
+			t.Errorf("warn = %q, want none", warn.String())
+		}
+	})
+
+	t.Run("unresolvable default degrades", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		opts.Viper = viper.New()
+		f, cmd := newCmd(t)
+		var warn bytes.Buffer
+		j, err := f.resolveJudge(cmd, common, &warn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := j.(run.UnavailableJudge); !ok {
+			t.Errorf("judge = %T, want run.UnavailableJudge", j)
+		}
+		if !strings.Contains(warn.String(), "WARN") || !strings.Contains(warn.String(), "llm assertions will fail") {
+			t.Errorf("warn = %q, want a WARN line", warn.String())
+		}
+	})
+
+	t.Run("explicit flag errors", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		opts.Viper = viper.New()
+		f, cmd := newCmd(t, "--judge-model", "claude-sonnet-5")
+		if _, err := f.resolveJudge(cmd, common, &bytes.Buffer{}); err == nil {
+			t.Error("err = nil, want command-start error for an explicit judge model")
+		}
+	})
+
+	t.Run("explicit config errors", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		opts.Viper = viper.New()
+		opts.Viper.Set("judge_model", "claude-sonnet-5")
+		f, cmd := newCmd(t)
+		if _, err := f.resolveJudge(cmd, common, &bytes.Buffer{}); err == nil {
+			t.Error("err = nil, want command-start error for a configured judge model")
+		}
+	})
 }
 
 // TestJudgeModelNilViper covers the no-config-file case: Options.Viper is nil

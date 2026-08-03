@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
-	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/runner"
 )
@@ -40,18 +39,26 @@ const judgePrompt = `You are grading an AI coding agent's work. Assertion to ver
 Files in the agent's workspace are at: %s
 Reply with ONLY a JSON object: {"passed": true|false, "evidence": "<short quote or file fact supporting the verdict>"}`
 
-// DefaultJudgeModel is the LLM-judge model used when neither the judge_model
-// config key nor --judge-model names one. The model should be consistent
-// across runs so verdicts stay comparable between them and the providers under
-// test; changing it re-bases every subsequent verdict.
-const DefaultJudgeModel = "claude-sonnet-5"
+// DefaultJudgeModel is the LLM-judge model (a canonical registry id; a bare id
+// also resolves) used when neither the judge_model config key nor
+// --judge-model names one. The model should be consistent across runs so
+// verdicts stay comparable between them and the providers under test; changing
+// it re-bases every subsequent verdict.
+const DefaultJudgeModel = "anthropic/claude-sonnet-5"
 
-// Runner runs grading subprocesses (shell commands and the judge CLI).
+// Runner runs grading subprocesses (shell command assertions).
 // scan is always nil here (collect mode); the *runner.Scan shape matches the
 // agent runner so one Exec implementation serves both.
 type Runner interface {
 	Run(ctx context.Context, spec model.CommandSpec, timeout time.Duration,
 		scan *runner.Scan) (runner.Result, error)
+}
+
+// Judge obtains one LLM verdict: it runs a judge session in the eval workspace
+// and returns the judge's final response text. Implemented by internal/run
+// over a resolved (model, harness) selection; grade stays harness-free.
+type Judge interface {
+	Judge(ctx context.Context, ws, prompt string, timeout time.Duration) (string, error)
 }
 
 // Options configures grading for one eval.
@@ -61,7 +68,8 @@ type Options struct {
 	Output         string        // the agent's final response text
 	ExpectedOutput string        // the eval author's success description, judge context only
 	Timeout        time.Duration // shared by command assertions and the judge
-	JudgeModel     string        // "" = DefaultJudgeModel
+	// Judge grades llm assertions; nil fails them loudly.
+	Judge Judge
 	// ToolCalls are the agent's observed tool invocations; nil when the harness
 	// cannot report them (a tool_call assertion is then skipped), a non-nil
 	// empty slice when it reported zero (the assertion fails).
@@ -204,12 +212,11 @@ func gradeToolCall(a evalspec.Assertion, calls []model.ToolCall) (*bool, string)
 	return &f, "no tool_call matched /" + a.Tool + "/"
 }
 
-// judge asks the claude CLI for a verdict; any failure to obtain a parseable
-// one fails the assertion loudly.
+// judge asks the resolved Judge for a verdict; any failure to obtain a
+// parseable one fails the assertion loudly.
 func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
-	judgeModel := opts.JudgeModel
-	if judgeModel == "" {
-		judgeModel = DefaultJudgeModel
+	if opts.Judge == nil {
+		return false, "judge error: no judge configured"
 	}
 	expected := "\n"
 	if opts.ExpectedOutput != "" {
@@ -217,36 +224,13 @@ func judge(ctx context.Context, assertion string, opts Options) (bool, string) {
 			"separate assertion):\n---\n" + truncate(opts.ExpectedOutput, 2000) + "\n---\n\n"
 	}
 	prompt := fmt.Sprintf(judgePrompt, assertion, expected, truncate(opts.Output, 8000), opts.Workspace)
-	res, err := opts.Runner.Run(ctx, model.CommandSpec{
-		Argv: []string{"claude", "-p", prompt,
-			"--model", judgeModel,
-			"--output-format", "json",
-			"--max-turns", "4",
-			"--allowedTools", "Read Glob Grep"},
-		Dir: opts.Workspace,
-		// The judge is a claude session too: isolate it into the workspace's
-		// throwaway config dir so verdict runs never land in the operator's
-		// real session history.
-		Env: harness.ClaudeEnv(opts.Workspace),
-	}, opts.Timeout, nil)
+	text, err := opts.Judge.Judge(ctx, opts.Workspace, prompt, opts.Timeout)
 	if err != nil {
-		slog.DebugContext(ctx, "judge error",
-			slog.String("model", judgeModel),
-			slog.Any("error", err))
+		slog.DebugContext(ctx, "judge error", slog.Any("error", err))
 		return false, fmt.Sprintf("judge error: %v", err)
 	}
-	if res.TimedOut {
-		slog.DebugContext(ctx, "judge timed out", slog.String("model", judgeModel))
-		return false, "judge error: timed out"
-	}
 
-	var payload struct {
-		Result string `json:"result"`
-	}
-	if err := json.Unmarshal(res.Stdout, &payload); err != nil {
-		return false, fmt.Sprintf("judge error: unparseable CLI output: %v", err)
-	}
-	raw := regexp.MustCompile(`(?s)\{.*\}`).FindString(payload.Result)
+	raw := regexp.MustCompile(`(?s)\{.*\}`).FindString(text)
 	if raw == "" {
 		return false, "judge error: no JSON verdict in response"
 	}

@@ -74,8 +74,9 @@ func Schema() []Option {
 		},
 		{
 			Key: "judge_model", Type: "string", Value: grade.DefaultJudgeModel,
-			Doc: "Claude model that grades LLM assertions; --judge-model overrides for one run. Keep it " +
-				"consistent across runs so verdicts stay comparable between them and the providers under test.",
+			Doc: "Model that grades LLM assertions (a canonical or bare model id), driven by any installed " +
+				"harness that supports it; --judge-model overrides for one run. Keep it consistent across " +
+				"runs so verdicts stay comparable between them and the providers under test.",
 		},
 		{
 			Key: "baseline", Type: "bool", Value: true,

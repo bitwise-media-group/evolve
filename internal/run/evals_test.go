@@ -85,6 +85,9 @@ func (f *fakeEvalProvider) ScanLine([]byte, string, string) (bool, string) { ret
 func (f *fakeEvalProvider) EvalSpec(ws string, c model.EvalInput, cliModelID string) model.CommandSpec {
 	return model.CommandSpec{Argv: []string{"agent-cli", "AGENT", c.Prompt}, Dir: ws}
 }
+func (f *fakeEvalProvider) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
+	return model.CommandSpec{Argv: []string{"judge-cli", "JUDGE", in.Prompt}, Dir: ws}
+}
 func (f *fakeEvalProvider) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 	if !f.reportsUsage {
 		return string(stdout), nil
@@ -116,8 +119,9 @@ func (c *countingEvalProvider) CountTokens(_ context.Context, _, text string) (i
 	return len(text), nil
 }
 
-// fakeEvalRunner simulates the agent (writes a file, emits output), fakes the
-// judge, and runs shell commands for real.
+// fakeEvalRunner simulates the agent (writes a file, emits output) and runs
+// shell commands for real. The judge no longer flows through the Runner —
+// tests inject a fake grade.Judge instead (see passingJudge).
 type fakeEvalRunner struct {
 	exec       runner.Exec
 	agentFails bool // when set, the agent run produces no output and exits non-zero
@@ -133,11 +137,16 @@ func (f *fakeEvalRunner) Run(ctx context.Context, spec model.CommandSpec, timeou
 			return runner.Result{}, err
 		}
 		return runner.Result{Stdout: []byte("TASK COMPLETE: created the file"), Elapsed: 2 * time.Second}, nil
-	case spec.Argv[0] == "claude": // the judge
-		return runner.Result{Stdout: []byte(`{"result": "{\"passed\": true, \"evidence\": \"verified\"}"}`)}, nil
 	default:
 		return f.exec.Run(ctx, spec, timeout, scan)
 	}
+}
+
+// passingJudge is a grade.Judge that always returns a passing verdict.
+type passingJudge struct{}
+
+func (passingJudge) Judge(context.Context, string, string, time.Duration) (string, error) {
+	return `{"passed": true, "evidence": "verified"}`, nil
 }
 
 func evalRepoFixture(t *testing.T) *layout.Repo {
@@ -232,6 +241,7 @@ func evalOptions(t *testing.T, repo *layout.Repo, p fakeHarness) EvalOptions {
 			Stdout:      os.Stderr,
 			Stderr:      os.Stderr,
 		},
+		Judge: passingJudge{},
 	}
 }
 

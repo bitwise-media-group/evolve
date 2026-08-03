@@ -30,7 +30,9 @@ import (
 type EvalOptions struct {
 	Options
 	EvalFilter string
-	JudgeModel string
+	// Judge grades llm assertions; resolved at the cmd layer (see
+	// cli.Options.JudgeSelection and NewHarnessJudge).
+	Judge grade.Judge
 }
 
 // Evals executes the sweep. failed reports whether any executed eval failed.
@@ -515,7 +517,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 			Output:         output,
 			ExpectedOutput: c.ExpectedOutput,
 			Timeout:        timeout,
-			JudgeModel:     opts.JudgeModel,
+			Judge:          opts.Judge,
 			ToolCalls:      toolCalls,
 		})
 		source := "assertion"
