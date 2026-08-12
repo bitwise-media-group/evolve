@@ -15,6 +15,43 @@ updates:
       prefix-development: deps
     schedule:
       interval: daily
+    groups:
+      # Grouped security updates: one PR per sweep instead of one per advisory.
+      # Groups only apply to version updates unless applies-to says otherwise.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # The otel/log API, SDK, exporters, and contrib bridges are separate
+      # modules that only compile against matching release trains — a lone
+      # bump (e.g. sdk/log 0.21.0 without otelslog 0.20.0) fails the build,
+      # so ship the whole family as one PR.
+      opentelemetry:
+        patterns:
+          - go.opentelemetry.io/*
+      # The x/ repos cut releases together; one PR per sweep.
+      golang-x:
+        patterns:
+          - golang.org/x/*
+      # grpc + genproto + protobuf move in lockstep (genproto is a pseudo-
+      # versioned pair that bumps almost daily); keep them to one PR.
+      google:
+        patterns:
+          - google.golang.org/*
+      # The Charm TUI stack (bubbletea/bubbles/lipgloss + charmbracelet/x)
+      # tracks shared internals across repos; bump as one PR.
+      charm:
+        patterns:
+          - charm.land/*
+          - github.com/charmbracelet/*
+      # Prometheus client family, all indirect via the autoexport exporter.
+      prometheus:
+        patterns:
+          - github.com/prometheus/*
+      # cobra/pflag/viper and their shared spf13 helpers.
+      spf13:
+        patterns:
+          - github.com/spf13/*
 
   # The pinned Go dev CLIs (addlicense, golangci-lint, goreleaser, ...) no longer
   # live in a tools/go.mod — they come from the toolchain submodule's mise pins
@@ -50,6 +87,10 @@ updates:
       exclude:
         - bitwise-media-group/*
     groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       actions:
         patterns:
           - actions/*
@@ -73,6 +114,10 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       dev-tooling:
         patterns:
           - "*"
@@ -90,6 +135,10 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       docs-tooling:
         patterns:
           - "*"
