@@ -1,0 +1,69 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
+# Copilot evolve-runner image: one of the per-harness images patchy's
+# evaluation Jobs run (`evolve exec-unit` + the harness CLI). See
+# Dockerfile.runner-claude for the container contract; this image differs
+# only in the CLI it carries. Unlike claude and codex, copilot is not a
+# single self-contained binary: the npm platform package unpacks a directory
+# whose entrypoint expects its siblings beside it, so it lives in
+# /opt/copilot with only the entrypoint symlinked onto PATH.
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# renovate: datasource=npm depName=@github/copilot
+ARG COPILOT_VERSION=1.0.75
+ARG COPILOT_SHA256_AMD64=3e954cebd1765bb8b2b42e5f322545f005030fdb93c1c2456ea09adcd5e2f87e
+ARG COPILOT_SHA256_ARM64=2c8549fc33864de96e0d9d9f97b4ef5ddf0f156db84f4ffecb37fe8d4099da72
+
+ARG TARGETARCH
+# hadolint ignore=DL4006
+RUN case "${TARGETARCH}" in \
+        amd64) pkg=copilot-linux-x64; sha="${COPILOT_SHA256_AMD64}" ;; \
+        arm64) pkg=copilot-linux-arm64; sha="${COPILOT_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && url="https://registry.npmjs.org/@github/${pkg}/-/${pkg}-${COPILOT_VERSION}.tgz" \
+    && curl -fsSL -o /tmp/copilot.tgz "${url}" \
+    && echo "${sha}  /tmp/copilot.tgz" | sha256sum -c - \
+    && mkdir -p /opt/copilot \
+    && tar -xzf /tmp/copilot.tgz -C /opt/copilot --strip-components=1 \
+    && rm -f /tmp/copilot.tgz \
+    && chmod 0755 /opt/copilot/copilot
+
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+
+# curl + tar serve the init container's credential-less bundle fetch; git
+# serves per-case workspace initialization and the agent's own commits.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=fetch /opt/copilot /opt/copilot
+RUN ln -s /opt/copilot/copilot /usr/local/bin/copilot
+
+# The evolve binary is compiled by GoReleaser and arrives in the build
+# context at $TARGETPLATFORM/evolve — no Go toolchain or source here.
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
+
+# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
+RUN groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+
+# The CLI self-updates by default outside CI; an image pins a version and
+# runs on a read-only rootfs, so updating must never be attempted.
+ENV COPILOT_AUTO_UPDATE=false
+
+# HOME is overridden to /workspace by the Job (the only writable dir); this
+# is only the sane default for a bare `docker run`. COPILOT_HOME follows HOME.
+ENV HOME=/workspace
+WORKDIR /workspace
+
+USER 65532:65532
+ENTRYPOINT ["evolve"]

@@ -63,6 +63,61 @@ archives:
       # binary at install time (see homebrew_casks.completions below).
       - completions/*
 
+# ^ref: https://goreleaser.com/customization/docker_v2/
+# The evolve-runner images patchy's evaluation Jobs run: evolve + one harness
+# CLI each (`evolve exec-unit` is the entrypoint's hidden in-pod verb). The
+# Dockerfiles only assemble the runtime layer around the binaries GoReleaser
+# compiled — they cannot be `docker build` directly from the repo.
+dockers_v2:
+  - id: runner-claude
+    ids: [evolve]
+    dockerfile: Dockerfile.runner-claude
+    images:
+      - ghcr.io/bitwise-media-group/evolve-runner-claude
+    tags:
+      - v{{ .Version }}
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.source: https://github.com/bitwise-media-group/evolve
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+  - id: runner-codex
+    ids: [evolve]
+    dockerfile: Dockerfile.runner-codex
+    images:
+      - ghcr.io/bitwise-media-group/evolve-runner-codex
+    tags:
+      - v{{ .Version }}
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.source: https://github.com/bitwise-media-group/evolve
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+  - id: runner-copilot
+    ids: [evolve]
+    dockerfile: Dockerfile.runner-copilot
+    images:
+      - ghcr.io/bitwise-media-group/evolve-runner-copilot
+    tags:
+      - v{{ .Version }}
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.source: https://github.com/bitwise-media-group/evolve
+      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+
 # ^ref: https://goreleaser.com/customization/checksum/
 checksum:
   name_template: checksums.txt

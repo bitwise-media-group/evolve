@@ -1,0 +1,64 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
+# Codex evolve-runner image: one of the per-harness images patchy's
+# evaluation Jobs run (`evolve exec-unit` + the harness CLI). See
+# Dockerfile.runner-claude for the container contract; this image differs
+# only in the CLI it carries. codex ships as a self-contained musl-static
+# binary published per GitHub release with no checksum manifest, so the
+# digests are pinned inline for a reproducible, attributable image.
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# renovate: datasource=github-releases depName=openai/codex extractVersion=^rust-v(?<version>.*)$
+ARG CODEX_VERSION=0.145.0
+ARG CODEX_SHA256_AMD64=bfaf13c9ba34f2ad764e4a916c49cf7177aeba329cf0f719e2227566fc8d662a
+ARG CODEX_SHA256_ARM64=d384f90bc842450b42bd675feef06a12a46a3b1ca97efcb22566b270e4a11227
+
+ARG TARGETARCH
+# hadolint ignore=DL4006
+RUN case "${TARGETARCH}" in \
+        amd64) triple=x86_64-unknown-linux-musl; sha="${CODEX_SHA256_AMD64}" ;; \
+        arm64) triple=aarch64-unknown-linux-musl; sha="${CODEX_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && base="https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}" \
+    && curl -fsSL -o /tmp/codex.tar.gz "${base}/codex-${triple}.tar.gz" \
+    && echo "${sha}  /tmp/codex.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/codex.tar.gz -C /tmp \
+    && mv "/tmp/codex-${triple}" /codex \
+    && rm -f /tmp/codex.tar.gz \
+    && chmod 0755 /codex
+
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+
+# curl + tar serve the init container's credential-less bundle fetch; git
+# serves per-case workspace initialization and the agent's own commits.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=fetch /codex /usr/local/bin/codex
+
+# The evolve binary is compiled by GoReleaser and arrives in the build
+# context at $TARGETPLATFORM/evolve — no Go toolchain or source here.
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
+
+# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
+RUN groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+
+# HOME is overridden to /workspace by the Job (the only writable dir); this
+# is only the sane default for a bare `docker run`. codex keeps its state
+# under $CODEX_HOME, which evolve points into the workspace.
+ENV HOME=/workspace
+WORKDIR /workspace
+
+USER 65532:65532
+ENTRYPOINT ["evolve"]

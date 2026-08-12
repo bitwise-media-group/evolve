@@ -61,9 +61,8 @@ jobs:
       attestations: write
       # artifact storage record for the attestation
       artifact-metadata: write
-      # push container images to ghcr (goreleaser dockers_v2). evolve ships no
-      # images, but the union rule above makes this mandatory from v6.0.0 on — a
-      # missing scope startup-fails the whole run.
+      # push container images to ghcr (goreleaser dockers_v2): the
+      # evolve-runner-<harness> images patchy's evaluation Jobs run.
       packages: write
       # publish the docs site to GitHub Pages (docs job, keyed off zensical.toml)
       pages: write

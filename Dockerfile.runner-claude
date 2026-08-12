@@ -1,0 +1,78 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
+# Claude evolve-runner image: one of the per-harness images patchy's
+# evaluation Jobs run (`evolve exec-unit` + the harness CLI). Used for BOTH
+# containers of the ephemeral Job patchy creates:
+#
+#   initContainer "prepare" — /bin/sh + curl + tar: fetches the
+#     digest-verified workspace bundle and stages the unit spec.
+#   container "agent"       — runs `evolve exec-unit` (the entrypoint), which
+#     execs `claude -p ...` per case and `git` for workspace setup.
+#
+# The pattern mirrors patchy's Dockerfile.claude-agent-runner: the claude CLI
+# is a self-contained native binary, downloaded pinned and checksum-verified
+# against the release manifest; the runtime base is plain debian:trixie-slim.
+#
+# readOnlyRootFilesystem: patchy runs both containers with a read-only root
+# filesystem, uid 65532, all capabilities dropped. The only writable paths
+# are /workspace (emptyDir, and HOME) and /tmp; claude keeps its state under
+# $HOME, and DISABLE_AUTOUPDATER pins it to the baked version.
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pinned claude CLI version; the native binaries release in lockstep with the
+# npm package, so the npm datasource stays the source of truth.
+# renovate: datasource=npm depName=@anthropic-ai/claude-code
+ARG CLAUDE_VERSION=2.0.14
+
+ARG TARGETARCH
+# hadolint ignore=DL4006
+RUN case "${TARGETARCH}" in \
+        amd64) platform=linux-x64 ;; \
+        arm64) platform=linux-arm64 ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && base="https://downloads.claude.ai/claude-code-releases" \
+    && curl -fsSL -o /tmp/manifest.json "${base}/${CLAUDE_VERSION}/manifest.json" \
+    && checksum="$(jq -er ".platforms[\"${platform}\"].checksum" /tmp/manifest.json)" \
+    && echo "${checksum}" | grep -qE '^[0-9a-f]{64}$' \
+    && curl -fsSL -o /claude "${base}/${CLAUDE_VERSION}/${platform}/claude" \
+    && echo "${checksum}  /claude" | sha256sum -c - \
+    && chmod 0755 /claude
+
+FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+
+# curl + tar serve the init container's credential-less bundle fetch; git
+# serves per-case workspace initialization and the agent's own commits.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=fetch /claude /usr/local/bin/claude
+
+# The evolve binary is compiled by GoReleaser and arrives in the build
+# context at $TARGETPLATFORM/evolve — no Go toolchain or source here.
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
+
+# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
+RUN groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+
+# The native claude binary self-updates by default; an image pins a version
+# and runs on a read-only rootfs, so updating must never be attempted.
+ENV DISABLE_AUTOUPDATER=1
+
+# HOME is overridden to /workspace by the Job (the only writable dir); this
+# is only the sane default for a bare `docker run`.
+ENV HOME=/workspace
+WORKDIR /workspace
+
+USER 65532:65532
+ENTRYPOINT ["evolve"]
