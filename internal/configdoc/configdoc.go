@@ -90,6 +90,17 @@ func Schema() []Option {
 				"--stale-results overrides.",
 		},
 		{
+			Key: "remote.url", Type: "string", Example: "https://patchy-evals.example.com",
+			Fallback: "no remote configured",
+			Doc: "Patchy remote-evaluation service URL, used by evolve login/logout and remote runs; " +
+				"--remote-url overrides for one command.",
+		},
+		{
+			Key: "remote.default", Type: "bool", Value: false,
+			Doc: "Execute runs on the configured remote by default; --remote/--local force either way " +
+				"for one run. False runs locally unless --remote.",
+		},
+		{
 			Key: "sandbox.enabled", Type: "bool", Value: true,
 			Doc: "Confine agent writes with an OS sandbox (sandbox-exec on macOS, bubblewrap on Linux); " +
 				"--no-sandbox overrides for one run.",
