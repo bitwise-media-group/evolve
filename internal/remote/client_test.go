@@ -124,6 +124,8 @@ type fakePatchy struct {
 	blobs      map[string][]byte
 	submission *Submission
 	cancelled  atomic.Bool
+	// puts counts workspace uploads, so tests can assert dedupe.
+	puts atomic.Int32
 	// connections counts SSE attempts; the first drops mid-stream to
 	// exercise reconnect.
 	connections atomic.Int32
@@ -145,6 +147,7 @@ func newFakePatchy(t *testing.T) *fakePatchy {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("PUT /api/v1/workspaces/{digest}", func(w http.ResponseWriter, r *http.Request) {
+		fp.puts.Add(1)
 		raw, _ := io.ReadAll(r.Body)
 		fp.blobs[r.PathValue("digest")] = raw
 		w.WriteHeader(http.StatusCreated)
