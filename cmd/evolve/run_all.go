@@ -27,6 +27,27 @@ var runAllCmd = &cobra.Command{
 		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
 			return err
 		}
+		if isRemote, err := remoteMode(cmd); err != nil {
+			return err
+		} else if isRemote {
+			// The checks tier is static analysis of the local tree — always
+			// local; the agent tiers execute remotely.
+			var failures bool
+			if err := runSub(cmd, checksCmd, &failures); err != nil {
+				return err
+			}
+			if err := runRemote(cmd, &allFlags.SweepFlags, plan.Tiers{Triggers: true, Evals: true},
+				allFlags.Runs, "", "run: some checks or cases failed"); err != nil {
+				return err
+			}
+			if err := runSub(cmd, reportCmd, &failures); err != nil {
+				return err
+			}
+			if failures {
+				return failOrWarn(cmd, "run: some checks or cases failed")
+			}
+			return nil
+		}
 		interactive := interactiveTUI(cmd, allFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err

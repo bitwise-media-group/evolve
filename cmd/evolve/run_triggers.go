@@ -29,6 +29,14 @@ var triggersCmd = &cobra.Command{
 		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
 			return err
 		}
+		if isRemote, err := remoteMode(cmd); err != nil {
+			return err
+		} else if isRemote {
+			// Remote runs are plain-output: the TUI's selection form probes
+			// local CLIs, which a remote run deliberately has none of.
+			return runRemote(cmd, &triggersFlags.SweepFlags, plan.Tiers{Triggers: true},
+				triggersFlags.Runs, "", "triggers: some queries failed")
+		}
 		interactive := interactiveTUI(cmd, triggersFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err

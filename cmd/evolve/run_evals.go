@@ -29,6 +29,14 @@ var evalsCmd = &cobra.Command{
 		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
 			return err
 		}
+		if isRemote, err := remoteMode(cmd); err != nil {
+			return err
+		} else if isRemote {
+			// Remote runs are plain-output: the TUI's selection form probes
+			// local CLIs, which a remote run deliberately has none of.
+			return runRemote(cmd, &evalsFlags.SweepFlags, plan.Tiers{Evals: true},
+				0, evalsFlags.Eval, "evals: some evals failed")
+		}
 		interactive := interactiveTUI(cmd, evalsFlags.NoTUI)
 		if err := reconcileStaleResults(cmd, interactive); err != nil {
 			return err
