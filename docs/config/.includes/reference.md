@@ -11,6 +11,8 @@
 | `judge_model` | string | `"anthropic/claude-sonnet-5"` | Model that grades LLM assertions (a canonical or bare model id), driven by any installed harness that supports it; --judge-model overrides for one run. Keep it consistent across runs so verdicts stay comparable between them and the providers under test. |
 | `baseline` | bool | `true` | Benchmark each eval without the skill (the skill's lift over no skill), recomputed only when the eval or its fixtures change. --baseline overrides for one run. |
 | `stale_results` | string | unset — prompt on a terminal, otherwise keep | How run/report treat stored results for models outside the `models` restriction: keep or drop. --stale-results overrides. |
+| `remote.url` | string | unset — no remote configured | Patchy remote-evaluation service URL, used by evolve login/logout and remote runs; --remote-url overrides for one command. |
+| `remote.default` | bool | `false` | Execute runs on the configured remote by default; --remote/--local force either way for one run. False runs locally unless --remote. |
 | `sandbox.enabled` | bool | `true` | Confine agent writes with an OS sandbox (sandbox-exec on macOS, bubblewrap on Linux); --no-sandbox overrides for one run. |
 | `sandbox.protected_roots` | list of strings | unset — the parent directory of the repository under test | Directories kept read-only to agent runs so an escaping agent cannot modify other source repositories; the workspace stays writable. Reads, the network, and tool caches outside these roots are unaffected. |
 | `checks.license` | string | unset — the license field is forbidden | License every SKILL.md must declare; when unset, skills must not declare one. |

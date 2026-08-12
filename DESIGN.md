@@ -110,6 +110,29 @@ The CLI reference in `docs/cli` and the man pages in `docs/man` are generated fr
 configuration reference plus annotated example config files in `docs/config` from `internal/configdoc`'s schema (all via
 `make docs`) and committed, so reviewing a flag or config change shows the documentation diff alongside the code.
 
+### Remote execution
+
+Runs can execute on a patchy cluster instead of the workstation (`--remote`, or `remote.default` with a configured
+`remote.url`). The split rests on the **bidirectional Reporter seam**: in the pod, `evolve exec-unit` (a hidden verb,
+excluded from the generated docs like `docs`) drives the ordinary engines with `remote.EventReporter` as the
+`run.Reporter`, serializing every progress call onto an `EVOLVE-EVENT:` JSONL stdout stream; on the workstation,
+`remote.ApplyEvent` replays received events onto the local reporter — so remote output is the local output, produced
+through the same interface. Patchy interprets only the terminal `result`/`fatal` events; grading, the LLM judge, and
+results-entry assembly all happen in the pod, co-located with the uploaded workspace bundle, and the finished entry
+travels back opaquely to merge into the local `results.<ext>` with the normal snapshot rotation.
+
+Planning stays local and engine-faithful: `remote.Sweep` enumerates units through `run.Catalog`/`run.Needs` with
+`run.Options.AssumeRunnable` (the local-PATH eligibility gates defer to the server's runner fleet), so `--new`,
+`--failed`, `--modified`, and the filters select exactly what a local run would. Workspaces upload as deterministic
+tarballs (sorted entries, zeroed metadata; results files excluded so digests stay stable), content-addressed and
+deduplicated by sha256.
+
+Two deliberate exec/storage exceptions ride along: `evolve login` opens the system browser (`open`/`xdg-open`,
+best-effort, URL always printed) for the OIDC authorization-code + PKCE flow — a setup-time exec like the Keychain
+bridge — and the resulting credential is evolve's first **user-level** file
+(`os.UserConfigDir()/evolve/credentials.json`, 0600, keyed by remote URL): durable secrets belong in the config dir, not
+a purgeable cache, and not in any repository.
+
 ## TUI
 
 `evolve run triggers`, `run evals`, and `run all` show an interactive full-screen UI — a selection form, then a live run

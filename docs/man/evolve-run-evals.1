@@ -95,8 +95,20 @@ Run Tier 2 behavioral evals: agent sessions graded by assertions
 	repository layout: auto, marketplace, multi, or single
 
 .PP
+\fB--local\fP[=false]
+	execute locally even when remote.default is set
+
+.PP
 \fB--no-sandbox\fP[=false]
 	disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
+
+.PP
+\fB--remote\fP[=false]
+	execute on the configured patchy remote-evaluation service (config: remote.default)
+
+.PP
+\fB--remote-url\fP=""
+	patchy remote-evaluation service URL (config: remote.url, env EVOLVE_REMOTE_URL)
 
 .PP
 \fB--results-format\fP=""

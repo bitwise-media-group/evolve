@@ -84,6 +84,24 @@
       "description": "How run/report treat stored results for models outside the `models` restriction: keep or drop. --stale-results overrides.",
       "type": "string"
     },
+    "remote": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "url": {
+          "description": "Patchy remote-evaluation service URL, used by evolve login/logout and remote runs; --remote-url overrides for one command.",
+          "type": "string"
+        },
+        "default": {
+          "description": "Execute runs on the configured remote by default; --remote/--local force either way for one run. False runs locally unless --remote.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
     "sandbox": {
       "type": [
         "object",

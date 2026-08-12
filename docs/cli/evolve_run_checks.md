@@ -20,7 +20,10 @@ evolve run checks [flags]
 ```
       --json                    emit machine-readable JSONL progress on stdout
       --layout string           repository layout: auto, marketplace, multi, or single (default "auto")
+      --local                   execute locally even when remote.default is set
       --no-sandbox              disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
+      --remote                  execute on the configured patchy remote-evaluation service (config: remote.default)
+      --remote-url string       patchy remote-evaluation service URL (config: remote.url, env EVOLVE_REMOTE_URL)
       --results-format string   format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)
       --root string             repository root to operate on (default: walk up from the current directory)
       --strict                  exit 1 when checks or evals fail (default: warn and exit 0)

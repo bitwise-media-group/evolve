@@ -99,6 +99,14 @@ snippet-includes the generated config fragments.
   engine events into metrics/logs, and owns provider shutdown. The engines reach the global tracer/meter directly, so
   this package imports `internal/run` to decorate the reporter (no cycle); `internal/report` also imports it, for the
   `StaleTiers` gate primitive. Off by default.
+- `remote` — the patchy remote-execution client: the OIDC login flow and user-level credential store
+  (`store.go`/`login.go`), the HTTP/SSE client (`client.go`), the deterministic workspace bundler (`bundle.go`), the
+  remote sweep orchestrator (`sweep.go` — plans with the engine's own `run.Catalog`/`run.Needs`, submits, monitors,
+  lands entries into local results files), and the bidirectional Reporter seam (`events.go`: `EventReporter` serializes
+  `run.Reporter` calls onto the in-pod EVOLVE-EVENT stdout stream, `ApplyEvent` replays them). `wire.go` holds local
+  copies of patchy's `pkg/evaluation` contract until that package publishes. The hidden `exec-unit` verb
+  (`cmd/evolve/execunit.go`) is the in-pod half: patchy's evaluation Jobs run `evolve exec-unit` from the
+  `Dockerfile.runner-*` images this repo ships.
 - `version` — build/version info.
 
 ## Build, test, run

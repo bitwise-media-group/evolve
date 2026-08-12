@@ -33,6 +33,7 @@ nav = [
     { "Results" = "evaluations/results.md" },
   ] },
   { "Reviewing reports" = "reports/index.md" },
+  { "Remote execution" = "remote/index.md" },
   { "Viewing in a Browser" = "reports/viewer.md" },
   { "Reference" = "reference.md" },
   { "TUI" = "tui.md" },

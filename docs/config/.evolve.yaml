@@ -58,6 +58,16 @@ baseline: true
 # Default: unset — prompt on a terminal, otherwise keep.
 # stale_results: "keep"
 
+remote:
+  # Patchy remote-evaluation service URL, used by evolve login/logout and
+  # remote runs; --remote-url overrides for one command.
+  # Default: unset — no remote configured.
+  # url: "https://patchy-evals.example.com"
+
+  # Execute runs on the configured remote by default; --remote/--local force
+  # either way for one run. False runs locally unless --remote.
+  default: false
+
 sandbox:
   # Confine agent writes with an OS sandbox (sandbox-exec on macOS,
   # bubblewrap on Linux); --no-sandbox overrides for one run.

@@ -18,6 +18,8 @@ Evaluate coding-agent plugins: static checks, trigger accuracy, behavioral evals
 
 * [evolve completion](evolve_completion.md)	 - Generate the autocompletion script for the specified shell
 * [evolve doctor](evolve_doctor.md)	 - Check each harness (CLI on PATH, credential) and each vendor's counting API
+* [evolve login](evolve_login.md)	 - Sign in to a patchy remote-evaluation service.
+* [evolve logout](evolve_logout.md)	 - Forget the stored credential for a patchy remote-evaluation service.
 * [evolve models](evolve_models.md)	 - Print the effective model matrix with pricing, harnesses, and provenance
 * [evolve report](evolve_report.md)	 - Regenerate EVALUATION.md and EVALUATION.json from the stored results
 * [evolve run](evolve_run.md)	 - Run the eval tiers: static checks, trigger accuracy, behavioral evals
