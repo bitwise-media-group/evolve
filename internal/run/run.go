@@ -48,6 +48,12 @@ type Options struct {
 	Jobs         int
 	MaxTurns     int // agent-turn ceiling per eval; 0 = model.DefaultMaxTurns. A per-eval max_turns overrides it.
 	CountOnly    bool
+	// AssumeRunnable treats every selection as executable without probing
+	// PATH for the harness CLI: eligibility is the remote server's concern.
+	// The remote client plans with it (its machine need not carry any CLI),
+	// and the in-pod runner keeps it set for parity — the runner image
+	// carries exactly one CLI, resolved before the pod ever starts.
+	AssumeRunnable bool
 	// Baseline runs each executed eval a second time with the skill absent, so the
 	// report and dashboard can show the skill's lift over no skill at all. The
 	// baseline is cached per eval and recomputed only when the eval (spec or

@@ -276,10 +276,11 @@ func needEvals(opts Options, sc plan.SkillCatalog, sels []harness.Selection, fla
 }
 
 // triggerExecutes reports whether a trigger sweep would run agents for sel (vs
-// token-count only): a CLI is on PATH and this is not a count-only invocation.
+// token-count only): a CLI is on PATH — or eligibility is the server's
+// concern (AssumeRunnable) — and this is not a count-only invocation.
 func triggerExecutes(opts Options, sel harness.Selection) bool {
 	_, cliFound := harness.Available(sel.Harness)
-	return !opts.CountOnly && cliFound
+	return !opts.CountOnly && (cliFound || opts.AssumeRunnable)
 }
 
 // evalCapabilities mirrors runEvalUnit's per-model knobs: whether it executes,
@@ -287,7 +288,7 @@ func triggerExecutes(opts Options, sel harness.Selection) bool {
 func evalCapabilities(opts Options, sel harness.Selection) (execute, reportsUsage, priced bool) {
 	evalRunner, isEvalRunner := sel.Harness.(harness.EvalRunner)
 	_, cliFound := harness.Available(sel.Harness)
-	execute = isEvalRunner && cliFound && !opts.CountOnly
+	execute = isEvalRunner && (cliFound || opts.AssumeRunnable) && !opts.CountOnly
 	reportsUsage = isEvalRunner && evalRunner.ReportsUsage()
 	priced = sel.Model.InputUSD != nil && sel.Model.OutputUSD != nil
 	return execute, reportsUsage, priced

@@ -146,8 +146,8 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	ctx, span := tracer().Start(ctx, "evolve.unit", trace.WithAttributes(unitSpanAttrs(ref)...))
 	defer func() { endSpan(span, err) }()
 
-	cli, cliFound := harness.Available(sel.Harness)
-	execute := !opts.CountOnly && cliFound
+	cli, _ := harness.Available(sel.Harness)
+	execute := triggerExecutes(opts.Options, sel)
 
 	// Per-case run-set: under --new/--failed/--modified keep only the queries
 	// with a gap. reason != ReasonNone is the same predicate the TUI form
