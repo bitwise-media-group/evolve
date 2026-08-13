@@ -33,7 +33,7 @@ permissions: {}
 
 jobs:
   auto-merge:
-    uses: bitwise-media-group/github-workflows/.github/workflows/dependabot-merge.yaml@d57088d5b32e8f3af5e0ae92a1ec766150ad7f0c # v6.0.3
+    uses: bitwise-media-group/github-workflows/.github/workflows/dependabot-merge.yaml@000a25b778032f41c8f6d2bf21359203f68dbd40 # v6.1.0
     with:
       app-client-id: ${{ vars.FF_MERGE_CLIENT_ID }}
     secrets:
