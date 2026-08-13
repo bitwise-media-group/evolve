@@ -3,6 +3,7 @@
 /dist/
 /site/
 /.cache/
+/.bin/
 
 # coverage (make test)
 /coverage/
