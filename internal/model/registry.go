@@ -192,6 +192,12 @@ func builtins() []Model {
 			Supported: map[string]string{HarnessGrok: "grok-4.5"},
 			Preferred: HarnessGrok,
 		},
+		{
+			ID: "xai/grok-4.6", ProviderID: ProviderXAI, Name: "Grok 4.6",
+			InputUSD: usd(2.00), OutputUSD: usd(6.00),
+			Supported: map[string]string{HarnessGrok: "grok-4.6"},
+			Preferred: HarnessGrok,
+		},
 	}
 }
 
