@@ -28,7 +28,7 @@
 # like any other.
 #
 # The reusable workflow is pinned to a full commit SHA (tag in the comment) so a
-# moved tag can never change what runs; Dependabot keeps the pin fresh.
+# moved tag can never change what runs; Renovate keeps the pin fresh.
 name: Release
 
 on:

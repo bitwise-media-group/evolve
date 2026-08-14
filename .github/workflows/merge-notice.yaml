@@ -12,7 +12,7 @@
 # context is safe. No App token or secret is needed.
 #
 # The reusable workflow is pinned to a full commit SHA (tag in the comment);
-# Dependabot keeps the pin fresh.
+# Renovate keeps the pin fresh.
 name: Merge Notice
 
 on:

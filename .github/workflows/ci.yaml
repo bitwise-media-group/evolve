@@ -10,7 +10,7 @@
 # from go.mod and the Node version from .node-version.
 #
 # The reusable workflow is pinned to a full commit SHA (tag in the comment) so a
-# moved tag can never change what runs; Dependabot keeps the pin fresh.
+# moved tag can never change what runs; Renovate keeps the pin fresh.
 name: Continuous Integration
 
 on:
