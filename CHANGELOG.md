@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.0](https://github.com/bitwise-media-group/evolve/compare/v0.6.0...v0.7.0) (2026-08-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **harness:** the allowed_tools eval field is removed from the evals schema and ignored where present (files still parse; the field is inert). EvalInput.AllowedTools is gone from the harness surface.
+
+### Features
+
+* --remote executes runs on a patchy cluster ([d6e8a0b](https://github.com/bitwise-media-group/evolve/commit/d6e8a0b489465579231fa490eca4aeb4c6dd7483))
+* **cli:** make the judge model configurable via judge_model ([cbd21fd](https://github.com/bitwise-media-group/evolve/commit/cbd21fdea21b0d5cab7491a3c397b0b618f7cb3b))
+* evolve login via OIDC device-grade PKCE ([c3950b0](https://github.com/bitwise-media-group/evolve/commit/c3950b0b0570e7687300bce4d4f3446ca77efc14))
+* evolve-runner images for the patchy fleet ([2d1267e](https://github.com/bitwise-media-group/evolve/commit/2d1267e24a8992379d6fa6c9fc9f1f9c8f701516))
+* exec-unit, the hidden in-pod verb ([0146d14](https://github.com/bitwise-media-group/evolve/commit/0146d1458856b594765e3c4c961b0a77f11f23a7))
+* **grade:** default the LLM judge to Claude Sonnet 5 ([9a0e2e4](https://github.com/bitwise-media-group/evolve/commit/9a0e2e4572c26461694b42e2ac495e6cc496c88e))
+* **grade:** drive the LLM judge with any model via any supported harness ([1ad22f9](https://github.com/bitwise-media-group/evolve/commit/1ad22f9aeca7cdf6d9579801cad58c44180b9bda)), closes [#105](https://github.com/bitwise-media-group/evolve/issues/105)
+* **grade:** judge with Claude Sonnet 5 by default ([0163e91](https://github.com/bitwise-media-group/evolve/commit/0163e91c3ff5173fcae235b525cbcfd9da9ce8f0))
+* **harness:** bypass permissions in behavioral evals ([ec2f785](https://github.com/bitwise-media-group/evolve/commit/ec2f785b524097b558c1f66554118939662a7122))
+* **model:** add Claude Opus 5 to the model registry ([7d9e26e](https://github.com/bitwise-media-group/evolve/commit/7d9e26ed4d0ea32494a36c08d5d7f53965db525a))
+* **model:** add grok-4.6 to the model registry ([095a466](https://github.com/bitwise-media-group/evolve/commit/095a4666d25cb9120ede4dfe7c3701798ddc62c3))
+* **remote:** wire contract and the Reporter seam ([eb16e98](https://github.com/bitwise-media-group/evolve/commit/eb16e98a950b8410830a22f8235fdf3c980a5f9a))
+* **run:** AssumeRunnable defers CLI eligibility to the server ([1429cc8](https://github.com/bitwise-media-group/evolve/commit/1429cc8be7de072e8832a800663ebebbefc66bbd))
+* **runner:** support feeding stdin to a CommandSpec invocation ([5c9479f](https://github.com/bitwise-media-group/evolve/commit/5c9479fb88dce457363bd5b63716f18079d30927))
+* **tui:** deselect models the operator's installed CLIs do not offer ([ee3d011](https://github.com/bitwise-media-group/evolve/commit/ee3d011ea504de7190c9e0e71acc31efe2757fde))
+* **workspace:** initialise each workspace as a git repository ([db802ab](https://github.com/bitwise-media-group/evolve/commit/db802ab392caa6dc7be4677fe6a8049a75bb3309))
+
+
+### Bug Fixes
+
+* **harness:** guard grok shell commands with a deny hook, not dontAsk ([a373d30](https://github.com/bitwise-media-group/evolve/commit/a373d305717cd8284f7e127b7d0faf0305b6643e))
+* **harness:** stop grok headless runs dying on permission prompts ([7b4e230](https://github.com/bitwise-media-group/evolve/commit/7b4e2308f90c948fb038cbc2d2eaae05c2469f55))
+* isolate agent session history into throwaway workspace homes ([ad9cad4](https://github.com/bitwise-media-group/evolve/commit/ad9cad489ca2c122d10368fdf9806d5a4764d1c7)), closes [#88](https://github.com/bitwise-media-group/evolve/issues/88)
+
 ## [0.6.0](https://github.com/bitwise-media-group/evolve/compare/v0.5.1...v0.6.0) (2026-07-18)
 
 
