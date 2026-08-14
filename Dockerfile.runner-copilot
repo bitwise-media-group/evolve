@@ -16,7 +16,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # renovate: datasource=npm depName=@github/copilot
-ARG COPILOT_VERSION=1.0.75
+ARG COPILOT_VERSION=1.0.79
 ARG COPILOT_SHA256_AMD64=3e954cebd1765bb8b2b42e5f322545f005030fdb93c1c2456ea09adcd5e2f87e
 ARG COPILOT_SHA256_ARM64=2c8549fc33864de96e0d9d9f97b4ef5ddf0f156db84f4ffecb37fe8d4099da72
 
