@@ -3,12 +3,11 @@
  SPDX-License-Identifier: MIT
 -->
 
-{#- overrides/partials/header.html — Evolve header. Drops the stock logo and renders the site name as the multicolor
-"EVOLVE" wordmark (same per-letter cyberdream colors as the hero in home.html). The wordmark links home, since removing
-the logo removes the header's only home affordance. Styling lives in docs/stylesheets/extra.css (.ev-headmark). -#} {%
-set class = "md-header" %} {% if "navigation.tabs.sticky" in features %} {% set class = class ~ " md-header--shadow
-md-header--lifted" %} {% elif "navigation.tabs" not in features %} {% set class = class ~ " md-header--shadow" %} {%
-endif %}
+{#- overrides/partials/header.html — Evolve header. Drops the stock square logo slot (hidden on mobile) and puts
+docs/assets/images/logo.svg in the title, so the wordmark is the home link at every breakpoint. Styling lives in
+docs/stylesheets/extra.css (.ev-headmark). -#} {% set class = "md-header" %} {% if "navigation.tabs.sticky" in features
+%} {% set class = class ~ " md-header--shadow md-header--lifted" %} {% elif "navigation.tabs" not in features %} {% set
+class = class ~ " md-header--shadow" %} {% endif %}
 <header class="{{ class }}" data-md-component="header">
     <nav class="md-header__inner md-grid" aria-label="{{ lang.t('header') }}">
         <label class="md-header__button md-icon" for="__drawer" aria-label="{{ lang.t('nav') }}">
@@ -24,10 +23,7 @@ endif %}
                             class="ev-headmark"
                             aria-label="{{ config.site_name }}"
                         >
-                            <span style="color: var(--ev-blue)">E</span><span style="color: var(--ev-green)">V</span
-                            ><span style="color: var(--ev-cyan)">O</span><span style="color: var(--ev-magenta)">L</span
-                            ><span style="color: var(--ev-orange)">V</span
-                            ><span style="color: var(--ev-purple)">E</span>
+                            {% include "partials/logo.html" %}
                         </a>
                     </span>
                 </div>

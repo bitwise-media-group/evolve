@@ -42,6 +42,10 @@ nav = [
 [project.theme]
 name = "material"
 custom_dir = "overrides"
+# Paths are relative to docs_dir. Header/nav inline the wordmark (same paths
+# as logo.svg) so letter fills follow the palette; favicon is the monogram.
+logo = "assets/images/logo.svg"
+favicon = "assets/images/favicon.svg"
 features = [
   "navigation.instant",
   "navigation.tracking",
