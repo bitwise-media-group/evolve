@@ -25,4 +25,4 @@ permissions: {}
 
 jobs:
   ack:
-    uses: bitwise-media-group/github-workflows/.github/workflows/merge-review-ack.yaml@b3d4519a6d79376364184f0ca298685dcfa287f2 # v6.1.1
+    uses: bitwise-media-group/github-workflows/.github/workflows/merge-review-ack.yaml@1eaff010e2929a3583c50ffa325690216bc70462 # v6.2.0

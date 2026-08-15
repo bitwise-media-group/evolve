@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   ci:
-    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@b3d4519a6d79376364184f0ca298685dcfa287f2 # v6.1.1
+    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@1eaff010e2929a3583c50ffa325690216bc70462 # v6.2.0
     with:
       # Default is go.sum; list every lockfile that affects the build. The dev
       # CLIs (golangci-lint, govulncheck, addlicense, gotestsum, ...) are pinned
