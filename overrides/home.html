@@ -19,8 +19,9 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
             <p class="ev-tagline">Evaluate coding-agent plugins, across every model.</p>
             <p class="ev-lede">
                 Evolve validates plugin structure, checks whether skills trigger on the right prompts, and runs
-                behavioral eval suites in throwaway workspaces — across Anthropic, OpenAI, Google, Cursor, Copilot and
-                Antigravity. It writes committed Markdown + JSON rollups for review and CI, all from one Go binary.
+                behavioral eval suites in throwaway workspaces — across Anthropic, OpenAI, Google, Cursor, Copilot,
+                Antigravity and Grok. It writes committed Markdown + JSON rollups for review and CI, all from one Go
+                binary.
             </p>
             <div class="ev-term">
                 <div class="ev-term__bar"><i></i><i></i><i></i><span>zsh — install</span></div>
@@ -56,16 +57,19 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
         </p>
     </section>
     <!-- MARQUEE -->
-    {# Provider/model ids (mirrors internal/model). Rendered twice so the translateX(-50%) scroll in extra.css loops
-    seamlessly; aria-hidden because it is decorative and would otherwise be announced twice. #} {% set ev_marquee = [
-    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"], ["anthropic/claude-sonnet-5",
-    "magenta"], ["anthropic/claude-opus-4-8", "magenta"], ["anthropic/claude-fable-5", "magenta"],
+    {# Provider/model ids (mirrors builtins() in internal/model/registry.go). Rendered twice so the
+    translateX(-50%) scroll in extra.css loops seamlessly; aria-hidden because it is decorative and
+    would otherwise be announced twice. #} {% set ev_marquee = [
+    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"],
+    ["anthropic/claude-sonnet-5", "magenta"], ["anthropic/claude-opus-4-8", "magenta"],
+    ["anthropic/claude-opus-5", "magenta"], ["anthropic/claude-fable-5", "magenta"],
     ["openai/gpt-5.6-sol", "green"], ["openai/gpt-5.6-terra", "green"], ["openai/gpt-5.6-luna", "green"],
-    ["openai/gpt-5.3-codex", "green"], ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"],
-    ["openai/gpt-5.4", "green"], ["openai/gpt-5.5", "green"], ["google/gemini-3-flash-preview", "cyan"],
-    ["google/gemini-3.1-flash-lite", "cyan"],
-    ["google/gemini-3.1-pro-preview", "cyan"], ["google/gemini-3.1-pro", "cyan"], ["google/gemini-3.5-flash", "cyan"],
-    ["cursor/composer-2.5", "orange"] ] %}
+    ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"], ["openai/gpt-5.4", "green"],
+    ["openai/gpt-5.5", "green"], ["openai/gpt-5.3-codex", "green"],
+    ["google/gemini-3.1-flash-lite", "cyan"], ["google/gemini-3-flash-preview", "cyan"],
+    ["google/gemini-3.5-flash", "cyan"], ["google/gemini-3.1-pro-preview", "cyan"],
+    ["google/gemini-3.1-pro", "cyan"], ["cursor/composer-2.5", "orange"],
+    ["xai/grok-4.5", "yellow"], ["xai/grok-4.6", "yellow"] ] %}
     <div class="ev-marquee" aria-hidden="true">
         <div class="ev-marquee__track">
             {% for i in [1, 2] %}{% for m in ev_marquee %}<span style="color: var(--ev-{{ m[1] }})">{{ m[0] }}</span
@@ -102,8 +106,8 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
                 </div>
                 <h3>Every model</h3>
                 <p>
-                    Anthropic, OpenAI, Google, Cursor, Copilot and Antigravity — each driven through its own harness
-                    CLI. Pick a single model or a whole provider with <code>--model</code>.
+                    Anthropic, OpenAI, Google, Cursor, Copilot, Antigravity and Grok — each driven through its own
+                    harness CLI. Pick a single model or a whole provider with <code>--model</code>.
                 </p>
             </div>
             <div class="ev-card" style="--accent: var(--ev-magenta)">
@@ -167,6 +171,7 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
                 <span class="ev-chip" style="color: var(--ev-pink)">gemini</span>
                 <span class="ev-chip" style="color: var(--ev-blue)">copilot</span>
                 <span class="ev-chip" style="color: var(--ev-green)">agy</span>
+                <span class="ev-chip" style="color: var(--ev-yellow)">grok</span>
             </div>
         </div>
         <div class="ev-panel">
@@ -176,6 +181,7 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
                 <span class="ev-chip" style="color: var(--ev-green)">openai</span>
                 <span class="ev-chip" style="color: var(--ev-cyan)">google</span>
                 <span class="ev-chip" style="color: var(--ev-magenta)">cursor</span>
+                <span class="ev-chip" style="color: var(--ev-yellow)">xai</span>
             </div>
         </div>
     </section>
