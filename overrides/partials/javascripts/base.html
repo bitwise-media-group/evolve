@@ -1,0 +1,17 @@
+{#-
+  Overrides the theme's partials/javascripts/base.html (zensical 0.0.54).
+
+  `extra.scope = "/"` deliberately shares preference storage (the cookie
+  consent choice, colour palette — localStorage) across every docs site on
+  oss.bitwisemedia.uk, but upstream keys sessionStorage entries with the same
+  scope, so the GitHub repository facts (`__source`: version/stars/forks)
+  fetched by whichever sibling site loaded first are shown for all of them.
+
+  This copy adds `__md_scope_site` — this site's own base path — and makes it
+  the default scope for sessionStorage reads/writes, while localStorage keeps
+  the shared `extra.scope`. Only `__source` is affected: the other
+  sessionStorage entry (`__outdated`) already passes its scope explicitly.
+
+  Re-sync with the upstream partial when zensical is upgraded.
+-#}
+<script>__md_scope=new URL("{{ config.extra.scope | d(base_url, true) }}",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_scope_site=new URL("{{ base_url }}",location),__md_scope_site.pathname.endsWith("/")||(__md_scope_site=new URL(__md_scope_site.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=t===sessionStorage?__md_scope_site:__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=_===sessionStorage?__md_scope_site:__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
