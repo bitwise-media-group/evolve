@@ -274,21 +274,53 @@
     letter-spacing: 0.5px;
 }
 
-/* Header wordmark: "EVOLVE" in the hero's per-letter neon (overrides/partials/header.html) */
+/* Palette radios live in a <form>; user-agent form margin makes the flex
+   item taller than the icon, so align-items:center parks the sun/moon on
+   the top edge. Same reset Patchy's header relies on. */
+.md-header__option {
+    margin: 0;
+}
+
+/* Header / drawer wordmark: inlined logo.svg paths (overrides/partials/logo.html).
+   Height matches .md-header__title (2.4rem) so the SVG sits on the same
+   line box as the old HTML mark — do not stretch the absolutely-positioned
+   topic, that pulls sibling header controls out of alignment. */
 .ev-headmark {
-    font-family: var(
-        --md-code-font-family,
-        "JetBrains Mono",
-        ui-monospace,
-        monospace
-    );
-    font-weight: 800;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    height: 2.4rem;
+}
+.ev-headmark .ev-logo {
+    display: block;
+    height: 1.55rem;
+    width: auto;
 }
 .ev-headmark:hover {
     opacity: 0.85;
+}
+.md-nav__title .ev-headmark {
+    height: auto;
+}
+.md-nav__title .ev-headmark .ev-logo {
+    height: 1.7rem;
+}
+.ev-logo__e0 {
+    fill: var(--ev-blue);
+}
+.ev-logo__v0 {
+    fill: var(--ev-green);
+}
+.ev-logo__o {
+    fill: var(--ev-cyan);
+}
+.ev-logo__l {
+    fill: var(--ev-magenta);
+}
+.ev-logo__v1 {
+    fill: var(--ev-orange);
+}
+.ev-logo__e1 {
+    fill: var(--ev-purple);
 }
 [dir="ltr"] .md-search__input {
     border-radius: 8px;

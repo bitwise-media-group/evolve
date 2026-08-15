@@ -6,3 +6,4 @@ dist/**
 site/**
 internal/web/ui/**
 completions/**
+overrides/**
