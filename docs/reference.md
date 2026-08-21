@@ -63,18 +63,36 @@ The generated command reference lives in `docs/cli/evolve.md`.
 
 ## Providers
 
-| Provider       | Harness CLI            | Credential                                              | Triggers | Evals | Token counting |
-| -------------- | ---------------------- | ------------------------------------------------------- | -------- | ----- | -------------- |
-| Anthropic      | `claude`               | `ANTHROPIC_API_KEY` (or OAuth token vars)               | yes      | yes   | yes            |
-| OpenAI         | `codex`                | `OPENAI_API_KEY`                                        | yes      | yes   | yes            |
-| Google         | `gemini`               | `GEMINI_API_KEY` / `GOOGLE_API_KEY`                     | yes      | no    | yes            |
-| Cursor         | `agent` (cursor-agent) | `CURSOR_API_KEY`                                        | yes      | yes   | no             |
-| GitHub Copilot | `copilot`              | `COPILOT_GITHUB_TOKEN` (or `GH_TOKEN` / `GITHUB_TOKEN`) | yes      | yes   | no             |
-| Antigravity    | `agy`                  | OAuth login via `agy`                                   | yes      | yes   | no             |
+| Provider       | Harness CLI            | Triggers | Evals | Token counting |
+| -------------- | ---------------------- | -------- | ----- | -------------- |
+| Anthropic      | `claude`               | yes      | yes   | yes            |
+| OpenAI         | `codex`                | yes      | yes   | yes            |
+| Google         | `gemini`               | yes      | no    | yes            |
+| xAI            | `grok`                 | yes      | yes   | yes            |
+| Cursor         | `agent` (cursor-agent) | yes      | yes   | no             |
+| GitHub Copilot | `copilot`              | yes      | yes   | no             |
+| Antigravity    | `agy`                  | yes      | yes   | no             |
 
-Each provider needs its harness CLI on `PATH` and the credentials that CLI requires. Cursor, Copilot and Antigravity
-expose no token-counting API, so their figures render as `n/a` — structurally absent, not zero. Run `evolve doctor` to
-check the local environment.
+Each provider needs its harness CLI on `PATH`. For executing evaluations, any authentication method the harness CLI
+supports works — browser-based / OAuth login included; evolve bridges the CLI's own login credentials into each eval
+workspace read-through (see [Execution model](evaluations/execution.md)). Run `evolve doctor` to check the local
+environment.
+
+### Token counting
+
+An API key or token is needed only for the vendor token-counting APIs. Each counter reads the `EVOLVE_`-prefixed
+variable first — a counting-only credential the harness CLI never picks up — and falls back to the vendor's standard
+variable, which the harness would also use for authentication if set:
+
+| Provider  | Counting-only                                                 | Shared with the harness                                                  |
+| --------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Anthropic | `EVOLVE_ANTHROPIC_API_KEY` / `EVOLVE_CLAUDE_CODE_OAUTH_TOKEN` | `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_AUTH_TOKEN` |
+| OpenAI    | `EVOLVE_OPENAI_API_KEY`                                       | `OPENAI_API_KEY`                                                         |
+| Google    | `EVOLVE_GOOGLE_API_KEY`                                       | `GEMINI_API_KEY` / `GOOGLE_API_KEY`                                      |
+| xAI       | `EVOLVE_XAI_API_KEY`                                          | `XAI_API_KEY`                                                            |
+
+Cursor, Copilot and Antigravity expose no token-counting API, so their figures render as `n/a` — structurally absent,
+not zero.
 
 ## Reports
 
