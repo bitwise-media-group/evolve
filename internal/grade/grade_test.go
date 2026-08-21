@@ -19,15 +19,22 @@ import (
 )
 
 // fakeJudge returns a canned judge response and records what it was asked.
+// onJudge, when set, observes the workspace at judge time (ordering tests).
 type fakeJudge struct {
 	response  string
 	err       error
+	calls     int
 	gotWS     string
 	gotPrompt string
+	onJudge   func(ws string)
 }
 
 func (f *fakeJudge) Judge(_ context.Context, ws, prompt string, _ time.Duration) (string, error) {
+	f.calls++
 	f.gotWS, f.gotPrompt = ws, prompt
+	if f.onJudge != nil {
+		f.onJudge(ws)
+	}
 	return f.response, f.err
 }
 
@@ -40,6 +47,16 @@ func opts(t *testing.T, output string) Options {
 		Timeout:   10 * time.Second,
 		Judge:     &fakeJudge{},
 	}
+}
+
+// caseOne grades a single assertion through Case.
+func caseOne(t *testing.T, a evalspec.Assertion, o Options) (passed *bool, evidence string) {
+	t.Helper()
+	verdicts := Case(context.Background(), []evalspec.Assertion{a}, o)
+	if len(verdicts) != 1 {
+		t.Fatalf("Case returned %d verdicts, want 1", len(verdicts))
+	}
+	return verdicts[0].Passed, verdicts[0].Evidence
 }
 
 func boolish(p *bool) string {
@@ -67,7 +84,7 @@ func TestFileAssertions(t *testing.T) {
 		{evalspec.Assertion{Type: "file_absent", Path: "present.txt"}, "fail"},
 	}
 	for _, tt := range tests {
-		passed, _ := Assertion(context.Background(), tt.a, o)
+		passed, _ := caseOne(t, tt.a, o)
 		if boolish(passed) != tt.want {
 			t.Errorf("%+v = %s, want %s", tt.a, boolish(passed), tt.want)
 		}
@@ -91,7 +108,7 @@ func TestRegexAssertions(t *testing.T) {
 		{evalspec.Assertion{Type: "not_regex", Pattern: `DONE`}, "fail", "DONE"},
 	}
 	for _, tt := range tests {
-		passed, evidence := Assertion(context.Background(), tt.a, o)
+		passed, evidence := caseOne(t, tt.a, o)
 		if boolish(passed) != tt.want || evidence != tt.wantEvidence {
 			t.Errorf("%+v = (%s, %q), want (%s, %q)", tt.a, boolish(passed), evidence, tt.want, tt.wantEvidence)
 		}
@@ -115,7 +132,7 @@ func TestCommandAssertions(t *testing.T) {
 		{evalspec.Assertion{Type: "command", Run: "true", Requires: "definitely-not-a-binary-zzz"}, "skip"},
 	}
 	for _, tt := range tests {
-		passed, evidence := Assertion(context.Background(), tt.a, o)
+		passed, evidence := caseOne(t, tt.a, o)
 		if boolish(passed) != tt.want {
 			t.Errorf("%+v = (%s, %q), want %s", tt.a, boolish(passed), evidence, tt.want)
 		}
@@ -146,31 +163,71 @@ func TestToolCallAssertions(t *testing.T) {
 	for _, tt := range tests {
 		o := opts(t, "")
 		o.ToolCalls = tt.toolCalls
-		passed, evidence := Assertion(context.Background(), tt.a, o)
+		passed, evidence := caseOne(t, tt.a, o)
 		if boolish(passed) != tt.want {
 			t.Errorf("%s: %+v = (%s, %q), want %s", tt.name, tt.a, boolish(passed), evidence, tt.want)
 		}
 	}
 }
 
-func TestLLMJudge(t *testing.T) {
+// TestLLMJudgeBatch pins the batched judge contract: one judge session grades
+// every llm assertion of the case, the prompt numbers them 1-based in authored
+// order, the envelope is extracted from surrounding prose/code fences, and the
+// verdicts land index-aligned with distinct per-assertion evidence while
+// deterministic entries grade as before.
+func TestLLMJudgeBatch(t *testing.T) {
 	o := opts(t, "the readme explains tradeoffs")
+	os.WriteFile(filepath.Join(o.Workspace, "README.md"), []byte("x"), 0o644)
 	j := o.Judge.(*fakeJudge)
-	// The verdict blob is extracted from surrounding prose, whatever harness
-	// produced the text.
-	j.response = "Sure! Here is the verdict:\n{\"passed\": true, \"evidence\": \"README covers omissions\"}"
+	j.response = "Sure! Here is my grading:\n```json\n" +
+		`{"verdicts": [
+			{"id": 1, "passed": true, "evidence": "README covers omissions"},
+			{"id": 2, "passed": false, "evidence": "no changelog entry"},
+			{"id": 3, "passed": true, "evidence": "tests cover error paths"}
+		]}` + "\n```\nLet me know if you need more detail."
 
-	passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "README explains omissions"}, o)
-	if boolish(passed) != "pass" || evidence != "README covers omissions" {
-		t.Errorf("judge = (%s, %q)", boolish(passed), evidence)
+	as := []evalspec.Assertion{
+		{Type: "llm", Text: "README explains omissions"},
+		{Type: "file_exists", Path: "README.md"},
+		{Type: "llm", Text: "CHANGELOG mentions the fix"},
+		{Type: "llm", Text: "tests cover error paths"},
 	}
-	// The judge session runs in the eval's workspace and is asked exactly the
-	// authored assertion.
+	verdicts := Case(context.Background(), as, o)
+
+	wants := []struct {
+		verdict  string
+		evidence string
+	}{
+		{"pass", "README covers omissions"},
+		{"pass", "README.md exists"},
+		{"fail", "no changelog entry"},
+		{"pass", "tests cover error paths"},
+	}
+	for i, want := range wants {
+		if boolish(verdicts[i].Passed) != want.verdict || verdicts[i].Evidence != want.evidence {
+			t.Errorf("verdict[%d] = (%s, %q), want (%s, %q)",
+				i, boolish(verdicts[i].Passed), verdicts[i].Evidence, want.verdict, want.evidence)
+		}
+	}
+	if j.calls != 1 {
+		t.Errorf("judge calls = %d, want 1 (one session per case)", j.calls)
+	}
 	if j.gotWS != o.Workspace {
 		t.Errorf("judge workspace = %q, want %q", j.gotWS, o.Workspace)
 	}
-	if !strings.Contains(j.gotPrompt, "README explains omissions") {
-		t.Errorf("judge prompt missing assertion text:\n%s", j.gotPrompt)
+	// The llm assertions are numbered 1-based in authored order, skipping the
+	// deterministic entry between them.
+	for _, line := range []string{
+		"1. README explains omissions",
+		"2. CHANGELOG mentions the fix",
+		"3. tests cover error paths",
+	} {
+		if !strings.Contains(j.gotPrompt, line) {
+			t.Errorf("judge prompt missing %q:\n%s", line, j.gotPrompt)
+		}
+	}
+	if !strings.Contains(j.gotPrompt, "3 numbered assertions") {
+		t.Errorf("judge prompt missing assertion count:\n%s", j.gotPrompt)
 	}
 }
 
@@ -185,16 +242,82 @@ func TestLLMJudgeErrorsFailLoudly(t *testing.T) {
 	}
 	for _, tt := range tests {
 		o := opts(t, "x")
+		os.WriteFile(filepath.Join(o.Workspace, "kept.txt"), []byte("x"), 0o644)
 		tt.set(&o)
-		passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "anything"}, o)
-		if boolish(passed) != "fail" || !strings.Contains(evidence, "judge error") {
-			t.Errorf("%s: judge = (%s, %q), want loud failure", tt.name, boolish(passed), evidence)
+		verdicts := Case(context.Background(), []evalspec.Assertion{
+			{Type: "llm", Text: "first"},
+			{Type: "file_exists", Path: "kept.txt"},
+			{Type: "llm", Text: "second"},
+		}, o)
+		// Every llm entry fails loudly; the deterministic entry still grades.
+		for _, i := range []int{0, 2} {
+			if boolish(verdicts[i].Passed) != "fail" || !strings.Contains(verdicts[i].Evidence, "judge error") {
+				t.Errorf("%s: verdict[%d] = (%s, %q), want loud failure",
+					tt.name, i, boolish(verdicts[i].Passed), verdicts[i].Evidence)
+			}
+		}
+		if boolish(verdicts[1].Passed) != "pass" {
+			t.Errorf("%s: deterministic verdict = %s, want pass", tt.name, boolish(verdicts[1].Passed))
 		}
 	}
 }
 
+// TestLLMJudgeMissingVerdict pins the per-entry loud-failure semantics: a
+// missing id fails only that entry, and an id beyond the assertion count is
+// ignored.
+func TestLLMJudgeMissingVerdict(t *testing.T) {
+	o := opts(t, "x")
+	o.Judge.(*fakeJudge).response = `{"verdicts": [
+		{"id": 1, "passed": true, "evidence": "a"},
+		{"id": 3, "passed": true, "evidence": "c"},
+		{"id": 4, "passed": true, "evidence": "extra"}
+	]}`
+	verdicts := Case(context.Background(), []evalspec.Assertion{
+		{Type: "llm", Text: "one"},
+		{Type: "llm", Text: "two"},
+		{Type: "llm", Text: "three"},
+	}, o)
+	if boolish(verdicts[0].Passed) != "pass" || verdicts[0].Evidence != "a" {
+		t.Errorf("verdict[0] = (%s, %q), want (pass, a)", boolish(verdicts[0].Passed), verdicts[0].Evidence)
+	}
+	if boolish(verdicts[1].Passed) != "fail" ||
+		!strings.Contains(verdicts[1].Evidence, "no verdict for assertion 2") {
+		t.Errorf("verdict[1] = (%s, %q), want loud missing-verdict failure",
+			boolish(verdicts[1].Passed), verdicts[1].Evidence)
+	}
+	if boolish(verdicts[2].Passed) != "pass" || verdicts[2].Evidence != "c" {
+		t.Errorf("verdict[2] = (%s, %q), want (pass, c)", boolish(verdicts[2].Passed), verdicts[2].Evidence)
+	}
+}
+
+// TestJudgeRunsAfterDeterministic pins grading order: the judge session runs
+// with full tools, so deterministic assertions (whose command steps may also
+// mutate the workspace) must have graded before it — even when the llm
+// assertion is authored first.
+func TestJudgeRunsAfterDeterministic(t *testing.T) {
+	o := opts(t, "x")
+	j := o.Judge.(*fakeJudge)
+	j.response = `{"verdicts": [{"id": 1, "passed": true, "evidence": "ok"}]}`
+	var judgeSawMarker bool
+	j.onJudge = func(ws string) {
+		_, err := os.Stat(filepath.Join(ws, "marker.txt"))
+		judgeSawMarker = err == nil
+	}
+	verdicts := Case(context.Background(), []evalspec.Assertion{
+		{Type: "llm", Text: "authored first, graded last"},
+		{Type: "command", Run: "touch marker.txt"},
+	}, o)
+	if !judgeSawMarker {
+		t.Error("judge ran before the command assertion; want deterministic-first grading")
+	}
+	if boolish(verdicts[0].Passed) != "pass" || boolish(verdicts[1].Passed) != "pass" {
+		t.Errorf("verdicts = (%s, %s), want (pass, pass)",
+			boolish(verdicts[0].Passed), boolish(verdicts[1].Passed))
+	}
+}
+
 func TestUnknownAssertionType(t *testing.T) {
-	passed, evidence := Assertion(context.Background(), evalspec.Assertion{Type: "mystery"}, opts(t, ""))
+	passed, evidence := caseOne(t, evalspec.Assertion{Type: "mystery"}, opts(t, ""))
 	if boolish(passed) != "fail" || !strings.Contains(evidence, "unknown assertion type") {
 		t.Errorf("unknown type = (%s, %q)", boolish(passed), evidence)
 	}
@@ -203,16 +326,16 @@ func TestUnknownAssertionType(t *testing.T) {
 func TestLLMJudgeExpectedOutputContext(t *testing.T) {
 	o := opts(t, "output")
 	j := o.Judge.(*fakeJudge)
-	j.response = `{"passed": true, "evidence": "ok"}`
+	j.response = `{"verdicts": [{"id": 1, "passed": true, "evidence": "ok"}]}`
 
 	// Without expected output the prompt carries no author-context block.
-	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	caseOne(t, evalspec.Assertion{Type: "llm", Text: "t"}, o)
 	if strings.Contains(j.gotPrompt, "expected output") {
 		t.Errorf("prompt unexpectedly mentions expected output:\n%s", j.gotPrompt)
 	}
 
 	o.ExpectedOutput = "a tidy summary table"
-	Assertion(context.Background(), evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	caseOne(t, evalspec.Assertion{Type: "llm", Text: "t"}, o)
 	if !strings.Contains(j.gotPrompt, "a tidy summary table") {
 		t.Errorf("prompt missing expected-output context:\n%s", j.gotPrompt)
 	}

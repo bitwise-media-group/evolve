@@ -47,15 +47,12 @@ type TriggerSideChannel interface {
 
 // EvalRunner is the optional capability of running behavioral evals. Harnesses
 // implement it only when their CLI supports a gradable headless run; engines
-// type-assert and degrade for those that do not (Gemini).
+// type-assert and degrade for those that do not (Gemini). The LLM judge reuses
+// EvalSpec at the judge turn ceiling (model.DefaultJudgeMaxTurns): its
+// confinement is evolve's OS sandbox (or the harness's own eval sandbox when
+// not host-sandboxed), never a judge-specific tool allowlist.
 type EvalRunner interface {
 	EvalSpec(ws string, c model.EvalInput, cliModelID string) model.CommandSpec
-	// JudgeSpec builds the LLM-judge invocation for one verdict: a short session
-	// in ws under the harness's isolated env, read-only where the CLI supports it
-	// (the judge grades a finished workspace and must not mutate the evidence),
-	// the eval posture otherwise. Output must be parseable by
-	// ParseEvalOutput/RuntimeError.
-	JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec
 	// ParseEvalOutput extracts the final assistant text and measured usage from
 	// the CLI's full stdout. usage is nil where unsupported.
 	ParseEvalOutput(stdout []byte) (finalText string, usage *model.Usage)

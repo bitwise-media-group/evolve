@@ -78,7 +78,8 @@ snippet-includes the generated config fragments.
 - `runner` — executes `model.CommandSpec`s; the only package touching `os/exec` for agent execution, so engines test
   against a fake (setup-time exceptions: the claude harness's macOS Keychain bridge in `internal/harness/claude.go`
   shells out to `/usr/bin/security`, and `internal/workspace` shells out to `git` to initialise each workspace).
-- `grade` — assertion evaluation: deterministic checks (files/regex/commands) plus an LLM judge.
+- `grade` — assertion evaluation: deterministic checks (files/regex/commands) first, then one batched LLM-judge session
+  grading all of a case's `llm` assertions with per-assertion verdicts.
 - `workspace` — builds the throwaway project dirs each agent session runs in, each a fresh git repo with the fixture
   state as its initial commit.
 - `results` — the committed per-skill `results.<ext>` files beside each skill's evals.

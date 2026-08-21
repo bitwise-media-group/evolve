@@ -91,19 +91,10 @@ type EvalInput struct {
 }
 
 // DefaultJudgeMaxTurns is the agent-turn ceiling for an LLM-judge session on
-// harnesses that support one: enough to read a few workspace files and answer.
-const DefaultJudgeMaxTurns = 4
-
-// JudgeInput is the runner-relevant subset of one LLM-judge session. The judge
-// grades a finished eval's workspace, so harnesses build the most read-only,
-// shortest posture their CLI supports — a judge that mutates the workspace
-// corrupts the evidence later assertions grade. Where the CLI has no read-only
-// mode the eval posture is reused (documented per harness).
-type JudgeInput struct {
-	Prompt string
-	// HostSandboxed carries the same nesting contract as EvalInput.HostSandboxed.
-	HostSandboxed bool
-}
+// harnesses that support one: enough turns to explore a finished workspace and
+// grade all of a case's llm assertions in one batch, while staying below
+// DefaultMaxTurns — the judge inspects work, it does not redo it.
+const DefaultJudgeMaxTurns = 16
 
 // DefaultJobs is the default agent-run concurrency: half the CPUs, rounded up.
 // Runs are network-bound, so this is a politeness cap, not a CPU one.

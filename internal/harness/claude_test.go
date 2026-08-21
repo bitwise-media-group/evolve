@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
@@ -28,6 +29,25 @@ const (
 
 	claudeStreamMaxTurns = `{"type":"system","subtype":"init"}
 {"type":"result","subtype":"error_max_turns","is_error":true,"result":"","errors":["hit max turns"]}`
+
+	// A usage-limit rejection: the CLI reports it as a success-shaped result
+	// (exit 0, zero output tokens) after a rate_limit_event flips to rejected.
+	claudeStreamRateLimited = `{"type":"system","subtype":"init"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1755772800,"rateLimitType":"five_hour","overageStatus":"rejected"}}
+{"type":"result","subtype":"success","is_error":false,"result":"Claude AI usage limit reached|1755772800","usage":{"input_tokens":10,"output_tokens":0}}`
+
+	// The banner-only shape: no rate_limit_event, the limit message as result.
+	claudeStreamLimitBanner = `{"type":"system","subtype":"init"}
+{"type":"result","subtype":"success","is_error":false,"result":"Claude AI usage limit reached|1755772800"}`
+
+	// A limit event that stayed allowed alongside a real answer — gradable.
+	claudeStreamLimitAllowed = `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1755772800,"rateLimitType":"five_hour","overageStatus":"rejected"}}
+{"type":"result","subtype":"success","is_error":false,"result":"Done.","usage":{"input_tokens":100,"output_tokens":30}}`
+
+	// The limit was hit mid-run but the session still produced real output
+	// (non-zero output tokens, substantive result) — stays gradable.
+	claudeStreamLimitMidRun = `{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1755772800,"rateLimitType":"five_hour"}}
+{"type":"result","subtype":"success","is_error":false,"result":"Created the file and ran the tests.","usage":{"input_tokens":100,"output_tokens":250}}`
 )
 
 // TestClaudeEvalSpec locks in the bypass-permissions eval posture: no tool
@@ -56,47 +76,6 @@ func TestClaudeEvalSpec(t *testing.T) {
 	}
 	if slices.Contains(spec.Argv, "--settings") {
 		t.Errorf("claude keeps its own sandbox when evolve is unconfined: %v", spec.Argv)
-	}
-}
-
-// TestClaudeJudgeSpec locks in the read-only judge posture: inspection tools
-// only (never a permission bypass — the judge must not mutate the workspace it
-// grades), the judge turn ceiling, stream-json output (the shared
-// ParseEvalOutput path), and the same isolation/sandbox handling as evals.
-func TestClaudeJudgeSpec(t *testing.T) {
-	// Keep judge-spec construction hermetic: a set credential var stops the
-	// harness isolation setup from consulting the host's real Keychain.
-	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "test-token")
-	c := NewClaude()
-	ws := t.TempDir()
-	spec := c.JudgeSpec(ws, model.JudgeInput{Prompt: "verdict?"}, "sonnet")
-	if !containsPair(spec.Argv, "--allowedTools", "Read Glob Grep") {
-		t.Errorf("want read-only allowlist: %v", spec.Argv)
-	}
-	if slices.Contains(spec.Argv, "--permission-mode") {
-		t.Errorf("want no permission bypass on the judge: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--max-turns", "4") {
-		t.Errorf("want judge max-turns 4: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--output-format", "stream-json") {
-		t.Errorf("want stream-json for the shared eval parse path: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--model", "sonnet") {
-		t.Errorf("want --model sonnet: %v", spec.Argv)
-	}
-	if slices.Contains(spec.Argv, "--settings") {
-		t.Errorf("claude keeps its own sandbox when evolve is unconfined: %v", spec.Argv)
-	}
-	// The judge session is isolated into the workspace's throwaway config dir,
-	// never the operator's real session history.
-	if envline := strings.Join(spec.Env, " "); !strings.Contains(envline, "CLAUDE_CONFIG_DIR="+ws) {
-		t.Errorf("judge env = %q, want workspace-rooted CLAUDE_CONFIG_DIR", envline)
-	}
-
-	spec = c.JudgeSpec(ws, model.JudgeInput{Prompt: "x", HostSandboxed: true}, "sonnet")
-	if !containsPair(spec.Argv, "--settings", claudeSandboxOff) {
-		t.Errorf("want sandbox-off settings when host-sandboxed: %v", spec.Argv)
 	}
 }
 
@@ -158,6 +137,7 @@ func TestClaudeParseEvalOutput(t *testing.T) {
 
 func TestClaudeRuntimeError(t *testing.T) {
 	c := NewClaude()
+	resets := time.Unix(1755772800, 0).UTC().Format(time.RFC3339)
 	tests := []struct {
 		name     string
 		stdout   string
@@ -169,6 +149,12 @@ func TestClaudeRuntimeError(t *testing.T) {
 		{"plain text clean exit", "hello\n", 0, ""},
 		{"plain text crash", "boom\n", 1, "unparseable CLI output"},
 		{"max turns empty result", claudeStreamMaxTurns, 1, "claude run error (error_max_turns): hit max turns"},
+		{"rejected event, zero output tokens", claudeStreamRateLimited, 0,
+			"usage limit reached (five_hour), resets " + resets},
+		{"limit banner without event", claudeStreamLimitBanner, 0,
+			"usage limit reached: Claude AI usage limit reached|1755772800"},
+		{"allowed event with real result", claudeStreamLimitAllowed, 0, ""},
+		{"rejected mid-run with real output", claudeStreamLimitMidRun, 0, ""},
 	}
 	for _, tt := range tests {
 		if got := c.RuntimeError([]byte(tt.stdout), tt.exitCode, false); got != tt.want {

@@ -183,24 +183,6 @@ func TestGrokTriggerSpec(t *testing.T) {
 	}
 }
 
-// TestGrokJudgeSpec pins the judge posture to the eval one (grok's allow rules
-// kill headless sessions, so there is no read-only mode) with the session
-// capped at the judge turn ceiling.
-func TestGrokJudgeSpec(t *testing.T) {
-	g := NewGrok()
-	ws := t.TempDir()
-	spec := g.JudgeSpec(ws, model.JudgeInput{Prompt: "verdict?", HostSandboxed: true}, "grok-4.5")
-	if !containsPair(spec.Argv, "--max-turns", "4") {
-		t.Errorf("want judge max-turns 4: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--permission-mode", "bypassPermissions") {
-		t.Errorf("want --permission-mode bypassPermissions: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "--sandbox", "off") {
-		t.Errorf("want --sandbox off when host-sandboxed: %v", spec.Argv)
-	}
-}
-
 func TestGrokEvalSpec(t *testing.T) {
 	g := NewGrok()
 	ws := t.TempDir()

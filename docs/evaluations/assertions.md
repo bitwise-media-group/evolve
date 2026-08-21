@@ -193,11 +193,12 @@ match, the assertion **fails**. Unlike `regex`, `tool` and `pattern` are not com
 
 Graded by an LLM judge instead of a fixed rule. The judge is one pinned model (`anthropic/claude-sonnet-5` unless the
 `judge_model` config key or `--judge-model` overrides it) regardless of the model under test, so verdicts stay
-comparable across providers; it is driven by whichever installed harness supports that model. It reads the assertion
-text, the agent's final response, the eval's `expected_output` (as context, never a separate check), and may inspect the
-workspace before returning a pass/fail verdict with a short evidence quote. Claude judges read-only (`Read`/`Glob`/
-`Grep`) and codex judges under a read-only sandbox; the other harnesses have no read-only mode, so prefer a
-claude/codex-drivable judge model when evals mix `llm` with later file assertions.
+comparable across providers; it is driven by whichever installed harness supports that model. All of a case's `llm`
+assertions are graded in **one judge session**: the judge reads the numbered assertion texts, the agent's final
+response, and the eval's `expected_output` (as context, never a separate check), may inspect the workspace, and returns
+a pass/fail verdict with a short evidence quote **per assertion**. The judge runs with the same tool posture as the eval
+agent — evolve's OS sandbox is the confinement, not a tool allowlist — which is why deterministic assertions always
+grade before the judge session runs (see [How evaluations run](execution.md)).
 
 ```json
 {
@@ -211,7 +212,8 @@ claude/codex-drivable judge model when evals mix `llm` with later file assertion
 | `text` | yes      | The statement the judge must verify |
 
 Reserve `llm` for genuinely subjective or holistic judgements; prefer a deterministic check whenever one can express the
-same condition, since each `llm` assertion costs a model call.
+same condition — a case with any `llm` assertions pays for one judge session, and deterministic checks are free and
+reproducible.
 
 ### Bare-string shorthand
 
@@ -226,9 +228,10 @@ A plain string anywhere in `assertions` is shorthand for `{ "type": "llm", "text
 
 ### `expectations`
 
-`expectations` is a top-level array of statements, each expanded into an `llm` assertion and graded **before** the
-authored `assertions`, in authored order. Reports tag these with `source: "expectation"` so they're distinguishable from
-inline assertions.
+`expectations` is a top-level array of statements, each expanded into an `llm` assertion and listed **before** the
+authored `assertions`, in authored order. They're graded in the case's single judge session alongside any inline `llm`
+assertions, and each still gets its own verdict and evidence. Reports tag these with `source: "expectation"` so they're
+distinguishable from inline assertions.
 
 ```json
 {

@@ -75,16 +75,23 @@ Scoring then follows the rule from [Triggers](triggers.md): a query passes when 
 
 ## Grading
 
-Grading runs in two passes, both against the finished workspace and the captured response:
+Grading runs in two passes — and that is the literal execution order, though results always land in authored order:
 
-- **Deterministic assertions** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`. These stat
-  files, match RE2 patterns, run shell commands through the real toolchain, and inspect observed tool calls. Fast and
-  reproducible.
-- **The LLM judge** — `llm` assertions and `expectations`. The judge is one pinned model (`anthropic/claude-sonnet-5`
-  unless `judge_model`/`--judge-model` overrides it) _regardless of the model under test_, so verdicts stay comparable
-  across providers; any installed harness that supports the judge model may drive it. It reads the assertion text, the
-  eval's `expected_output` as context, and the agent's final response, and may inspect the workspace before returning a
-  pass/fail verdict with a short evidence quote.
+- **Deterministic assertions first** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`. These
+  stat files, match RE2 patterns, run shell commands through the real toolchain, and inspect observed tool calls. Fast
+  and reproducible.
+- **Then the LLM judge** — all of the case's `llm` assertions and `expectations`, graded in **one judge session** that
+  returns a verdict per assertion. The judge is one pinned model (`anthropic/claude-sonnet-5` unless
+  `judge_model`/`--judge-model` overrides it) _regardless of the model under test_, so verdicts stay comparable across
+  providers; any installed harness that supports the judge model may drive it. It reads the numbered assertion texts,
+  the eval's `expected_output` as context, and the agent's final response, and may inspect the workspace before
+  returning each pass/fail verdict with a short evidence quote. The judge runs with the eval agent's tool posture under
+  evolve's sandbox, so it sees the workspace as the deterministic pass left it — including any files a `command`
+  assertion wrote.
+
+A run that produced no usable output at all — auth blocked, a crash, or a claude session rejected by the account's usage
+limit — is reported as a **runtime error** rather than graded: the case's result carries the reason instead of a
+misleading all-fail row.
 
 Every check is **tri-state**: pass, fail, or _skipped_. A `command` whose `requires` binary is missing, or a `tool_call`
 against a harness that can't report tool calls, is skipped — it counts neither for nor against the case, so a suite

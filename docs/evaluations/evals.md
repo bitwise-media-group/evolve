@@ -33,17 +33,17 @@ result matches: the files exist, the `Makefile` has a `pr` target, and the whole
 
 ## Anatomy of a case
 
-| Field             | Required        | Meaning                                                                       |
-| ----------------- | --------------- | ----------------------------------------------------------------------------- |
-| `id`              | yes             | Stable identifier; the results key. Lowercase-kebab by convention             |
-| `prompt`          | yes             | The task sent to the agent                                                    |
-| `assertions`      | one of these \* | Deterministic + judge checks — see [Assertions](assertions.md)                |
-| `expectations`    | one of these \* | Plain-language statements, each graded by the LLM judge before the assertions |
-| `name`            | no              | Human-readable label surfaced in reports                                      |
-| `expected_output` | no              | Prose description of success; context for the judge, never graded on its own  |
-| `files`           | no              | Input paths staged into the workspace before the run (below)                  |
-| `max_turns`       | no              | Cap on agent turns for this case; overrides the run's `--max-turns`           |
-| `timeout_seconds` | no              | Wall-clock cap for this case; overrides the run's `--timeout`                 |
+| Field             | Required        | Meaning                                                                      |
+| ----------------- | --------------- | ---------------------------------------------------------------------------- |
+| `id`              | yes             | Stable identifier; the results key. Lowercase-kebab by convention            |
+| `prompt`          | yes             | The task sent to the agent                                                   |
+| `assertions`      | one of these \* | Deterministic + judge checks — see [Assertions](assertions.md)               |
+| `expectations`    | one of these \* | Plain-language statements graded by the LLM judge, listed before assertions  |
+| `name`            | no              | Human-readable label surfaced in reports                                     |
+| `expected_output` | no              | Prose description of success; context for the judge, never graded on its own |
+| `files`           | no              | Input paths staged into the workspace before the run (below)                 |
+| `max_turns`       | no              | Cap on agent turns for this case; overrides the run's `--max-turns`          |
+| `timeout_seconds` | no              | Wall-clock cap for this case; overrides the run's `--timeout`                |
 
 \* A case must declare at least one `expectations` entry **or** one `assertions` entry, or it fails to load.
 
@@ -164,7 +164,9 @@ Once the agent finishes, the case is graded by its `expectations` and `assertion
 - **`assertions`** are concrete, mostly deterministic checks — does a file exist, does a pattern match, does
   `go test ./...` pass, did the agent actually call a tool. Cheap, fast, reproducible.
 - **`expectations`** are plain-language statements handed to an LLM judge, for the holistic parts a regex can't capture
-  ("the summary explains why each test case was chosen").
+  ("the summary explains why each test case was chosen"). All of a case's judge-graded statements are handled in one
+  batched judge session after the deterministic checks, each still receiving its own verdict; in results they appear
+  before the authored assertions, in authored order.
 
 Both, the full type list, and the judge's mechanics are documented in [Assertions](assertions.md). The golang evals lean
 deterministic — `regex` over the edited file plus a `command` that runs `go vet`/`gofmt` — and add a judge check only

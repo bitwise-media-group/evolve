@@ -128,14 +128,6 @@ func (a *Antigravity) EvalSpec(ws string, in model.EvalInput, cliModelID string)
 	}
 }
 
-// JudgeSpec reuses the eval posture: agy has no read-only or turn-cap analogs,
-// so a judge session could in principle mutate the workspace it grades. Prefer
-// a claude/codex-drivable judge model when evals mix llm with later file
-// assertions.
-func (a *Antigravity) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
-	return a.EvalSpec(ws, model.EvalInput{Prompt: in.Prompt, HostSandboxed: in.HostSandboxed}, cliModelID)
-}
-
 // ReportsUsage reports that the agy CLI exposes no usage or cost; it never does.
 func (a *Antigravity) ReportsUsage() bool { return false }
 

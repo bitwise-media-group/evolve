@@ -47,7 +47,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "expectations": {
-          "description": "Verifiable statements, each graded by the llm judge (before any assertions, in authored order).",
+          "description": "Verifiable statements graded by the llm judge in one batched session after deterministic checks (listed before any assertions, in authored order).",
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },

@@ -9,10 +9,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -187,29 +189,44 @@ type claudeUsage struct {
 	OutputTokens             *int `json:"output_tokens"`
 }
 
+// claudeRateLimit is the rate_limit_info payload of a rate_limit_event stream
+// line. Observed shape (claude 2.x): {"type":"rate_limit_event",
+// "rate_limit_info":{"status":"allowed","resetsAt":<epoch>,
+// "rateLimitType":"five_hour","overageStatus":"rejected"}}. Status flips to
+// "rejected" once the window is spent and overage is declined.
+type claudeRateLimit struct {
+	Status        string `json:"status"`
+	RateLimitType string `json:"rateLimitType"`
+	ResetsAt      int64  `json:"resetsAt"`
+}
+
 // claudeEvent is one line of Claude Code's stream-json (--verbose) output.
 // Assistant events carry message.content blocks (text and tool_use); the
 // terminal type:"result" event carries the final answer, usage, cost, and the
-// error envelope (is_error/subtype/errors). Each event populates only its own
-// fields, so the unused ones stay zero on the others.
+// error envelope (is_error/subtype/errors); a rate_limit_event carries the
+// account's rate-limit state. Each event populates only its own fields, so the
+// unused ones stay zero on the others.
 type claudeEvent struct {
 	Type    string `json:"type"`
 	Message struct {
 		Content []claudeContentBlock `json:"content"`
 	} `json:"message"`
-	Result       string       `json:"result"`
-	IsError      bool         `json:"is_error"`
-	Subtype      string       `json:"subtype"`
-	Errors       []string     `json:"errors"`
-	Usage        *claudeUsage `json:"usage"`
-	TotalCostUSD *float64     `json:"total_cost_usd"`
+	Result        string           `json:"result"`
+	IsError       bool             `json:"is_error"`
+	Subtype       string           `json:"subtype"`
+	Errors        []string         `json:"errors"`
+	Usage         *claudeUsage     `json:"usage"`
+	TotalCostUSD  *float64         `json:"total_cost_usd"`
+	RateLimitInfo *claudeRateLimit `json:"rate_limit_info"`
 }
 
 // scanEvents walks Claude Code's stream-json output once: it returns the
 // terminal result event (found is false when the output carried none — e.g.
-// plain text or a crash mid-stream) and every tool_use invocation in observed
-// order. ParseEvalOutput, ParseToolCalls, and RuntimeError each project from it.
-func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.ToolCall) {
+// plain text or a crash mid-stream), every tool_use invocation in observed
+// order, and the last rate_limit_event seen (the status can transition
+// mid-session, so last is authoritative; nil when none appeared).
+// ParseEvalOutput, ParseToolCalls, and RuntimeError each project from it.
+func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.ToolCall, rateLimit *claudeRateLimit) {
 	for _, line := range bytes.Split(stdout, []byte{'\n'}) {
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue
@@ -221,13 +238,16 @@ func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.To
 		if ev.Type == "result" {
 			result, found = ev, true
 		}
+		if ev.Type == "rate_limit_event" && ev.RateLimitInfo != nil {
+			rateLimit = ev.RateLimitInfo
+		}
 		for _, block := range ev.Message.Content {
 			if block.Type == "tool_use" {
 				tools = append(tools, model.ToolCall{Name: block.Name, Input: block.Input})
 			}
 		}
 	}
-	return result, found, tools
+	return result, found, tools, rateLimit
 }
 
 // ScanLine reports a hit when a Skill or Read tool_use in the stream-json event
@@ -275,25 +295,6 @@ func (c *Claude) EvalSpec(ws string, in model.EvalInput, cliModelID string) mode
 	return model.CommandSpec{Argv: argv, Dir: ws, Env: claudeEnv(ws)}
 }
 
-// JudgeSpec runs claude read-only: unlike an eval, the judge grades a finished
-// workspace, so its tools are limited to inspection (--allowedTools) and the
-// session is capped at the judge turn ceiling. stream-json keeps the output on
-// the same ParseEvalOutput/RuntimeError path as evals.
-func (c *Claude) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
-	argv := []string{
-		"claude", "-p", in.Prompt,
-		"--model", cliModelID,
-		"--output-format", "stream-json",
-		"--verbose",
-		"--max-turns", strconv.Itoa(model.DefaultJudgeMaxTurns),
-		"--allowedTools", "Read Glob Grep",
-	}
-	if in.HostSandboxed {
-		argv = append(argv, "--settings", claudeSandboxOff)
-	}
-	return model.CommandSpec{Argv: argv, Dir: ws, Env: claudeEnv(ws)}
-}
-
 // ParseEvalOutput reads the final answer and usage from the terminal result
 // event of claude's stream-json output. Cache writes and reads are reported on
 // their own fields rather than folded into input: a multi-turn cached session
@@ -302,7 +303,7 @@ func (c *Claude) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) mo
 // total_cost_usd still reflects everything the session consumed. Output with no
 // result event (plain text, crash) falls back to the raw stdout and nil usage.
 func (c *Claude) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
-	result, found, _ := scanEvents(stdout)
+	result, found, _, _ := scanEvents(stdout)
 	if !found {
 		return string(stdout), nil
 	}
@@ -327,7 +328,7 @@ func (c *Claude) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 // here, which the engine normalizes to a non-nil empty slice (assertion fails),
 // reserving nil for harnesses that cannot report tool calls at all.
 func (c *Claude) ParseToolCalls(stdout []byte) []model.ToolCall {
-	_, _, tools := scanEvents(stdout)
+	_, _, tools, _ := scanEvents(stdout)
 	return tools
 }
 
@@ -338,17 +339,24 @@ func (c *Claude) ReportsUsage() bool { return true }
 // blocked, init crash, error envelope without output) so it can be reported
 // distinctly from an eval that ran and failed its assertions. A run with any
 // non-empty result is gradable — this deliberately includes max-turns/partial
-// runs, which the CLI reports with is_error=true but a populated result.
+// runs, which the CLI reports with is_error=true but a populated result — with
+// one carve-out: a usage-limit rejection. The CLI reports that as a
+// success-shaped result (exit 0, the limit banner as the result text, zero
+// output tokens), so without the carve-out rate-limited runs would be silently
+// graded into all-fail rows.
 func (c *Claude) RuntimeError(stdout []byte, exitCode int, timedOut bool) string {
 	if len(bytes.TrimSpace(stdout)) == 0 {
 		return "empty CLI output"
 	}
-	result, found, _ := scanEvents(stdout)
+	result, found, _, rateLimit := scanEvents(stdout)
 	if !found {
 		if exitCode != 0 {
 			return "unparseable CLI output"
 		}
 		return "" // a clean exit with plain-text output is degenerate but gradable
+	}
+	if reason := claudeUsageLimitReason(result, rateLimit); reason != "" {
+		return reason
 	}
 	if result.Result != "" {
 		return "" // there is an answer to grade (success, or a partial/max-turns run)
@@ -357,6 +365,32 @@ func (c *Claude) RuntimeError(stdout []byte, exitCode int, timedOut bool) string
 		return claudeErrorReason(result.Subtype, result.Errors)
 	}
 	return "" // empty-result success: grade it (assertions may inspect the workspace)
+}
+
+// claudeUsageLimitRE matches the usage-limit banner the claude CLI returns as
+// its result text once the account's window is spent (exact phrasing varies by
+// CLI version/path, e.g. "Claude AI usage limit reached|<epoch>").
+var claudeUsageLimitRE = regexp.MustCompile(`(?i)usage limit reached|limit reached.*resets`)
+
+// claudeUsageLimitReason classifies a run rejected by the account's usage
+// limit: the last rate-limit event reports status "rejected" and the result
+// carries zero output tokens, or the result text itself is a usage-limit
+// banner (CLI versions/paths that emit the banner without a rejection event).
+// A session that hit the limit mid-run but produced real output (non-zero
+// output tokens, non-limit result text) stays gradable — only the observed
+// 0-token rejection shape is reclassified.
+func claudeUsageLimitReason(result claudeEvent, rateLimit *claudeRateLimit) string {
+	limitText := claudeUsageLimitRE.MatchString(result.Result)
+	zeroOutput := result.Usage == nil || result.Usage.OutputTokens == nil || *result.Usage.OutputTokens == 0
+	rejected := rateLimit != nil && rateLimit.Status == "rejected"
+	if !limitText && (!rejected || !zeroOutput) {
+		return ""
+	}
+	if rateLimit != nil {
+		return fmt.Sprintf("usage limit reached (%s), resets %s", rateLimit.RateLimitType,
+			time.Unix(rateLimit.ResetsAt, 0).UTC().Format(time.RFC3339))
+	}
+	return "usage limit reached: " + strings.TrimSpace(result.Result)
 }
 
 // ListOfferedModels asks the installed claude CLI which models the operator's

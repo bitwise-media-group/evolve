@@ -448,19 +448,6 @@ func (g *Grok) EvalSpec(ws string, in model.EvalInput, cliModelID string) model.
 	return model.CommandSpec{Argv: argv, Dir: ws, Env: grokEnv(ws)}
 }
 
-// JudgeSpec reuses the eval posture (permissions bypassed — grok's allow rules
-// kill headless sessions, see EvalSpec) with the session capped at the judge
-// turn ceiling. Bypassed permissions mean a judge session could in principle
-// mutate the workspace it grades; prefer a claude/codex-drivable judge model
-// when evals mix llm with later file assertions.
-func (g *Grok) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
-	return g.EvalSpec(ws, model.EvalInput{
-		Prompt:        in.Prompt,
-		MaxTurns:      model.DefaultJudgeMaxTurns,
-		HostSandboxed: in.HostSandboxed,
-	}, cliModelID)
-}
-
 // ScanLine detects skill activation for a trigger query.
 //
 // Headless --output-format streaming-json only documents text/thought/end/error

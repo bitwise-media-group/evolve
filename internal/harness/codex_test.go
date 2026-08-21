@@ -6,8 +6,6 @@ package harness
 import (
 	"strings"
 	"testing"
-
-	"github.com/bitwise-media-group/evolve/internal/model"
 )
 
 // codexStream is a real `codex exec --json` capture (aggregated_output trimmed):
@@ -27,27 +25,6 @@ const codexStream = `{"type":"thread.started","thread_id":"t1"}
 {"type":"item.completed","item":{"id":"item_3","type":"mcp_tool_call","server":"github","tool":"create_issue","arguments":{"title":"bug"}}}
 {"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Created foo.txt and ran ls -la."}}
 {"type":"turn.completed","usage":{"input_tokens":61395,"cached_input_tokens":51328,"output_tokens":184,"reasoning_output_tokens":0}}`
-
-// TestCodexJudgeSpec locks in the judge's read-only sandbox — codex is the one
-// non-claude harness with a native read-only mode, so the judge cannot mutate
-// the workspace it grades. Under HostSandboxed the read-only Seatbelt profile
-// cannot nest inside evolve's sandbox, so it falls back to danger-full-access.
-func TestCodexJudgeSpec(t *testing.T) {
-	c := NewCodex()
-	ws := t.TempDir()
-	spec := c.JudgeSpec(ws, model.JudgeInput{Prompt: "verdict?"}, "gpt-5.2")
-	if !containsPair(spec.Argv, "--sandbox", "read-only") {
-		t.Errorf("want --sandbox read-only: %v", spec.Argv)
-	}
-	if !containsPair(spec.Argv, "-m", "gpt-5.2") {
-		t.Errorf("want -m gpt-5.2: %v", spec.Argv)
-	}
-
-	spec = c.JudgeSpec(ws, model.JudgeInput{Prompt: "verdict?", HostSandboxed: true}, "gpt-5.2")
-	if !containsPair(spec.Argv, "--sandbox", "danger-full-access") {
-		t.Errorf("want danger-full-access when host-sandboxed: %v", spec.Argv)
-	}
-}
 
 func TestCodexParseToolCalls(t *testing.T) {
 	c := NewCodex()

@@ -15,11 +15,11 @@ import (
 	"github.com/bitwise-media-group/evolve/internal/model"
 )
 
-// HarnessJudge implements grade.Judge over a resolved judge selection: each
-// verdict is one short session of the judge harness's CLI in the eval
-// workspace, built by the harness's JudgeSpec and parsed by its
-// ParseEvalOutput. Stateless per call, so safe under the sweep's eval
-// concurrency.
+// HarnessJudge implements grade.Judge over a resolved judge selection: one
+// session of the judge harness's CLI in the eval workspace grades all of a
+// case's llm assertions, built by the harness's EvalSpec at the judge turn
+// ceiling and parsed by its ParseEvalOutput. Stateless per call, so safe under
+// the sweep's eval concurrency.
 type HarnessJudge struct {
 	sel           harness.Selection
 	eval          harness.EvalRunner
@@ -44,11 +44,18 @@ func NewHarnessJudge(sel harness.Selection, r Runner, hostSandboxed bool) (*Harn
 	return &HarnessJudge{sel: sel, eval: eval, cli: cli, runner: r, hostSandboxed: hostSandboxed}, nil
 }
 
-// Judge runs one judge session in ws and returns the judge's final response
-// text (ANSI-stripped, like eval output).
+// Judge runs one judge session in ws — the session grades all of a case's llm
+// assertions at once — and returns the judge's final response text
+// (ANSI-stripped, like eval output). The spec is the harness's own eval
+// posture capped at the judge turn ceiling; confinement is the sandbox, not a
+// tool allowlist.
 func (j *HarnessJudge) Judge(ctx context.Context, ws, prompt string, timeout time.Duration) (string, error) {
 	cliModelID, _ := j.sel.Model.CLIModelID(j.sel.Harness.ID())
-	spec := j.eval.JudgeSpec(ws, model.JudgeInput{Prompt: prompt, HostSandboxed: j.hostSandboxed}, cliModelID)
+	spec := j.eval.EvalSpec(ws, model.EvalInput{
+		Prompt:        prompt,
+		MaxTurns:      model.DefaultJudgeMaxTurns,
+		HostSandboxed: j.hostSandboxed,
+	}, cliModelID)
 	spec.Argv[0] = j.cli
 	res, err := j.runner.Run(ctx, spec, timeout, nil)
 	if err != nil {

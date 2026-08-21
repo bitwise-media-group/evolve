@@ -505,21 +505,23 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 	// Tool calls drive tool_call assertions and the execution metrics below.
 	toolCalls := observedToolCalls(sel.Harness, res.Stdout)
 
-	// Grade assertions; buffer the verdict lines so concurrent evals don't
-	// interleave their output.
+	// Grade the whole case at once (deterministic checks, then one judge
+	// session for every llm assertion); buffer the verdict lines so concurrent
+	// evals don't interleave their output.
+	verdicts := grade.Case(ctx, c.Assertions, grade.Options{
+		Runner:         opts.Runner,
+		Workspace:      ws,
+		Output:         output,
+		ExpectedOutput: c.ExpectedOutput,
+		Timeout:        timeout,
+		Judge:          opts.Judge,
+		ToolCalls:      toolCalls,
+	})
 	graded := make([]results.GradedAssertion, len(c.Assertions))
 	var lines strings.Builder
 	evalPassed := true
 	for i, a := range c.Assertions {
-		passed, evidence := grade.Assertion(ctx, a, grade.Options{
-			Runner:         opts.Runner,
-			Workspace:      ws,
-			Output:         output,
-			ExpectedOutput: c.ExpectedOutput,
-			Timeout:        timeout,
-			Judge:          opts.Judge,
-			ToolCalls:      toolCalls,
-		})
+		passed, evidence := verdicts[i].Passed, verdicts[i].Evidence
 		source := "assertion"
 		if a.FromExpectation {
 			source = "expectation"

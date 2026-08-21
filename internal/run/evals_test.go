@@ -8,8 +8,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -83,10 +85,9 @@ func (f *fakeEvalProvider) TriggerSpec(ws, query, cliModelID string, _ bool) mod
 }
 func (f *fakeEvalProvider) ScanLine([]byte, string, string) (bool, string) { return false, "" }
 func (f *fakeEvalProvider) EvalSpec(ws string, c model.EvalInput, cliModelID string) model.CommandSpec {
-	return model.CommandSpec{Argv: []string{"agent-cli", "AGENT", c.Prompt}, Dir: ws}
-}
-func (f *fakeEvalProvider) JudgeSpec(ws string, in model.JudgeInput, cliModelID string) model.CommandSpec {
-	return model.CommandSpec{Argv: []string{"judge-cli", "JUDGE", in.Prompt}, Dir: ws}
+	// MaxTurns rides along in the argv so judge tests can assert the judge
+	// session runs at the judge turn ceiling.
+	return model.CommandSpec{Argv: []string{"agent-cli", "AGENT", c.Prompt, strconv.Itoa(c.MaxTurns)}, Dir: ws}
 }
 func (f *fakeEvalProvider) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 	if !f.reportsUsage {
@@ -142,11 +143,17 @@ func (f *fakeEvalRunner) Run(ctx context.Context, spec model.CommandSpec, timeou
 	}
 }
 
-// passingJudge is a grade.Judge that always returns a passing verdict.
+// passingJudge is a grade.Judge that always returns a generous passing
+// envelope: verdicts for ids 1–20 cover any case size in these fixtures, and
+// extra ids beyond the case's llm count are ignored by the parser.
 type passingJudge struct{}
 
 func (passingJudge) Judge(context.Context, string, string, time.Duration) (string, error) {
-	return `{"passed": true, "evidence": "verified"}`, nil
+	verdicts := make([]string, 0, 20)
+	for i := 1; i <= 20; i++ {
+		verdicts = append(verdicts, fmt.Sprintf(`{"id": %d, "passed": true, "evidence": "verified"}`, i))
+	}
+	return `{"verdicts": [` + strings.Join(verdicts, ",") + `]}`, nil
 }
 
 func evalRepoFixture(t *testing.T) *layout.Repo {

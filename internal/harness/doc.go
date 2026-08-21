@@ -10,7 +10,9 @@
 //
 // Capability gaps are structural: a harness implements the optional EvalRunner
 // interface only when its CLI supports a gradable headless run (Gemini does
-// not), and engines type-assert and degrade. Cursor, Copilot, and Antigravity
+// not), and engines type-assert and degrade. The LLM judge has no posture of
+// its own — it reuses EvalSpec at the judge turn ceiling, confined by evolve's
+// sandbox (or the harness's own eval sandbox when not host-sandboxed). Cursor, Copilot, and Antigravity
 // report no usage (ReportsUsage is false), so their estimate/measured fields
 // stay absent end-to-end. OfferedModels is the same pattern for model
 // discovery: Claude, Codex, and Grok can report which models the operator's

@@ -121,7 +121,7 @@ evolve run triggers --model anthropic,openai --runs 5
 ```
 
 `evolve run evals` runs behavioral cases in temporary workspaces, then grades the outputs with deterministic assertions
-and any configured LLM judge.
+followed by a single LLM-judge session per case for the subjective checks.
 
 ```sh
 evolve run evals --model anthropic,openai --jobs 4 --max-turns 12 --timeout 900
