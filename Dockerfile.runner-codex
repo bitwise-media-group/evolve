@@ -19,11 +19,11 @@ RUN apt-get update \
 # full tag is pinned (not the bare version) because Renovate resolves the
 # asset digest by release tag.
 # renovate: datasource=github-release-attachments depName=openai/codex versioning=regex:^rust-v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-ARG CODEX_AMD64_RELEASE=rust-v0.147.0
-ARG CODEX_AMD64_SHA256=0246e2e773834e07f0fb5249ed6ebad12e4591e608f8c7bb97dd6a9690544c36
+ARG CODEX_AMD64_RELEASE=rust-v0.148.0
+ARG CODEX_AMD64_SHA256=1a36f762f6b3bef533bb86345ad9517661c2d84d53996a250cf2ca89d2cfee5a
 # renovate: datasource=github-release-attachments depName=openai/codex versioning=regex:^rust-v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-ARG CODEX_ARM64_RELEASE=rust-v0.147.0
-ARG CODEX_ARM64_SHA256=eb677c80f666b1ab8b4b1d083b66e8d614b1281d960bb6f9fd8ca98f58b38b90
+ARG CODEX_ARM64_RELEASE=rust-v0.148.0
+ARG CODEX_ARM64_SHA256=410c6ae0c763eb39c6da17665e63f9aa4a98e6ee663d81f8e8b779c97cb175ac
 
 ARG TARGETARCH
 # hadolint ignore=DL4006
