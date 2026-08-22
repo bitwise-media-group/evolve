@@ -1,0 +1,32 @@
+<!--
+ Copyright 2026 Bitwise Media Group Ltd
+ SPDX-License-Identifier: MIT
+
+ EVOLVE wordmark: JetBrains Mono ExtraBold outlines, one cyberdream
+ hue per letter — same mapping as overrides/home.html.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3530 930" role="img" aria-label="Evolve">
+  <title>Evolve</title>
+  <style>
+    .E0 { fill: #5ea1ff; }
+    .V0 { fill: #5eff6c; }
+    .O { fill: #5ef1ff; }
+    .L { fill: #ff5ef1; }
+    .V1 { fill: #ffbd5e; }
+    .E1 { fill: #bd5eff; }
+    @media (prefers-color-scheme: light) {
+      .E0 { fill: #0057d1; }
+      .V0 { fill: #008b0c; }
+      .O { fill: #008c99; }
+      .L { fill: #d100bf; }
+      .V1 { fill: #c66e00; }
+      .E1 { fill: #8a14e6; }
+    }
+  </style>
+  <path class="E0" d="M90 830V100H540V230H237V394H505V518H237V700H540V830Z"/>
+  <path class="V0" d="M796 830 615 100H770L871 561Q876 585 883.5 622Q891 659 895 685Q899 659 905 622Q911 585 916 560L1014 100H1165L986 830Z"/>
+  <path class="O" d="M1470 840Q1360 840 1295 778Q1230 716 1230 610V320Q1230 213 1295 151.5Q1360 90 1470 90Q1580 90 1645 151.5Q1710 213 1710 320V610Q1710 716 1645 778Q1580 840 1470 840ZM1470 710Q1560 710 1560 620V310Q1560 220 1470 220Q1380 220 1380 310V620Q1380 710 1470 710Z"/>
+  <path class="L" d="M1865 830V100H2015V695H2310V830Z"/>
+  <path class="V1" d="M2536 830 2355 100H2510L2611 561Q2616 585 2623.5 622Q2631 659 2635 685Q2639 659 2645 622Q2651 585 2656 560L2754 100H2905L2726 830Z"/>
+  <path class="E1" d="M2990 830V100H3440V230H3137V394H3405V518H3137V700H3440V830Z"/>
+</svg>

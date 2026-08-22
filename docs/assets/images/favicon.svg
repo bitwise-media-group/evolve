@@ -1,0 +1,17 @@
+<!--
+ Copyright 2026 Bitwise Media Group Ltd
+ SPDX-License-Identifier: MIT
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Evolve">
+  <title>Evolve</title>
+  <style>
+    .tile { fill: #16181a; }
+    .mark { fill: #5ea1ff; }
+    @media (prefers-color-scheme: light) {
+      .tile { fill: #ffffff; }
+      .mark { fill: #0057d1; }
+    }
+  </style>
+  <rect class="tile" width="32" height="32" rx="6"/>
+  <path class="mark" d="M9.885 25.92V6.08H22.115V9.613H13.88V14.07H21.164V17.44H13.88V22.387H22.115V25.92Z"/>
+</svg>
