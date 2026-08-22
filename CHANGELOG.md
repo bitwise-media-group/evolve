@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0](https://github.com/bitwise-media-group/evolve/compare/v0.7.0...v0.8.0) (2026-08-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **grade:** harness.EvalRunner loses JudgeSpec and model.JudgeInput is removed; the LLM judge now reuses the eval posture.
+
+### Features
+
+* **grade:** batch llm judging into one full-tool session per case ([766db64](https://github.com/bitwise-media-group/evolve/commit/766db64c4079647185217d253aa3f71ff43942dd))
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v6.2.0 ([#148](https://github.com/bitwise-media-group/evolve/issues/148)) ([cb0e0cf](https://github.com/bitwise-media-group/evolve/commit/cb0e0cfe65d2084d93a78dd6bc1c96cd372c5f7a))
+* **deps:** update module charm.land/bubbletea/v2 to v2.0.9 ([#174](https://github.com/bitwise-media-group/evolve/issues/174)) ([d19ecf6](https://github.com/bitwise-media-group/evolve/commit/d19ecf6c72e730c05f278f6eb584a8b55a97cf4c))
+
 ## [0.7.0](https://github.com/bitwise-media-group/evolve/compare/v0.6.0...v0.7.0) (2026-08-14)
 
 
