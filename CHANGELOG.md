@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/bitwise-media-group/evolve/compare/v0.8.0...v0.8.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* fetch copilot from GitHub releases with renovate-managed digests ([b89d989](https://github.com/bitwise-media-group/evolve/commit/b89d9896d51ef5e7f11410d6df24157425bfc730))
+
 ## [0.8.0](https://github.com/bitwise-media-group/evolve/compare/v0.7.0...v0.8.0) (2026-08-25)
 
 
