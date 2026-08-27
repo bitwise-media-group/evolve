@@ -76,6 +76,7 @@ run = [
   { task = "go-lint-goos" },
   { task = "lint-e2e" },
   { task = "lint-prose" },
+  { task = "lint-docker" }
 ]
 
 # Report-viewer SPA: built into internal/web/ui/dist and embedded by go-build
