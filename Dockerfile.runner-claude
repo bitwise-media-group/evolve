@@ -12,18 +12,16 @@
 #
 # The pattern mirrors patchy's Dockerfile.claude-agent-runner: the claude CLI
 # is a self-contained native binary, downloaded pinned and checksum-verified
-# against the release manifest; the runtime base is plain debian:trixie-slim.
+# against the release manifest; the runtime base is Chainguard's wolfi-base.
 #
 # readOnlyRootFilesystem: patchy runs both containers with a read-only root
 # filesystem, uid 65532, all capabilities dropped. The only writable paths
 # are /workspace (emptyDir, and HOME) and /tmp; claude keeps its state under
 # $HOME, and DISABLE_AUTOUPDATER pins it to the baked version.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl jq \
-    && rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl jq
 
 # Pinned claude CLI version; the native binaries release in lockstep with the
 # npm package, so the npm datasource stays the source of truth.
@@ -45,14 +43,14 @@ RUN case "${TARGETARCH}" in \
     && echo "${checksum}  /claude" | sha256sum -c - \
     && chmod 0755 /claude
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+# libgcc + libstdc++ back the dynamically linked claude binary (debian-slim
+# shipped them implicitly; wolfi-base does not).
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl git libgcc libstdc++
 
 COPY --from=fetch /claude /usr/local/bin/claude
 
@@ -61,9 +59,8 @@ COPY --from=fetch /claude /usr/local/bin/claude
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
 
-# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
-RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# wolfi-base ships the nonroot user (uid/gid 65532), matching patchy's
+# runAsUser (the distroless "nonroot" convention) — no useradd needed.
 
 # The native claude binary self-updates by default; an image pins a version
 # and runs on a read-only rootfs, so updating must never be attempted.

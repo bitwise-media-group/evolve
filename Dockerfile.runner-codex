@@ -7,12 +7,10 @@
 # only in the CLI it carries. codex ships as a self-contained musl-static
 # binary published per GitHub release with no checksum manifest, so the
 # digests are pinned inline for a reproducible, attributable image.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl
 
 # Each tag + sha256 pair is one Renovate dep (the org preset's release-asset
 # manager); the pairs share a release so both arches bump in the same PR. The
@@ -40,14 +38,12 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/codex.tar.gz \
     && chmod 0755 /codex
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl git
 
 COPY --from=fetch /codex /usr/local/bin/codex
 
@@ -56,9 +52,8 @@ COPY --from=fetch /codex /usr/local/bin/codex
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
 
-# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
-RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# wolfi-base ships the nonroot user (uid/gid 65532), matching patchy's
+# runAsUser (the distroless "nonroot" convention) — no useradd needed.
 
 # HOME is overridden to /workspace by the Job (the only writable dir); this
 # is only the sane default for a bare `docker run`. codex keeps its state

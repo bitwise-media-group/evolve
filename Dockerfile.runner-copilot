@@ -9,12 +9,10 @@
 # tarball carries just the entrypoint binary (the npm platform package adds
 # optional sibling helpers around the same binary). The digests are pinned
 # inline so Renovate bumps each tag + sha pair in lockstep.
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669 AS fetch
 
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl
 
 # Each tag + sha256 pair is one Renovate dep (the org preset's release-asset
 # manager); the pairs share a release so both arches bump in the same PR. The
@@ -42,14 +40,14 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/copilot.tar.gz \
     && chmod 0755 /copilot
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:19f7a7b40a11c435311e3784bd134c6b6f19677462440da48f96d5c84eefd669
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl git \
-    && rm -rf /var/lib/apt/lists/*
+# libgcc + libstdc++ back the dynamically linked copilot binary (debian-slim
+# shipped them implicitly; wolfi-base does not).
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates-bundle curl git libgcc libstdc++
 
 COPY --from=fetch /copilot /usr/local/bin/copilot
 
@@ -58,9 +56,8 @@ COPY --from=fetch /copilot /usr/local/bin/copilot
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/evolve /usr/local/bin/evolve
 
-# uid 65532 matches patchy's runAsUser (the distroless "nonroot" convention).
-RUN groupadd --gid 65532 nonroot \
-    && useradd --uid 65532 --gid 65532 --no-create-home --shell /sbin/nologin nonroot
+# wolfi-base ships the nonroot user (uid/gid 65532), matching patchy's
+# runAsUser (the distroless "nonroot" convention) — no useradd needed.
 
 # The CLI self-updates by default outside CI; an image pins a version and
 # runs on a read-only rootfs, so updating must never be attempted.
