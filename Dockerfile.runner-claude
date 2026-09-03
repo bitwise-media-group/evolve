@@ -26,7 +26,7 @@ RUN apk add --no-cache ca-certificates-bundle curl jq
 # Pinned claude CLI version; the native binaries release in lockstep with the
 # npm package, so the npm datasource stays the source of truth.
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
-ARG CLAUDE_VERSION=2.1.251
+ARG CLAUDE_VERSION=2.1.252
 
 ARG TARGETARCH
 # hadolint ignore=DL4006
