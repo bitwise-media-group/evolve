@@ -1,4 +1,4 @@
 [submodule "make"]
 	path = .mise
 	url = https://github.com/bitwise-media-group/toolchain.git
-	branch = v2.4.2
+	branch = v3.0.0
