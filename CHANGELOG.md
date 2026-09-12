@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.2](https://github.com/bitwise-media-group/evolve/compare/v0.8.1...v0.8.2) (2026-09-12)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v6.3.0 ([#231](https://github.com/bitwise-media-group/evolve/issues/231)) ([8be1dd9](https://github.com/bitwise-media-group/evolve/commit/8be1dd9ffb5dee4ed2d7eaa4826b5bd80f5c7e48))
+* **deps:** update module charm.land/bubbles/v2 to v2.2.1 ([#193](https://github.com/bitwise-media-group/evolve/issues/193)) ([af164bb](https://github.com/bitwise-media-group/evolve/commit/af164bbe9149bce9b61196d39eebe78034a85399))
+* **deps:** update module github.com/coreos/go-oidc/v3 to v3.21.0 ([#224](https://github.com/bitwise-media-group/evolve/issues/224)) ([e8216f9](https://github.com/bitwise-media-group/evolve/commit/e8216f985e096073189591f0fc3c7413bf996846))
+* **deps:** update module golang.org/x/oauth2 to v0.37.0 ([#237](https://github.com/bitwise-media-group/evolve/issues/237)) ([10ba797](https://github.com/bitwise-media-group/evolve/commit/10ba7978067dcb84bbf4b483461f1cd427a408ac))
+* **deps:** update module golang.org/x/term to v0.46.0 ([#248](https://github.com/bitwise-media-group/evolve/issues/248)) ([f80d024](https://github.com/bitwise-media-group/evolve/commit/f80d024447308a517273992ebe96dd1036fe7d73))
+* **deps:** update opentelemetry-go monorepo ([#199](https://github.com/bitwise-media-group/evolve/issues/199)) ([bf24d40](https://github.com/bitwise-media-group/evolve/commit/bf24d40495dd15b428d625f42ba7c92bbd9f6fef))
+* **deps:** update opentelemetry-go-contrib monorepo ([#201](https://github.com/bitwise-media-group/evolve/issues/201)) ([b6b1ccc](https://github.com/bitwise-media-group/evolve/commit/b6b1ccc757c1219e1506ea63f962fd4800bb6170))
+* **docker:** move runner images from debian to wolfi-base ([8c87491](https://github.com/bitwise-media-group/evolve/commit/8c87491b0580bcebf6500d5d83b965987ab69fe7))
+
 ## [0.8.1](https://github.com/bitwise-media-group/evolve/compare/v0.8.0...v0.8.1) (2026-08-26)
 
 
