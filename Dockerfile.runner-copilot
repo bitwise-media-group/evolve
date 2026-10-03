@@ -19,11 +19,11 @@ RUN apk add --no-cache ca-certificates-bundle curl
 # full tag is pinned (not the bare version) because Renovate resolves the
 # asset digest by release tag.
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_AMD64_RELEASE=v1.0.89
-ARG COPILOT_AMD64_SHA256=c5c234ccba6fae2b7a9eae462caf628e86c21b5e6240ec2e885727fc148a1dcc
+ARG COPILOT_AMD64_RELEASE=v1.0.90
+ARG COPILOT_AMD64_SHA256=7ebcce0f8a76b826e34c76f214361916b130ca9cf1571adf267fbda38f92b4b6
 # renovate: datasource=github-release-attachments depName=github/copilot-cli
-ARG COPILOT_ARM64_RELEASE=v1.0.89
-ARG COPILOT_ARM64_SHA256=8406c9e0bbfd0cb868b2a3e9488d500b76401685afdb5d71149233df1d36921b
+ARG COPILOT_ARM64_RELEASE=v1.0.90
+ARG COPILOT_ARM64_SHA256=860eeaccd067a18e60cf7585fdeb682035ff94c075283ad752ec4c3b836a5b27
 
 ARG TARGETARCH
 # hadolint ignore=DL4006
