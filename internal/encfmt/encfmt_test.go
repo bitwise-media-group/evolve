@@ -117,7 +117,9 @@ func TestJSONCHeaderComment(t *testing.T) {
 }
 
 func TestNormalizeRejectsNonStringKeys(t *testing.T) {
-	path := write(t, t.TempDir(), "d.yaml", "1: x\n")
+	// A bool key, not an int: since Go 1.27, encoding/json stringifies integer
+	// keys of a map[any]any ({"1":"x"}) but still rejects bool and float keys.
+	path := write(t, t.TempDir(), "d.yaml", "true: x\n")
 	if _, err := NormalizeToJSON(path); err == nil ||
 		!strings.Contains(err.Error(), "non-string mapping key") {
 		t.Errorf("err = %v, want non-string key error", err)
