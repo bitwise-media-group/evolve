@@ -1,0 +1,68 @@
+# Copyright 2026 BitWise Media Group Ltd
+# SPDX-License-Identifier: MIT
+
+# Caller workflow -- copy to `.github/workflows/renovate.yaml` in any repo. It owns the
+# triggers; all the work lives in the reusable renovate workflow, which runs the org's
+# self-hosted Renovate bot -- same "Renovate" App, same bot-side config and org preset
+# from bitwise-media-group/renovate-config -- against this repository only, on this
+# repository's own schedule, in parallel with every other repo's run.
+#
+# Triggers:
+#   schedule          -- hourly, off the congested top of the hour. Renovate automerges
+#                        at most one PR per base branch per run, so the cron is also
+#                        the merge throughput for a queue of green PRs.
+#   workflow_dispatch -- a manual run; `dry-run: full` + `log-level: debug` logs what
+#                        Renovate would do without writing anything.
+#   issues [edited]   -- a checkbox tick in the Dependency Dashboard issue is a body
+#                        edit; the reusable workflow runs Renovate immediately instead
+#                        of at the next tick. Edits to other issues skip the job.
+#   pull_request      -- same for the checkboxes in a Renovate PR body (rebase/retry).
+#     [edited]           Edits to other PRs skip the job -- as a skipped check on that
+#                        PR, which is the price of reacting to the checkbox at all.
+# Renovate's own body rewrites never re-trigger a run (filtered as a Bot sender).
+#
+# Org prerequisites (see README "renovate.yaml"): the "Renovate" App installed on this
+# repo, exposed as the RENOVATE_CLIENT_ID variable + RENOVATE_PRIVATE_KEY secret. Take
+# the repo out of the org-wide bot's autodiscoverFilter, or retire that loop once every
+# repo carries this caller -- two bots on one repo race on branches and automerge.
+#
+# Replace the all-zeros placeholder SHA with the full commit SHA of the release you want
+# (the # comment names it; Renovate keeps both current) -- see README "Pinning".
+
+name: Renovate
+
+on:
+  schedule:
+    - cron: "24 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry-run mode: empty (live), "extract", "lookup", or "full".'
+        required: false
+        default: ""
+        type: string
+      log-level:
+        description: Renovate log level.
+        required: false
+        default: info
+        type: choice
+        options:
+          - info
+          - debug
+  issues:
+    types: [edited]
+  pull_request:
+    types: [edited]
+
+# the App token does the privileged work; the caller grants nothing
+permissions: {}
+
+jobs:
+  renovate:
+    uses: bitwise-media-group/github-workflows/.github/workflows/renovate.yaml@fea4c5284a9d3679c64f0e2cac5810124e0294d2 # v7.0.0
+    with:
+      app-client-id: ${{ vars.RENOVATE_CLIENT_ID }}
+      dry-run: ${{ inputs.dry-run || '' }}
+      log-level: ${{ inputs.log-level || 'info' }}
+    secrets:
+      app-private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
