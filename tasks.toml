@@ -6,7 +6,8 @@
 # archetype, so a same-named task here wins). Two things drive the overrides:
 # the e2e/ module is separate (the root ./... never picks it up), and the
 # platform build-tag matrix (sandbox_*.go / proc_*.go in internal/runner)
-# needs a per-GOOS lint pass the single-GOOS archetype tasks would skip.
+# needs a per-GOOS fix pass the archetype's host-only go-fmt skips (its lint
+# and test already cover every GOOS in vars.goos).
 
 # Redefines the archetype tidy: the e2e module tidies alongside the root.
 [tidy]
@@ -15,32 +16,24 @@ dir = "{{cwd}}"
 run = ["rm -f go.sum", "go mod tidy", "rm -f e2e/go.sum", "go -C e2e mod tidy"]
 
 # Platform build-tag matrix. The host GOOS only compiles its own files, so the
-# archetype's single-GOOS go-lint/go-fmt skip every other platform's
-# build-constrained source. golangci-lint is a host binary, so run it under
-# each GOOS env var — a cross-built golangci-lint could not exec on the host.
-# gofmt itself ignores build tags, so the host pass already reaches every file.
-[go-lint-goos]
-hide = true
-dir = "{{cwd}}"
-run = """
-set -eu
-host="$(go env GOOS)"
-for goos in ${LINT_GOOS:-linux darwin windows}; do
-  [ "$goos" = "$host" ] && continue
-  echo "lint: GOOS=$goos"
-  GOOS="$goos" golangci-lint run
-done
-"""
-
+# archetype's go-fmt (host GOOS only) skips every other platform's
+# build-constrained source; the archetype's go-lint already loops vars.goos.
+# golangci-lint is a host binary, so run it under each GOOS env var — a
+# cross-built golangci-lint could not exec on the host. gofmt itself ignores
+# build tags, so the host pass already reaches every file. GOOS in the
+# environment overrides the list per invocation, as it does for lint and test.
 [go-fmt-goos]
 hide = true
 dir = "{{cwd}}"
+env = { TOOLCHAIN_GOOS = "{{vars.goos}}" }
 run = """
 set -eu
-host="$(go env GOOS)"
-for goos in ${LINT_GOOS:-linux darwin windows}; do
+host="$(GOOS='' go env GOHOSTOS)"
+goos_list="${GOOS:-$TOOLCHAIN_GOOS}"
+unset GOOS
+for goos in $goos_list; do
   [ "$goos" = "$host" ] && continue
-  echo "fmt: GOOS=$goos"
+  echo "==> fmt (GOOS=$goos)"
   GOOS="$goos" golangci-lint run --fix
 done
 """
@@ -56,8 +49,8 @@ hide = true
 dir = "{{cwd}}"
 run = ["echo 'fmt: e2e'", "cd e2e && golangci-lint run --fix"]
 
-# Redefined aggregates: the archetype's fmt/lint plus the GOOS matrix and the
-# e2e module.
+# Redefined aggregates: the archetype's fmt/lint plus the other-GOOS fix pass
+# and the e2e module.
 [fmt]
 description = "format go (all GOOS + e2e) + prose, inject license headers"
 run = [
@@ -73,10 +66,11 @@ description = "all check-mode static analysis (all GOOS + e2e)"
 run = [
   { task = "license-check" },
   { task = "go-lint" },
-  { task = "go-lint-goos" },
   { task = "lint-e2e" },
+  { task = "lint-containers" },
+  { task = "lint-shell" },
+  { task = "lint-workflows" },
   { task = "lint-prose" },
-  { task = "lint-docker" }
 ]
 
 # Report-viewer SPA: built into internal/web/ui/dist and embedded by go-build

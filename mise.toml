@@ -2,9 +2,19 @@
 # SPDX-License-Identifier: MIT
 #
 # evolve consumes the shared toolchain (bitwise-media-group/toolchain) as the
-# .mise/ submodule: pinned tools + the go-cli task archetype come from there,
-# and the Makefile is a thin forwarder (.mise/mise.mk). Structural knobs live
-# in [vars]; repo-local tasks live in tasks.toml (see [task_config] below).
+# .mise/ submodule: pinned tools come from its config.toml (loaded natively as
+# .mise/config.toml), the shared tasks from common/ and the go archetype, and
+# the Makefile is a thin forwarder (.mise/archetypes/go/include.mk). The Go
+# runtime and govulncheck are pinned below (locked in mise.lock); structural
+# knobs live in [vars]; repo-local tasks live in tasks.toml (see [task_config]
+# below).
+
+[settings]
+lockfile = true
+
+[tools]
+go = "1.27.1"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.8.0"
 
 [vars]
 app = "evolve"
@@ -12,10 +22,18 @@ app_pkg = "./cmd/evolve"
 # The report-viewer SPA is embedded into the binary via the withui build tag;
 # the ui task (tasks.toml) builds internal/web/ui/dist before go-build compiles.
 build_tags = "withui"
+# Platform build-tag matrix (sandbox_*.go / proc_*.go in internal/runner): the
+# archetype lints every GOOS listed here and compile-checks its tests.
+goos = "linux darwin windows"
 
 [task_config]
-# Repo-local tasks live in tasks.toml, included AFTER the archetype so its
-# same-named tasks (tidy, fmt, lint, build, fuzz, ci, pr) replace the
-# archetype's definitions — an included file wins over this config's own
-# [tasks] on name collisions.
-includes = [".mise/tasks/go-cli.toml", "tasks.toml"]
+# common first, then exactly one archetype, then the repo-local tasks.toml —
+# included AFTER the archetype so its same-named tasks (tidy, fmt, lint, build,
+# fuzz, ci, pr) replace the archetype's definitions (later includes win
+# whole-task, and an included file also beats this config's own [tasks] on
+# name collisions).
+includes = [
+  ".mise/common/tasks.toml",
+  ".mise/archetypes/go/tasks.toml",
+  "tasks.toml",
+]
