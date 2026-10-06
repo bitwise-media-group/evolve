@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 # Continuous integration — thin caller for the org's reusable ci workflow. It runs
-# the canonical Makefile gates (lint, build, test) as one parallel job each, then
+# the canonical mise tasks (lint, build, test) as one parallel job each, then
 # Codecov uploads from coverage/cobertura-coverage.xml (coverage) and
-# coverage/junit.xml (test results) — both emitted by `make test`.
-# `make lint` carries all check-mode static analysis — go vet, govulncheck,
-# golangci-lint, prettier --check, markdownlint, addlicense. The Go version comes
-# from go.mod and the Node version from .node-version.
+# coverage/junit.xml (test results) — both emitted by `mise run test`.
+# `mise run lint` carries all check-mode static analysis — golangci-lint,
+# govulncheck, prettier --check, markdownlint, addlicense, actionlint, zizmor.
+# Go comes from the root mise.toml pin and Node (for the embedded report-viewer
+# UI) from the toolchain submodule's pins.
 #
 # The reusable workflow is pinned to a full commit SHA (tag in the comment) so a
 # moved tag can never change what runs; Renovate keeps the pin fresh.
@@ -24,14 +25,4 @@ permissions:
 
 jobs:
   ci:
-    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@a0d0170124ad80a06082078b60669d7c99d33ee6 # v6.3.0
-    with:
-      # Default is go.sum; list every lockfile that affects the build. The dev
-      # CLIs (golangci-lint, govulncheck, addlicense, gotestsum, ...) are pinned
-      # by the toolchain submodule's config.toml/mise.lock, which the workflow
-      # checks out (submodules: true) — no tools/go.sum anymore.
-      # e2e/ has no external deps yet (no go.sum), but is listed so the cache key
-      # tracks it once it does.
-      cache-dependency-path: |
-        go.sum
-        e2e/go.sum
+    uses: bitwise-media-group/github-workflows/.github/workflows/ci.yaml@fea4c5284a9d3679c64f0e2cac5810124e0294d2 # v7.0.0
