@@ -15,7 +15,7 @@
 # Renovate keeps the pin fresh.
 name: Merge Notice
 
-on:
+on: # zizmor: ignore[dangerous-triggers] -- required: the notice must reach fork PRs; the reusable workflow only posts a static comment, no PR code is run
   pull_request_target:
     types: [opened]
 

@@ -28,7 +28,7 @@
 # Renovate keeps the pin fresh.
 name: Merge
 
-on:
+on: # zizmor: ignore[dangerous-triggers] -- required: workflow_run gates auto-merge on CI; no PR code is checked out or run
   issue_comment:
     types: [created]
   workflow_run:

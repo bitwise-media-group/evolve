@@ -18,7 +18,7 @@
 
 name: Add to Project
 
-on:
+on: # zizmor: ignore[dangerous-triggers] -- required: fork PRs must reach the board; the reusable workflow never checks out or runs PR code
   issues:
     types: [opened]
   # pull_request_target, not pull_request, so PRs opened from forks are captured too:
