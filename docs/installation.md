@@ -15,7 +15,8 @@ brew install --cask bitwise-media-group/tap/evolve
 ```
 
 The cask lives in [bitwise-media-group/homebrew-tap](https://github.com/bitwise-media-group/homebrew-tap), is updated by
-every release, and installs shell completions alongside the prebuilt binary.
+every release, and installs shell completions alongside the prebuilt binary. The macOS binary is Developer ID-signed and
+notarized by Apple, so it runs without a Gatekeeper prompt.
 
 ## Go install
 
@@ -36,8 +37,9 @@ make build
 ## Release binaries
 
 Tagged [releases](https://github.com/bitwise-media-group/evolve/releases) ship prebuilt `evolve_<version>_<os>_<arch>`
-archives for Linux, macOS and Windows on amd64 and arm64 — with `checksums.txt`, a Sigstore bundle per binary, and an
-SPDX SBOM per archive. Download, extract, and put `evolve` on your `PATH`.
+archives for Linux, macOS and Windows on amd64 and arm64 — with `checksums.txt`, a Sigstore bundle per Linux and Windows
+binary, Developer ID-signed and notarized macOS binaries, and an SPDX SBOM per archive. Download, extract, and put
+`evolve` on your `PATH`.
 
 ## Verify the environment
 

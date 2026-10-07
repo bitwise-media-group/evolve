@@ -23,6 +23,8 @@ env:
   - CGO_ENABLED=0
 
 # ^ref: https://goreleaser.com/customization/build/
+# Cross-platform binaries: keyless cosign signatures over linux/windows and
+# Developer ID-signed, notarized darwin binaries (notarize.macos below).
 builds:
   - id: evolve
     main: ./cmd/evolve
@@ -32,15 +34,35 @@ builds:
     # withui embeds the report-viewer SPA built in the before-hook above.
     tags:
       - withui
-    ldflags:
+    # shared with the darwin build below (same binary, split only by goos)
+    ldflags: &evolve_ldflags
       - -s -w
       - -X github.com/bitwise-media-group/evolve/internal/version.Version={{ .Version }}
       - -X github.com/bitwise-media-group/evolve/internal/version.Commit={{ .ShortCommit }}
       - -X github.com/bitwise-media-group/evolve/internal/version.BuildDate={{ .Date }}
     goos:
       - linux
-      - darwin
       - windows
+    goarch:
+      - amd64
+      - arm64
+  # darwin is a separate build id purely so binary_signs (cosign) can exclude
+  # it by id: goreleaser runs binary_signs BEFORE notarize, and notarization
+  # rewrites the Mach-O in place, so a cosign bundle over the pre-notarized
+  # bytes would never verify against the shipped binary. The OSS binary_signs
+  # has no per-artifact `if`, so the build id is the only handle. Archive
+  # names are unchanged (the template keys on Binary/Os/Arch, not the id), and
+  # dockers_v2 keeps sourcing its linux binaries from the `evolve` id.
+  - id: evolve-darwin
+    main: ./cmd/evolve
+    binary: evolve
+    flags:
+      - -trimpath
+    tags:
+      - withui
+    ldflags: *evolve_ldflags
+    goos:
+      - darwin
     goarch:
       - amd64
       - arm64
@@ -123,8 +145,14 @@ checksum:
   name_template: checksums.txt
 
 # ^ref: https://goreleaser.com/customization/sign/sign/
+# Keyless cosign signatures over the linux/windows binaries; the reusable
+# release workflow supplies the GitHub Actions OIDC token. The darwin binaries
+# are excluded by build id and carry the Apple signature + notarization below
+# instead (cosign runs before notarize and would sign the wrong bytes); the
+# SLSA attestation over checksums.txt still covers their archives.
 binary_signs:
   - cmd: cosign
+    ids: [evolve]
     signature: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}.sigstore.json"
     args:
       - sign-blob
@@ -132,6 +160,30 @@ binary_signs:
       - ${artifact}
       - --yes
     output: true
+
+# ^ref: https://goreleaser.com/customization/sign/notarize/
+# Developer ID signing + Apple notarization of the darwin binaries, done
+# cross-platform by goreleaser's embedded quill (no macOS runner). Certificate
+# and API key arrive as env from the reusable release workflow, from the org
+# secrets shared by every open-source repo that notarizes.
+# enabled: every real release notarizes and fails if the secrets are missing
+# (a published release is never un-notarized, which is what lets the cask
+# skip the quarantine workaround); a snapshot only does when MACOS_SIGN_P12 is
+# exported, so `mise run snapshot` stays offline and a local end-to-end test
+# is one env export away.
+notarize:
+  macos:
+    - enabled: '{{ or (not .IsSnapshot) (isEnvSet "MACOS_SIGN_P12") }}'
+      ids: [evolve-darwin]
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 15m
 
 # ^ref: https://goreleaser.com/customization/sbom/
 sboms:
@@ -196,13 +248,12 @@ homebrew_casks:
     manpages:
       - docs/man/*.1
     # Static completion stanzas, NOT generate_completions_from_executable:
-    # Homebrew installs cask artifacts in a fixed type-based order, but
-    # GeneratedCompletion is missing from that sort table (as of brew 6.0),
-    # so its position is decided by an unstable sort — it can run before the
-    # quarantine-clearing preflight below, executing the still-quarantined
-    # binary and tripping Gatekeeper mid-install. Static bash_completion /
-    # zsh_completion / fish_completion artifacts are ordered deterministically
-    # and never execute the binary.
+    # the committed completions/* are deterministic output of `mise run docs`
+    # and install as plain files, so the cask never executes the binary at
+    # install time and the install is reproducible from the archive alone.
+    # (Static bash_completion / zsh_completion / fish_completion artifacts are
+    # also ordered deterministically by Homebrew, which GeneratedCompletion —
+    # missing from brew's artifact sort table as of 6.0 — is not.)
     completions:
       bash: completions/evolve.bash
       zsh: completions/evolve.zsh
@@ -215,9 +266,4 @@ homebrew_casks:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    hooks:
-      pre:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/evolve"]
-          end
+

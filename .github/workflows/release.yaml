@@ -5,9 +5,9 @@
 # release-please watches main and keeps a release PR current from the Conventional
 # Commit history; when that PR merges the workflow cuts the draft GitHub release +
 # vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
-# keyless cosign signatures, the Homebrew cask pushed to
-# bitwise-media-group/homebrew-tap, and a SLSA build-provenance attestation over
-# everything in checksums.txt.
+# keyless cosign signatures (linux/windows), Developer ID-signed + notarized
+# darwin binaries, the Homebrew cask pushed to bitwise-media-group/homebrew-tap,
+# and a SLSA build-provenance attestation over everything in checksums.txt.
 #
 # When that release is cut the reusable workflow's docs job (keyed off the
 # zensical.toml at the repo root) also runs: it rebuilds the Zensical documentation
@@ -76,3 +76,14 @@ jobs:
       # PAT with write access to bitwise-media-group/homebrew-tap — the default
       # GITHUB_TOKEN cannot push the cask to another repository.
       homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      # Apple signing + notarization of the darwin binaries (notarize.macos in
+      # .goreleaser.yaml). Org secrets scoped to the notarizing repos: the
+      # shared open-source Developer ID Application certificate (+ its export
+      # password) and the App Store Connect team API key. Setup is documented
+      # in github-workflows README → "macOS notarization: org setup".
+      macos-sign-p12: ${{ secrets.MACOS_SIGN_P12 }}
+      macos-sign-password: ${{ secrets.MACOS_SIGN_PASSWORD }}
+      macos-notary-issuer-id: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      macos-notary-key-id: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      macos-notary-key: ${{ secrets.MACOS_NOTARY_KEY }}
+
