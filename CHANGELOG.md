@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.3](https://github.com/bitwise-media-group/evolve/compare/v0.8.2...v0.8.3) (2026-10-09)
+
+
+### Continuous Integration
+
+* **release:** publish the homebrew cask via an app token pull request ([41cdce7](https://github.com/bitwise-media-group/evolve/commit/41cdce7baef78937882cc16a36bb2059f5a108de))
+
 ## [0.8.2](https://github.com/bitwise-media-group/evolve/compare/v0.8.1...v0.8.2) (2026-10-09)
 
 
