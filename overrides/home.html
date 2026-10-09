@@ -60,16 +60,21 @@ toc]`. #} {% extends "main.html" %} {% block tabs %} {{ super() }}
     {# Provider/model ids (mirrors builtins() in internal/model/registry.go). Rendered twice so the
     translateX(-50%) scroll in extra.css loops seamlessly; aria-hidden because it is decorative and
     would otherwise be announced twice. #} {% set ev_marquee = [
-    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-sonnet-4-6", "magenta"],
-    ["anthropic/claude-sonnet-5", "magenta"], ["anthropic/claude-opus-4-8", "magenta"],
-    ["anthropic/claude-opus-5", "magenta"], ["anthropic/claude-fable-5", "magenta"],
-    ["openai/gpt-5.6-sol", "green"], ["openai/gpt-5.6-terra", "green"], ["openai/gpt-5.6-luna", "green"],
-    ["openai/gpt-5.3-codex-spark", "green"], ["openai/gpt-5.4-mini", "green"], ["openai/gpt-5.4", "green"],
-    ["openai/gpt-5.5", "green"], ["openai/gpt-5.3-codex", "green"],
-    ["google/gemini-3.1-flash-lite", "cyan"], ["google/gemini-3-flash-preview", "cyan"],
-    ["google/gemini-3.5-flash", "cyan"], ["google/gemini-3.1-pro-preview", "cyan"],
-    ["google/gemini-3.1-pro", "cyan"], ["cursor/composer-2.5", "orange"],
-    ["xai/grok-4.5", "yellow"], ["xai/grok-4.6", "yellow"] ] %}
+    ["anthropic/claude-haiku-4-5", "magenta"], ["anthropic/claude-haiku-5-5", "magenta"],
+    ["anthropic/claude-sonnet-4-6", "magenta"],
+    ["anthropic/claude-sonnet-5", "magenta"], ["anthropic/claude-sonnet-5-5", "magenta"],
+    ["anthropic/claude-opus-4-8", "magenta"], ["anthropic/claude-opus-5", "magenta"],
+    ["anthropic/claude-opus-5-5", "magenta"], ["anthropic/claude-fable-5", "magenta"],
+    ["anthropic/claude-fable-5-1", "magenta"], ["openai/gpt-6-astra", "green"], ["openai/gpt-6.1-sol", "green"],
+    ["openai/gpt-6-sol", "green"], ["openai/gpt-6-luna", "green"], ["openai/gpt-5.6-sol", "green"],
+    ["openai/gpt-5.6-terra", "green"], ["openai/gpt-5.6-luna", "green"], ["openai/gpt-5.5", "green"],
+    ["openai/gpt-5.4", "green"], ["openai/gpt-5.4-mini", "green"], ["openai/gpt-5.3-codex", "green"],
+    ["google/gemini-3.1-flash-lite", "cyan"], ["google/gemini-3.5-flash-lite", "cyan"],
+    ["google/gemini-3-flash-preview", "cyan"], ["google/gemini-3.5-flash", "cyan"],
+    ["google/gemini-3.6-flash", "cyan"], ["google/gemini-3.7-flash", "cyan"], ["google/gemini-3.8-flash", "cyan"],
+    ["google/gemini-3.1-pro-preview", "cyan"], ["google/gemini-3.1-pro", "cyan"],
+    ["cursor/composer-2.5", "orange"], ["xai/grok-4.5", "yellow"], ["xai/grok-4.6", "yellow"],
+    ["xai/grok-4.7", "yellow"] ] %}
     <div class="ev-marquee" aria-hidden="true">
         <div class="ev-marquee__track">
             {% for i in [1, 2] %}{% for m in ev_marquee %}<span style="color: var(--ev-{{ m[1] }})">{{ m[0] }}</span

@@ -43,7 +43,7 @@ func Providers() []Provider {
 // builtins returns the canonical model registry: one entry per vendor model,
 // each declaring which harnesses can drive it and the CLI-specific id each
 // harness uses. A model previously listed under a non-vendor harness (Copilot's
-// "claude-sonnet-4.6", Antigravity's "gemini-3.5-flash") is folded into its
+// "claude-sonnet-4.6", Antigravity's "gemini-3.1-pro") is folded into its
 // canonical vendor model as an extra Supported entry.
 func builtins() []Model {
 	return []Model{
@@ -55,16 +55,32 @@ func builtins() []Model {
 			Preferred: HarnessClaude,
 		},
 		{
-			ID: "anthropic/claude-sonnet-4-6", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 4.6",
-			InputUSD: usd(3.00), OutputUSD: usd(15.00),
-			Supported: map[string]string{HarnessClaude: "claude-sonnet-4-6", HarnessCopilot: "claude-sonnet-4.6"},
+			// <=100K-token prompt tier; longer prompts price at $0.50/$2.50.
+			ID: "anthropic/claude-haiku-5-5", ProviderID: ProviderAnthropic, Name: "Claude Haiku 5.5",
+			InputUSD: usd(0.10), OutputUSD: usd(0.50),
+			Supported: map[string]string{HarnessClaude: "claude-haiku-5-5", HarnessCopilot: "claude-haiku-5.5"},
 			Preferred: HarnessClaude,
 		},
 		{
-			// Sticker rate; an introductory $2/$10 per MTok applies through 2026-08-31.
-			ID: "anthropic/claude-sonnet-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5",
+			ID: "anthropic/claude-sonnet-4-6", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 4.6",
 			InputUSD: usd(3.00), OutputUSD: usd(15.00),
+			Supported: map[string]string{
+				HarnessClaude:      "claude-sonnet-4-6",
+				HarnessCopilot:     "claude-sonnet-4.6",
+				HarnessAntigravity: "claude-sonnet-4-6",
+			},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-sonnet-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5",
+			InputUSD: usd(2.00), OutputUSD: usd(10.00),
 			Supported: map[string]string{HarnessClaude: "claude-sonnet-5", HarnessCopilot: "claude-sonnet-5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-sonnet-5-5", ProviderID: ProviderAnthropic, Name: "Claude Sonnet 5.5",
+			InputUSD: usd(2.00), OutputUSD: usd(10.00),
+			Supported: map[string]string{HarnessClaude: "claude-sonnet-5-5", HarnessCopilot: "claude-sonnet-5.5"},
 			Preferred: HarnessClaude,
 		},
 		{
@@ -80,67 +96,110 @@ func builtins() []Model {
 			Preferred: HarnessClaude,
 		},
 		{
+			ID: "anthropic/claude-opus-5-5", ProviderID: ProviderAnthropic, Name: "Claude Opus 5.5",
+			InputUSD: usd(4.00), OutputUSD: usd(20.00),
+			Supported: map[string]string{HarnessClaude: "claude-opus-5-5", HarnessCopilot: "claude-opus-5.5"},
+			Preferred: HarnessClaude,
+		},
+		{
 			ID: "anthropic/claude-fable-5", ProviderID: ProviderAnthropic, Name: "Claude Fable 5",
 			InputUSD: usd(10.00), OutputUSD: usd(50.00),
 			Supported: map[string]string{HarnessClaude: "claude-fable-5", HarnessCopilot: "claude-fable-5"},
+			Preferred: HarnessClaude,
+		},
+		{
+			ID: "anthropic/claude-fable-5-1", ProviderID: ProviderAnthropic, Name: "Claude Fable 5.1",
+			InputUSD: usd(10.00), OutputUSD: usd(50.00),
+			Supported: map[string]string{HarnessClaude: "claude-fable-5-1", HarnessCopilot: "claude-fable-5.1"},
 			Preferred: HarnessClaude,
 		},
 
 		// OpenAI — Codex models priced; the Copilot-only ids carry no published
 		// per-token pricing (subscription billing), so estimate/measured render n/a.
 		{
+			ID: "openai/gpt-6-astra", ProviderID: ProviderOpenAI, Name: "GPT-6 Astra",
+			InputUSD: usd(10.00), OutputUSD: usd(50.00),
+			Supported: map[string]string{HarnessCodex: "gpt-6-astra", HarnessCopilot: "gpt-6-astra"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-6.1-sol", ProviderID: ProviderOpenAI, Name: "GPT-6.1 Sol",
+			InputUSD: usd(2.00), OutputUSD: usd(10.00),
+			Supported: map[string]string{HarnessCodex: "gpt-6.1-sol", HarnessCopilot: "gpt-6.1-sol"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-6-sol", ProviderID: ProviderOpenAI, Name: "GPT-6 Sol",
+			InputUSD: usd(2.00), OutputUSD: usd(10.00),
+			Supported: map[string]string{HarnessCodex: "gpt-6-sol", HarnessCopilot: "gpt-6-sol"},
+			Preferred: HarnessCodex,
+		},
+		{
+			ID: "openai/gpt-6-luna", ProviderID: ProviderOpenAI, Name: "GPT-6 Luna",
+			InputUSD: usd(0.10), OutputUSD: usd(0.50),
+			Supported: map[string]string{HarnessCodex: "gpt-6-luna", HarnessCopilot: "gpt-6-luna"},
+			Preferred: HarnessCodex,
+		},
+		{
+			// Promotional rate through at least 2026-11-21; the launch price was $5/$30.
 			ID: "openai/gpt-5.6-sol", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Sol",
-			InputUSD: usd(5.00), OutputUSD: usd(30.00),
+			InputUSD: usd(4.00), OutputUSD: usd(20.00),
 			Supported: map[string]string{HarnessCodex: "gpt-5.6-sol", HarnessCopilot: "gpt-5.6-sol"},
 			Preferred: HarnessCodex,
 		},
 		{
 			ID: "openai/gpt-5.6-terra", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Terra",
-			InputUSD: usd(2.50), OutputUSD: usd(15.00),
+			InputUSD: usd(2.00), OutputUSD: usd(12.00),
 			Supported: map[string]string{HarnessCodex: "gpt-5.6-terra", HarnessCopilot: "gpt-5.6-terra"},
 			Preferred: HarnessCodex,
 		},
 		{
 			ID: "openai/gpt-5.6-luna", ProviderID: ProviderOpenAI, Name: "GPT-5.6 Luna",
-			InputUSD: usd(1.00), OutputUSD: usd(6.00),
+			InputUSD: usd(0.20), OutputUSD: usd(1.20),
 			Supported: map[string]string{HarnessCodex: "gpt-5.6-luna", HarnessCopilot: "gpt-5.6-luna"},
 			Preferred: HarnessCodex,
 		},
 		{
-			ID: "openai/gpt-5.3-codex-spark", ProviderID: ProviderOpenAI, Name: "GPT-5.3 Codex Spark",
-			Supported: map[string]string{HarnessCodex: "gpt-5.3-codex-spark"},
-			Preferred: HarnessCodex,
-		},
-		{
-			ID: "openai/gpt-5.4-mini", ProviderID: ProviderOpenAI, Name: "GPT-5.4 Mini",
-			InputUSD: usd(0.75), OutputUSD: usd(4.50),
-			Supported: map[string]string{HarnessCodex: "gpt-5.4-mini", HarnessCopilot: "gpt-5.4-mini"},
-			Preferred: HarnessCodex,
-		},
-		{
-			ID: "openai/gpt-5.4", ProviderID: ProviderOpenAI, Name: "GPT-5.4",
-			InputUSD: usd(2.50), OutputUSD: usd(15.00),
-			Supported: map[string]string{HarnessCodex: "gpt-5.4", HarnessCopilot: "gpt-5.4"},
-			Preferred: HarnessCodex,
-		},
-		{
+			// Codex retires gpt-5.5 for ChatGPT sign-in on 2026-10-14.
 			ID: "openai/gpt-5.5", ProviderID: ProviderOpenAI, Name: "GPT-5.5",
 			InputUSD: usd(5.00), OutputUSD: usd(30.00),
 			Supported: map[string]string{HarnessCodex: "gpt-5.5", HarnessCopilot: "gpt-5.5"},
 			Preferred: HarnessCodex,
 		},
 		{
+			// Dropped from the Codex catalog (0.161); Copilot still serves it.
+			ID: "openai/gpt-5.4", ProviderID: ProviderOpenAI, Name: "GPT-5.4",
+			Supported: map[string]string{HarnessCopilot: "gpt-5.4"},
+			Preferred: HarnessCopilot,
+		},
+		{
+			// Dropped from the Codex catalog (0.161); Copilot still serves it.
+			ID: "openai/gpt-5.4-mini", ProviderID: ProviderOpenAI, Name: "GPT-5.4 Mini",
+			Supported: map[string]string{HarnessCopilot: "gpt-5.4-mini"},
+			Preferred: HarnessCopilot,
+		},
+		{
+			// API-deprecated 2026-10-01 (shutdown 2027-04-01); Copilot still serves it.
 			ID: "openai/gpt-5.3-codex", ProviderID: ProviderOpenAI, Name: "GPT-5.3 Codex",
 			Supported: map[string]string{HarnessCopilot: "gpt-5.3-codex"},
 			Preferred: HarnessCopilot,
 		},
 
-		// Google — Gemini models priced; the id with no Gemini CLI counterpart
-		// carries no published per-token pricing (quota/subscription billing).
+		// Google — Gemini models priced; the ids with no Gemini CLI counterpart
+		// carry no published per-token pricing (quota/subscription billing).
+		// Antigravity ids carry a reasoning-effort suffix (-high/-medium/-low);
+		// the registry pins -high, agy's default effort.
 		{
+			// API shutdown 2027-05-07 (replacement gemini-3.5-flash-lite).
 			ID: "google/gemini-3.1-flash-lite", ProviderID: ProviderGoogle, Name: "Gemini 3.1 Flash-Lite",
 			InputUSD: usd(0.25), OutputUSD: usd(1.50),
 			Supported: map[string]string{HarnessGemini: "gemini-3.1-flash-lite"},
+			Preferred: HarnessGemini,
+		},
+		{
+			ID: "google/gemini-3.5-flash-lite", ProviderID: ProviderGoogle, Name: "Gemini 3.5 Flash-Lite",
+			InputUSD: usd(0.30), OutputUSD: usd(2.50),
+			Supported: map[string]string{HarnessGemini: "gemini-3.5-flash-lite"},
 			Preferred: HarnessGemini,
 		},
 		{
@@ -152,10 +211,30 @@ func builtins() []Model {
 		{
 			ID: "google/gemini-3.5-flash", ProviderID: ProviderGoogle, Name: "Gemini 3.5 Flash",
 			InputUSD: usd(1.50), OutputUSD: usd(9.00),
+			Supported: map[string]string{HarnessGemini: "gemini-3.5-flash"},
+			Preferred: HarnessGemini,
+		},
+		{
+			ID: "google/gemini-3.6-flash", ProviderID: ProviderGoogle, Name: "Gemini 3.6 Flash",
+			Supported: map[string]string{HarnessAntigravity: "gemini-3.6-flash-high"},
+			Preferred: HarnessAntigravity,
+		},
+		{
+			ID: "google/gemini-3.7-flash", ProviderID: ProviderGoogle, Name: "Gemini 3.7 Flash",
 			Supported: map[string]string{
-				HarnessGemini:      "gemini-3.5-flash",
-				HarnessAntigravity: "gemini-3.5-flash",
-				HarnessCopilot:     "gemini-3.5-flash",
+				HarnessAntigravity: "gemini-3.7-flash-high",
+				HarnessCopilot:     "gemini-3.7-flash",
+			},
+			Preferred: HarnessAntigravity,
+		},
+		{
+			// Sticker rate; an introductory $0.75/$3.75 per MTok applies through 2026-12-31.
+			ID: "google/gemini-3.8-flash", ProviderID: ProviderGoogle, Name: "Gemini 3.8 Flash",
+			InputUSD: usd(1.50), OutputUSD: usd(7.50),
+			Supported: map[string]string{
+				HarnessGemini:      "gemini-3.8-flash",
+				HarnessAntigravity: "gemini-3.8-flash-high",
+				HarnessCopilot:     "gemini-3.8-flash",
 			},
 			Preferred: HarnessGemini,
 		},
@@ -168,7 +247,7 @@ func builtins() []Model {
 		},
 		{
 			ID: "google/gemini-3.1-pro", ProviderID: ProviderGoogle, Name: "Gemini 3.1 Pro",
-			Supported: map[string]string{HarnessAntigravity: "gemini-3.1-pro", HarnessCopilot: "gemini-3.1-pro"},
+			Supported: map[string]string{HarnessAntigravity: "gemini-3.1-pro-high"},
 			Preferred: HarnessAntigravity,
 		},
 
@@ -185,17 +264,24 @@ func builtins() []Model {
 			Preferred: HarnessCursor,
 		},
 
-		// xAI — driven by the Grok CLI. Pricing is the short-context sticker rate.
+		// xAI — driven by the Grok CLI, all also by Copilot. Pricing is the
+		// short-context sticker rate.
 		{
 			ID: "xai/grok-4.5", ProviderID: ProviderXAI, Name: "Grok 4.5",
 			InputUSD: usd(2.00), OutputUSD: usd(6.00),
-			Supported: map[string]string{HarnessGrok: "grok-4.5"},
+			Supported: map[string]string{HarnessGrok: "grok-4.5", HarnessCopilot: "grok-4.5"},
 			Preferred: HarnessGrok,
 		},
 		{
 			ID: "xai/grok-4.6", ProviderID: ProviderXAI, Name: "Grok 4.6",
 			InputUSD: usd(2.00), OutputUSD: usd(6.00),
-			Supported: map[string]string{HarnessGrok: "grok-4.6"},
+			Supported: map[string]string{HarnessGrok: "grok-4.6", HarnessCopilot: "grok-4.6"},
+			Preferred: HarnessGrok,
+		},
+		{
+			ID: "xai/grok-4.7", ProviderID: ProviderXAI, Name: "Grok 4.7",
+			InputUSD: usd(2.00), OutputUSD: usd(6.00),
+			Supported: map[string]string{HarnessGrok: "grok-4.7", HarnessCopilot: "grok-4.7"},
 			Preferred: HarnessGrok,
 		},
 	}

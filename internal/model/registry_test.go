@@ -63,14 +63,18 @@ func TestKeyStability(t *testing.T) {
 	}
 }
 
-func TestGPT56Models(t *testing.T) {
+func TestCodexModels(t *testing.T) {
 	tests := []struct {
 		id, name      string
 		input, output float64
 	}{
-		{"openai/gpt-5.6-sol", "GPT-5.6 Sol", 5.00, 30.00},
-		{"openai/gpt-5.6-terra", "GPT-5.6 Terra", 2.50, 15.00},
-		{"openai/gpt-5.6-luna", "GPT-5.6 Luna", 1.00, 6.00},
+		{"openai/gpt-6-astra", "GPT-6 Astra", 10.00, 50.00},
+		{"openai/gpt-6.1-sol", "GPT-6.1 Sol", 2.00, 10.00},
+		{"openai/gpt-6-sol", "GPT-6 Sol", 2.00, 10.00},
+		{"openai/gpt-6-luna", "GPT-6 Luna", 0.10, 0.50},
+		{"openai/gpt-5.6-sol", "GPT-5.6 Sol", 4.00, 20.00},
+		{"openai/gpt-5.6-terra", "GPT-5.6 Terra", 2.00, 12.00},
+		{"openai/gpt-5.6-luna", "GPT-5.6 Luna", 0.20, 1.20},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,6 +100,54 @@ func TestGPT56Models(t *testing.T) {
 	}
 }
 
+// TestCopilotDottedIDs pins the Anthropic 5.x point releases to Copilot's
+// dotted ids, which diverge from the Claude Code ids.
+func TestCopilotDottedIDs(t *testing.T) {
+	tests := []struct{ id, claude, copilot string }{
+		{"anthropic/claude-haiku-5-5", "claude-haiku-5-5", "claude-haiku-5.5"},
+		{"anthropic/claude-sonnet-5-5", "claude-sonnet-5-5", "claude-sonnet-5.5"},
+		{"anthropic/claude-opus-5-5", "claude-opus-5-5", "claude-opus-5.5"},
+		{"anthropic/claude-fable-5-1", "claude-fable-5-1", "claude-fable-5.1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.id, func(t *testing.T) {
+			m, ok := ModelByID(builtins(), tc.id)
+			if !ok {
+				t.Fatalf("%s missing from registry", tc.id)
+			}
+			if id, ok := m.CLIModelID(HarnessClaude); !ok || id != tc.claude {
+				t.Errorf("claude CLI id = %q (%v), want %q", id, ok, tc.claude)
+			}
+			if id, ok := m.CLIModelID(HarnessCopilot); !ok || id != tc.copilot {
+				t.Errorf("copilot CLI id = %q (%v), want %q", id, ok, tc.copilot)
+			}
+		})
+	}
+}
+
+// TestAntigravityEffortIDs pins the Antigravity ids, which carry agy's
+// reasoning-effort suffix and so diverge from the bare vendor ids.
+func TestAntigravityEffortIDs(t *testing.T) {
+	tests := []struct{ id, agy string }{
+		{"anthropic/claude-sonnet-4-6", "claude-sonnet-4-6"},
+		{"google/gemini-3.6-flash", "gemini-3.6-flash-high"},
+		{"google/gemini-3.7-flash", "gemini-3.7-flash-high"},
+		{"google/gemini-3.8-flash", "gemini-3.8-flash-high"},
+		{"google/gemini-3.1-pro", "gemini-3.1-pro-high"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.id, func(t *testing.T) {
+			m, ok := ModelByID(builtins(), tc.id)
+			if !ok {
+				t.Fatalf("%s missing from registry", tc.id)
+			}
+			if id, ok := m.CLIModelID(HarnessAntigravity); !ok || id != tc.agy {
+				t.Errorf("antigravity CLI id = %q (%v), want %q", id, ok, tc.agy)
+			}
+		})
+	}
+}
+
 func TestGrok45Model(t *testing.T) {
 	m, ok := ModelByID(builtins(), "xai/grok-4.5")
 	if !ok {
@@ -104,8 +156,10 @@ func TestGrok45Model(t *testing.T) {
 	if m.Preferred != HarnessGrok {
 		t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessGrok)
 	}
-	if id, ok := m.CLIModelID(HarnessGrok); !ok || id != "grok-4.5" {
-		t.Errorf("grok CLI id = %q (%v), want grok-4.5", id, ok)
+	for _, harnessID := range []string{HarnessGrok, HarnessCopilot} {
+		if id, ok := m.CLIModelID(harnessID); !ok || id != "grok-4.5" {
+			t.Errorf("%s CLI id = %q (%v), want grok-4.5", harnessID, id, ok)
+		}
 	}
 	if m.InputUSD == nil || *m.InputUSD != 2.00 || m.OutputUSD == nil || *m.OutputUSD != 6.00 {
 		t.Errorf("pricing = %v/%v, want 2.00/6.00", m.InputUSD, m.OutputUSD)
@@ -120,8 +174,28 @@ func TestGrok46Model(t *testing.T) {
 	if m.Preferred != HarnessGrok {
 		t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessGrok)
 	}
-	if id, ok := m.CLIModelID(HarnessGrok); !ok || id != "grok-4.6" {
-		t.Errorf("grok CLI id = %q (%v), want grok-4.6", id, ok)
+	for _, harnessID := range []string{HarnessGrok, HarnessCopilot} {
+		if id, ok := m.CLIModelID(harnessID); !ok || id != "grok-4.6" {
+			t.Errorf("%s CLI id = %q (%v), want grok-4.6", harnessID, id, ok)
+		}
+	}
+	if m.InputUSD == nil || *m.InputUSD != 2.00 || m.OutputUSD == nil || *m.OutputUSD != 6.00 {
+		t.Errorf("pricing = %v/%v, want 2.00/6.00", m.InputUSD, m.OutputUSD)
+	}
+}
+
+func TestGrok47Model(t *testing.T) {
+	m, ok := ModelByID(builtins(), "xai/grok-4.7")
+	if !ok {
+		t.Fatal("xai/grok-4.7 missing from registry")
+	}
+	if m.Preferred != HarnessGrok {
+		t.Errorf("Preferred = %q, want %q", m.Preferred, HarnessGrok)
+	}
+	for _, harnessID := range []string{HarnessGrok, HarnessCopilot} {
+		if id, ok := m.CLIModelID(harnessID); !ok || id != "grok-4.7" {
+			t.Errorf("%s CLI id = %q (%v), want grok-4.7", harnessID, id, ok)
+		}
 	}
 	if m.InputUSD == nil || *m.InputUSD != 2.00 || m.OutputUSD == nil || *m.OutputUSD != 6.00 {
 		t.Errorf("pricing = %v/%v, want 2.00/6.00", m.InputUSD, m.OutputUSD)

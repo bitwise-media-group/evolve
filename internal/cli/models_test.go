@@ -63,7 +63,7 @@ func TestActiveModelKeysHarnessRestriction(t *testing.T) {
 	if keys["anthropic/claude-opus-4-8"] {
 		t.Error("opus (claude-only) must not be active under a codex-only restriction")
 	}
-	if !keys["openai/gpt-5.4"] {
-		t.Error("gpt-5.4 (codex) must be active under a codex restriction")
+	if !keys["openai/gpt-6-sol"] {
+		t.Error("gpt-6-sol (codex) must be active under a codex restriction")
 	}
 }
