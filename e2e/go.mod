@@ -1,3 +1,3 @@
 module github.com/bitwise-media-group/evolve/e2e
 
-go 1.26.5
+go 1.27.2

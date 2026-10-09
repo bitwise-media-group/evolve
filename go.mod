@@ -1,6 +1,6 @@
 module github.com/bitwise-media-group/evolve
 
-go 1.26.5
+go 1.27.2
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -80,7 +80,7 @@ require (
 	go.opentelemetry.io/otel/exporters/prometheus v0.69.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.1 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
