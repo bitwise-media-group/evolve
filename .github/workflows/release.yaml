@@ -41,7 +41,7 @@ permissions: {}
 
 jobs:
   release:
-    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@2d3b2608662b272b8e5036236e82144507d8bb67 # v7.0.1
+    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@8b34c6fe87a61fc2f800876e9268bc1da8635e88 # v8.0.0
     # ceiling for the reusable workflow's release-please + goreleaser + docs jobs.
     # GitHub resolves a reusable workflow's permissions as the union of every job and
     # ignores `if:`, so the caller must grant the goreleaser job's id-token /
@@ -73,9 +73,6 @@ jobs:
     secrets:
       # private key for the App that authors the release PR (same App as /merge)
       app-private-key: ${{ secrets.FF_MERGE_PRIVATE_KEY }}
-      # PAT with write access to bitwise-media-group/homebrew-tap — the default
-      # GITHUB_TOKEN cannot push the cask to another repository.
-      homebrew-tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
       # Apple signing + notarization of the darwin binaries (notarize.macos in
       # .goreleaser.yaml). Org secrets scoped to the notarizing repos: the
       # shared open-source Developer ID Application certificate (+ its export

@@ -235,7 +235,8 @@ release:
   # The release-please job in release.yaml leaves a draft release named after
   # the tag it pushes. Adopt that draft instead of creating a second release,
   # swap its release-please notes for the grouped changelog above, and
-  # undraft it only once every asset has been uploaded.
+  # leave it a draft: the reusable release workflow runs GoReleaser with
+  # --draft and publishes it last, once the assets, cask and attestations land.
   use_existing_draft: true
   mode: replace
 
@@ -264,6 +265,17 @@ homebrew_casks:
     repository:
       owner: bitwise-media-group
       name: homebrew-tap
-      branch: main
+      # The cask lands as a pull request from bot/evolve-<tag> (bot/** is exempt
+      # from the org fork-only ruleset), never a push to main: the reusable
+      # release workflow merges it only after it publishes the draft release,
+      # so the tap never points at assets that do not exist yet. The token is
+      # a short-lived FF Merge App token the workflow mints for the tap alone.
+      branch: bot/evolve-{{ .Tag }}
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: bitwise-media-group
+          name: homebrew-tap
+          branch: main
 
