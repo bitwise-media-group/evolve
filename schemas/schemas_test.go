@@ -129,6 +129,61 @@ func TestFixtureDefinitionsValidate(t *testing.T) {
 	}
 }
 
+// TestAgentSuiteValidates pins the documented agent-suite example against the
+// schema and the loader.
+func TestAgentSuiteValidates(t *testing.T) {
+	compiled := compile(t)
+	doc := `{
+		"agent": {
+			"name": "support",
+			"protocol": "ag-ui",
+			"endpoints": {
+				"local":   {"url": "http://localhost:8000/"},
+				"staging": {"url": "https://staging.example.com/agents/support", "display": "Support (staging)",
+				            "headers": {"Authorization": "Bearer ${SUPPORT_AGENT_TOKEN}"},
+				            "forwarded_props": {"tenant": "eval"}}
+			}
+		},
+		"evals": [{
+			"id": "refund-requires-approval",
+			"prompt": "Refund order 1234 in full.",
+			"tools": [{"name": "confirm_refund", "description": "Ask the user to approve a refund",
+			           "parameters": {"type": "object", "properties": {"orderId": {"type": "string"}}}}],
+			"state": {"customer": "c-42"},
+			"context": [{"description": "locale", "value": "en-GB"}],
+			"forwarded_props": {"channel": "web"},
+			"responses": [
+				{"tool": "^confirm_refund$", "args": "\"orderId\":\\s*\"1234\"", "result": {"approved": true}},
+				{"interrupt": "confirmation", "message": "(?i)refund", "status": "resolved", "payload": {"approved": true}}
+			],
+			"followups": ["Thanks, email me the receipt."],
+			"assertions": [
+				{"type": "outcome", "expect": "completed"},
+				{"type": "hitl", "tool": "^confirm_refund$"},
+				{"type": "tool_sequence", "tools": ["^confirm_refund$", "^issue_refund$"]},
+				{"type": "tool_call", "tool": "^issue_refund$", "max": 1, "result": "\"status\":\\s*\"ok\""},
+				{"type": "state", "pointer": "/refunds/0/orderId", "equals": "1234"},
+				{"type": "conformance"},
+				"Confirms the amount and that a receipt was emailed"
+			]
+		}]
+	}`
+	if err := validate(compiled["evals.schema.json"], []byte(doc)); err != nil {
+		t.Errorf("agent suite does not validate: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "evals.json")
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := evalspec.LoadEvals(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems, _ := f.Validate(); len(problems) != 0 {
+		t.Errorf("loader problems = %v", problems)
+	}
+}
+
 // maximalResults exercises every optional field the schema declares for
 // wave 1, plus explicit nulls (pricing, skipped passed).
 func maximalResults() *results.File {
@@ -329,6 +384,54 @@ func TestNegativeFixtures(t *testing.T) {
 		{
 			"evals.schema.json", `{"evals": [{"id": "x", "expectations": ["y"]}]}`,
 			"missing prompt",
+		},
+		{
+			"evals.schema.json", `{"skill_name": "s", "agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": []}`,
+			"both kinds in one envelope",
+		},
+		{
+			"evals.schema.json", `{"models": ["anthropic"], "agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": []}`,
+			"models beside an agent block",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {}}, "evals": []}`,
+			"agent without endpoints",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {"Local_1": {"url": "http://x"}}}, "evals": []}`,
+			"endpoint name not kebab-case",
+		},
+		{
+			"evals.schema.json", `{"agent": {"protocol": "a2a", "endpoints": {"local": {"url": "http://x"}}}, "evals": []}`,
+			"unsupported protocol",
+		},
+		{
+			"evals.schema.json", `{"evals": [{"id": "x", "prompt": "p", "followups": ["more"], "expectations": ["y"]}]}`,
+			"agent field in a skill suite",
+		},
+		{
+			"evals.schema.json", `{"evals": [{"id": "x", "prompt": "p", "assertions": [{"type": "conformance"}]}]}`,
+			"agent-only assertion in a skill suite",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": [{"id": "x", "prompt": "p",
+				"responses": [{"tool": "t", "result": 1, "error": "e"}], "expectations": ["y"]}]}`,
+			"tool response with both result and error",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": [{"id": "x", "prompt": "p",
+				"responses": [{"interrupt": "confirmation", "args": "x"}], "expectations": ["y"]}]}`,
+			"interrupt response with tool-response fields",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": [{"id": "x", "prompt": "p",
+				"assertions": [{"type": "outcome", "expect": "done"}]}]}`,
+			"unknown outcome",
+		},
+		{
+			"evals.schema.json", `{"agent": {"endpoints": {"local": {"url": "http://x"}}}, "evals": [{"id": "x", "prompt": "p",
+				"assertions": [{"type": "state", "pointer": "/a", "equals": 1, "pattern": "x"}]}]}`,
+			"state with equals and pattern",
 		},
 		{
 			"triggers.schema.json", `{"triggers": [{"query": "q"}]}`,

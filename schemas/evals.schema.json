@@ -2,27 +2,200 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json",
   "title": "evolve evals file",
-  "description": "Authored behavioral evals for one skill (evals/<skill>/evals.<ext>; json, jsonc, or yaml). A superset of skill-creator's evals.json: a verbatim skill-creator file validates unchanged.",
+  "description": "Authored behavioral evals (json, jsonc, or yaml), in one of two mutually exclusive shapes. A skill suite (evals/<skill>/evals.<ext>) is a superset of skill-creator's evals.json: a verbatim skill-creator file validates unchanged. An agent suite (agents/<name>/evals.<ext> or agent/evals.<ext>) evaluates a hosted agent: its agent block names the protocol and the endpoints the agent is served at, and its evals may script the conversation.",
   "type": "object",
   "required": ["evals"],
-  "properties": {
-    "$schema": { "type": "string" },
-    "skill_name": {
-      "description": "Optional echo of the skill's name; the directory name stays authoritative and a mismatch warns.",
-      "type": "string"
-    },
-    "models": {
-      "description": "Models this skill's evals (and its sibling triggers) may run, named the same way as the root models config (provider ids, canonical model ids, or 'all'). The effective set is the intersection with the root models; omit to allow all root models.",
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "evals": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/eval" }
-    }
-  },
-  "additionalProperties": true,
+  "oneOf": [{ "$ref": "#/$defs/skillSuite" }, { "$ref": "#/$defs/agentSuite" }],
   "$defs": {
+    "skillSuite": {
+      "description": "A skill suite: skill-creator's envelope plus the models restriction. No agent block.",
+      "type": "object",
+      "not": { "required": ["agent"] },
+      "properties": {
+        "$schema": { "type": "string" },
+        "skill_name": {
+          "description": "Optional echo of the skill's name; the directory name stays authoritative and a mismatch warns.",
+          "type": "string"
+        },
+        "models": {
+          "description": "Models this skill's evals (and its sibling triggers) may run, named the same way as the root models config (provider ids, canonical model ids, or 'all'). The effective set is the intersection with the root models; omit to allow all root models.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/skillEval" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "agentSuite": {
+      "description": "A hosted-agent suite: the agent block is what makes it one; skill_name and models do not belong beside it.",
+      "type": "object",
+      "required": ["agent"],
+      "not": { "anyOf": [{ "required": ["skill_name"] }, { "required": ["models"] }] },
+      "properties": {
+        "$schema": { "type": "string" },
+        "agent": { "$ref": "#/$defs/agent" },
+        "evals": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/agentEval" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "agent": {
+      "description": "The hosted agent under test. It is already deployed: evolve sends prompts and human-in-the-loop answers only.",
+      "type": "object",
+      "required": ["endpoints"],
+      "properties": {
+        "name": {
+          "description": "Optional agent name. In the agents layout it must equal the agent's directory; in the agent layout it names the agent (else the repository root's basename does).",
+          "type": "string",
+          "minLength": 1
+        },
+        "protocol": { "description": "The protocol the agent speaks.", "enum": ["ag-ui"], "default": "ag-ui" },
+        "endpoints": {
+          "description": "Where the agent is served, keyed by kebab-case endpoint name: an environment such as local or staging, shared across agents and selected with --endpoint.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "not": { "const": "all" } },
+          "additionalProperties": { "$ref": "#/$defs/endpoint" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "description": "Absolute http(s) URL of the endpoint. ${VAR} references are expanded from the environment when a sweep selects the endpoint.",
+          "type": "string",
+          "minLength": 1
+        },
+        "display": { "description": "Display name in reports (default: the endpoint name).", "type": "string" },
+        "headers": {
+          "description": "Request headers; ${VAR} references in values are expanded when a sweep selects the endpoint. Never written to results, logs, or artifacts.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "forwarded_props": {
+          "description": "forwardedProps every run to this endpoint carries; an eval's forwarded_props merge over it.",
+          "not": { "type": "null" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "skillEval": {
+      "description": "A skill-suite eval: the agent-suite fields and the agent-only assertion types do not belong.",
+      "allOf": [{ "$ref": "#/$defs/eval" }],
+      "not": {
+        "anyOf": [
+          { "required": ["responses"] },
+          { "required": ["followups"] },
+          { "required": ["tools"] },
+          { "required": ["state"] },
+          { "required": ["context"] },
+          { "required": ["forwarded_props"] }
+        ]
+      },
+      "properties": {
+        "assertions": {
+          "type": "array",
+          "items": {
+            "not": {
+              "type": "object",
+              "required": ["type"],
+              "properties": { "type": { "enum": ["state", "hitl", "outcome", "conformance"] } }
+            }
+          }
+        }
+      }
+    },
+    "agentEval": {
+      "description": "An agent-suite eval: the conversation script. files still stage into the local workspace (for command assertions and the judge) and are not sent to the agent; max_turns caps the conversation's runs and timeout_seconds bounds the whole conversation.",
+      "allOf": [{ "$ref": "#/$defs/eval" }],
+      "properties": {
+        "tools": {
+          "description": "Frontend tools offered to the agent (ag-ui); its calls to them are answered from responses.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "description"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 },
+              "parameters": { "description": "JSON Schema of the tool's arguments.", "type": "object" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "state": { "description": "Initial shared state (ag-ui; default {}).", "not": { "type": "null" } },
+        "context": {
+          "description": "Application context sent with every run (ag-ui).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["description", "value"],
+            "properties": { "description": { "type": "string", "minLength": 1 }, "value": { "type": "string" } },
+            "additionalProperties": true
+          }
+        },
+        "forwarded_props": {
+          "description": "forwardedProps merged over the endpoint's (ag-ui).",
+          "not": { "type": "null" }
+        },
+        "responses": {
+          "description": "Pre-canned answers to the agent's human-in-the-loop requests, matched by regex in any order; each is used once unless repeat.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/response" }
+        },
+        "followups": {
+          "description": "User turns sent, in order, each time a run ends with nothing pending.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "response": { "oneOf": [{ "$ref": "#/$defs/toolResponse" }, { "$ref": "#/$defs/interruptResponse" }] },
+    "toolResponse": {
+      "description": "Answers a pending frontend tool call.",
+      "type": "object",
+      "required": ["tool"],
+      "oneOf": [{ "required": ["result"] }, { "required": ["error"] }],
+      "not": {
+        "anyOf": [
+          { "required": ["interrupt"] },
+          { "required": ["message"] },
+          { "required": ["status"] },
+          { "required": ["payload"] }
+        ]
+      },
+      "properties": {
+        "tool": { "description": "Regex on the tool name.", "type": "string", "minLength": 1 },
+        "args": { "description": "Regex on the call's JSON arguments.", "type": "string" },
+        "result": { "description": "The tool result: a string is sent verbatim, any other JSON value compactly serialized." },
+        "error": { "description": "Answer the call with this error instead.", "type": "string", "minLength": 1 },
+        "repeat": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "interruptResponse": {
+      "description": "Answers an interrupt with a resume entry.",
+      "type": "object",
+      "required": ["interrupt"],
+      "not": { "anyOf": [{ "required": ["args"] }, { "required": ["result"] }, { "required": ["error"] }] },
+      "properties": {
+        "interrupt": { "description": "Regex on the interrupt's reason.", "type": "string", "minLength": 1 },
+        "message": { "description": "Regex on the interrupt's message.", "type": "string" },
+        "tool": { "description": "Regex on the name of the interrupt's linked tool call.", "type": "string" },
+        "status": { "enum": ["resolved", "cancelled"], "default": "resolved" },
+        "payload": { "description": "The resume payload (any JSON value but null).", "not": { "type": "null" } },
+        "repeat": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
     "eval": {
       "type": "object",
       "required": ["id", "prompt"],
@@ -74,7 +247,12 @@
       "type": "object",
       "required": ["type"],
       "properties": {
-        "type": { "enum": ["file_exists", "file_absent", "regex", "not_regex", "command", "tool_call", "llm"] },
+        "type": {
+          "enum": [
+            "file_exists", "file_absent", "regex", "not_regex", "command", "tool_call", "tool_sequence",
+            "state", "hitl", "outcome", "conformance", "llm"
+          ]
+        },
         "path": { "type": "string" },
         "pattern": { "type": "string" },
         "run": { "type": "string" },
@@ -82,7 +260,26 @@
         "tool": { "type": "string" },
         "requires": { "type": "string" },
         "expect_exit": { "type": "integer" },
-        "text": { "type": "string" }
+        "text": { "type": "string" },
+        "min": {
+          "description": "tool_call/hitl: minimum match count (tool_call: default 1, or 0 when max is 0).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "max": { "description": "tool_call/hitl: maximum match count; 0 means never.", "type": "integer", "minimum": 0 },
+        "result": { "description": "tool_call: regex the call's result must match.", "type": "string" },
+        "tools": {
+          "description": "tool_sequence: tool-name regexes that must match an ordered subsequence of the calls.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "pointer": { "description": "state: RFC 6901 pointer into the final shared state.", "type": "string" },
+        "equals": { "description": "state: the JSON value at pointer must equal this." },
+        "reason": { "description": "hitl: regex on an interrupt's reason.", "type": "string" },
+        "expect": {
+          "description": "outcome: how the conversation must end.",
+          "enum": ["completed", "awaiting_input", "cancelled", "max_turns"]
+        }
       },
       "additionalProperties": true,
       "allOf": [
@@ -101,6 +298,18 @@
         {
           "if": { "properties": { "type": { "const": "tool_call" } } },
           "then": { "required": ["tool"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "tool_sequence" } } },
+          "then": { "required": ["tools"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "state" } } },
+          "then": { "not": { "required": ["equals", "pattern"] } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "outcome" } } },
+          "then": { "required": ["expect"] }
         },
         {
           "if": { "properties": { "type": { "const": "llm" } } },

@@ -327,3 +327,32 @@ func TestAgentRepoSkipsPluginChecks(t *testing.T) {
 		t.Errorf("findings = %v, want none", messages(findings))
 	}
 }
+
+func TestSuiteKindMismatches(t *testing.T) {
+	// An agent block in a plugin repository.
+	plugin := t.TempDir()
+	writeFile(t, filepath.Join(plugin, ".claude-plugin", "plugin.json"), pluginJSON("solo", "0.1.0"))
+	writeFile(t, filepath.Join(plugin, ".codex-plugin", "plugin.json"), pluginJSON("solo", "0.1.0"))
+	writeFile(t, filepath.Join(plugin, "skills", "solo-skill", "SKILL.md"), skillMD("solo-skill"))
+	writeFile(t, filepath.Join(plugin, "evals", "solo-skill", "evals.json"),
+		`{"agent":{"endpoints":{"local":{"url":"http://localhost:8000/"}}},`+
+			`"evals":[{"id":"e","prompt":"p","assertions":["ok"]}]}`)
+	wantOnly(t, checkDir(t, plugin, DefaultCheckConfig()), "agent block in a plugin repository")
+
+	// A skill suite in an agent repository.
+	agents := t.TempDir()
+	writeFile(t, filepath.Join(agents, "agents", "support", "evals.json"),
+		`{"evals":[{"id":"e","prompt":"p","assertions":["ok"]}]}`)
+	wantOnly(t, checkDir(t, agents, DefaultCheckConfig()), "needs an agent block")
+}
+
+func TestAgentSuiteWarningsDoNotFail(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "agents", "support", "evals.json"),
+		`{"agent":{"endpoints":{"local":{"url":"http://localhost:8000/"}}},"evals":[{"id":"e","prompt":"p",`+
+			`"responses":[{"tool":"^undeclared$","result":"ok"}],"assertions":["ok"]}]}`)
+	findings := checkDir(t, root, DefaultCheckConfig())
+	if len(findings) != 1 || !findings[0].Warning || !strings.Contains(findings[0].Message, "matches no declared tool") {
+		t.Errorf("findings = %+v, want one warning", findings)
+	}
+}

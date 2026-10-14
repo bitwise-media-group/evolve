@@ -34,7 +34,7 @@ func TestLoadEvalsEvolveStyle(t *testing.T) {
 	if c.Assertions[3].ExpectExit == nil || *c.Assertions[3].ExpectExit != 0 {
 		t.Errorf("expect_exit = %v", c.Assertions[3].ExpectExit)
 	}
-	if problems := ValidateEvals(spec.Evals); len(problems) != 0 {
+	if problems := ValidateEvals(spec.Evals, nil); len(problems) != 0 {
 		t.Errorf("problems = %v", problems)
 	}
 }
@@ -106,7 +106,7 @@ func TestLoadEvalsSkillCreatorDropIn(t *testing.T) {
 		c.Assertions[0].Text != "The output includes X" || !c.Assertions[0].FromExpectation {
 		t.Errorf("assertions = %+v", c.Assertions)
 	}
-	if problems := ValidateEvals(spec.Evals); len(problems) != 0 {
+	if problems := ValidateEvals(spec.Evals, nil); len(problems) != 0 {
 		t.Errorf("problems = %v", problems)
 	}
 }
@@ -158,7 +158,7 @@ func TestLoadEvalsFileStaging(t *testing.T) {
 	if refs[1].Dest != "seed.txt" || refs[1].Source != filepath.Join(dir, "seed.txt") {
 		t.Errorf("bare path ref = %+v, want basename staging", refs[1])
 	}
-	if problems := ValidateEvals(spec.Evals); len(problems) != 0 {
+	if problems := ValidateEvals(spec.Evals, nil); len(problems) != 0 {
 		t.Errorf("problems = %v", problems)
 	}
 }
@@ -200,7 +200,7 @@ func TestValidateEvalsCatchesProblems(t *testing.T) {
 				{Rel: "a.txt", Source: "/no/such/either", Dest: "a.txt"},
 			}},
 	}
-	problems := strings.Join(ValidateEvals(evals), "\n")
+	problems := strings.Join(ValidateEvals(evals, nil), "\n")
 	for _, want := range []string{
 		`unknown assertion type "regexp"`,
 		"duplicate id",
@@ -222,7 +222,7 @@ func TestValidateToolCall(t *testing.T) {
 		{Type: "tool_call", Tool: "Write"},
 		{Type: "tool_call", Tool: `mcp__github__.*`, Pattern: "issue"},
 	}}}
-	if problems := ValidateEvals(good); len(problems) != 0 {
+	if problems := ValidateEvals(good, nil); len(problems) != 0 {
 		t.Errorf("valid tool_call evals produced problems: %v", problems)
 	}
 
@@ -231,7 +231,7 @@ func TestValidateToolCall(t *testing.T) {
 		{Type: "tool_call", Tool: "("},                  // invalid tool regex
 		{Type: "tool_call", Tool: "Bash", Pattern: "("}, // invalid args pattern
 	}}}
-	problems := strings.Join(ValidateEvals(bad), "\n")
+	problems := strings.Join(ValidateEvals(bad, nil), "\n")
 	for _, want := range []string{"missing tool", "invalid tool", "invalid pattern"} {
 		if !strings.Contains(problems, want) {
 			t.Errorf("problems missing %q:\n%s", want, problems)
@@ -251,7 +251,7 @@ func TestIntegerAndStringIDsCollide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if problems := strings.Join(ValidateEvals(spec.Evals), "\n"); !strings.Contains(problems, "duplicate id") {
+	if problems := strings.Join(ValidateEvals(spec.Evals, nil), "\n"); !strings.Contains(problems, "duplicate id") {
 		t.Errorf("problems = %s, want duplicate id", problems)
 	}
 }

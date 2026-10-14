@@ -69,9 +69,11 @@ func DefaultCheckConfig() CheckConfig {
 	}
 }
 
-// Finding is one failed check.
+// Finding is one failed check, or — with Warning set — an advisory one that
+// does not fail the tier.
 type Finding struct {
 	Message string
+	Warning bool
 }
 
 // Checks executes every check layer appropriate for the repository's layout
@@ -136,15 +138,18 @@ func (c *checker) checkEvalSpecs() {
 			}
 		}
 		if set.EvalsPath != "" {
+			rel := c.repo.Rel(set.EvalsPath)
 			spec, err := evalspec.LoadEvals(set.EvalsPath)
 			if err != nil {
-				c.errf("%s: %v", c.repo.Rel(set.EvalsPath), err)
+				c.errf("%s: %v", rel, err)
 			} else {
-				for _, problem := range evalspec.ValidateModels(spec.Models) {
-					c.errf("%s: %s", c.repo.Rel(set.EvalsPath), problem)
+				c.checkSuiteKind(set, spec, rel)
+				problems, warnings := spec.Validate()
+				for _, problem := range problems {
+					c.errf("%s: %s", rel, problem)
 				}
-				for _, problem := range evalspec.ValidateEvals(spec.Evals) {
-					c.errf("%s: %s", c.repo.Rel(set.EvalsPath), problem)
+				for _, warning := range warnings {
+					c.warnf("%s: %s", rel, warning)
 				}
 			}
 		}
@@ -164,6 +169,23 @@ type checker struct {
 
 func (c *checker) errf(format string, args ...any) {
 	c.findings = append(c.findings, Finding{Message: fmt.Sprintf(format, args...)})
+}
+
+func (c *checker) warnf(format string, args ...any) {
+	c.findings = append(c.findings, Finding{Message: fmt.Sprintf(format, args...), Warning: true})
+}
+
+// checkSuiteKind enforces that a repository's evals files are all of its
+// kind: agent suites (with an agent block) in an agent repository, skill
+// suites (without one) in a plugin repository.
+func (c *checker) checkSuiteKind(set layout.EvalSet, spec *evalspec.EvalsFile, rel string) {
+	switch {
+	case set.Agent && spec.Kind() != evalspec.KindAgent:
+		c.errf("%s: an agent repository's evals file needs an agent block (protocol and endpoints)", rel)
+	case !set.Agent && spec.Kind() == evalspec.KindAgent:
+		c.errf("%s: agent block in a plugin repository (agent suites live in an agent repository: "+
+			"agents/<name>/ or agent/)", rel)
+	}
 }
 
 // checkPlugin checks one plugin rooted at dir. expectedName pins the manifest

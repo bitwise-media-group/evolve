@@ -201,3 +201,26 @@ func TestAgentContentHashExclusions(t *testing.T) {
 		t.Error("setContentHash must route a skill set to skillContentHash")
 	}
 }
+
+// TestEvalFingerprintPinned pins the fingerprint of an eval that uses only the
+// pre-agent fields. Every field added since (the agent-suite eval fields and
+// the new assertion fields) is omitempty, so existing suites must keep their
+// stored spec hashes — a drift here would make the next --modified rerun
+// every eval in every repository.
+func TestEvalFingerprintPinned(t *testing.T) {
+	c := evalspec.Eval{
+		ID: "table-driven", Name: "Table tests", Prompt: "Write tests for Clamp",
+		ExpectedOutput: "A table-driven test", MaxTurns: 30, TimeoutSeconds: 120,
+		Assertions: []evalspec.Assertion{
+			{Type: "llm", Text: "covers both bounds", FromExpectation: true},
+			{Type: "regex", Pattern: "t\\.Run", Path: "clamp_test.go"},
+			{Type: "command", Run: "go test ./...", Requires: "go", ExpectExit: new(0)},
+			{Type: "tool_call", Tool: "Write", Pattern: "clamp"},
+			{Type: "file_exists", Path: "clamp_test.go"},
+		},
+	}
+	const want = "a56dbf413f0f0dd7daca507ec724a235895e04e2d3f0ea070613141278f8948c"
+	if got := evalFingerprint(c); got != want {
+		t.Errorf("evalFingerprint = %s, want %s (an existing-shape eval's hash must not drift)", got, want)
+	}
+}

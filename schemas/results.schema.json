@@ -138,7 +138,8 @@
         "fingerprint": {
           "description": "Baseline-snapshot results only: the eval spec+fixtures fingerprint the baseline was run against, so a baseline is recomputed only when the eval changes. Absent elsewhere.",
           "type": "string"
-        }
+        },
+        "conversation": { "$ref": "#/$defs/conversation" }
       },
       "additionalProperties": true
     },
@@ -153,6 +154,49 @@
         "avg_run_seconds": { "type": "number", "minimum": 0 },
         "estimate": { "$ref": "common.schema.json#/$defs/estimate" },
         "measured": { "$ref": "common.schema.json#/$defs/measured" }
+      },
+      "additionalProperties": true
+    },
+    "conversation": {
+      "description": "Hosted-agent evals only: how the scripted conversation went. Additive (absent on skill evals) and dropped from previous/baseline snapshots.",
+      "type": "object",
+      "required": ["runs", "outcome"],
+      "properties": {
+        "runs": {
+          "description": "Runs (request/response exchanges) the conversation took.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcome": { "enum": ["completed", "awaiting_input", "cancelled", "max_turns", "error"] },
+        "hitl": {
+          "description": "The human-in-the-loop requests the agent made (frontend tool calls and interrupts), in order.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "answered"],
+            "properties": {
+              "kind": { "enum": ["tool", "interrupt"] },
+              "name": { "type": "string" },
+              "answered": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "conformance_violations": {
+          "description": "Protocol-conformance violations observed, deduplicated.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "rule", "message"],
+            "properties": {
+              "severity": { "enum": ["error", "warning"] },
+              "rule": { "type": "string" },
+              "message": { "type": "string" },
+              "run": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": true
+          }
+        }
       },
       "additionalProperties": true
     }

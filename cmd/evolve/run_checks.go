@@ -46,7 +46,13 @@ var checksCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		failures := 0
 		for _, f := range findings {
+			if f.Warning {
+				fmt.Fprintf(cmd.ErrOrStderr(), "WARN: %s\n", f.Message)
+				continue
+			}
+			failures++
 			fmt.Fprintf(cmd.ErrOrStderr(), "FAIL: %s\n", f.Message)
 		}
 
@@ -54,7 +60,7 @@ var checksCmd = &cobra.Command{
 		// never read as part of the pass/fail decision. result is captured (not
 		// returned early) so the signals print even when --strict fails.
 		var result error
-		if n := len(findings); n > 0 {
+		if n := failures; n > 0 {
 			result = failOrWarn(cmd, "checks: %d %s", n, plural(n, "failure", "failures"))
 		} else if repo.IsAgentRepo() {
 			fmt.Fprintf(cmd.OutOrStdout(), "checks: all checks passed (%s layout, %d %s)\n",
