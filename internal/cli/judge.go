@@ -25,6 +25,10 @@ func (o *Options) JudgeSelection(token string) (harness.Selection, error) {
 	if token == "" {
 		token = grade.DefaultJudgeModel
 	}
+	if provider, _, ok := strings.Cut(token, "/"); ok && model.IsHostedProvider(provider) {
+		return harness.Selection{}, fmt.Errorf("judge model %q: a hosted agent endpoint cannot be the judge "+
+			"(name a registry model, see `evolve models`)", token)
+	}
 	models, err := o.AvailableModels()
 	if err != nil {
 		return harness.Selection{}, err

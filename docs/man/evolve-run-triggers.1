@@ -22,6 +22,10 @@ Run Tier 1 trigger-accuracy evals through headless agent sessions
 	skip agent runs; only compute token usage per model
 
 .PP
+\fB--endpoint\fP=[]
+	agent repositories only: run against these endpoints (names from the agents' evals files, e.g. local, staging; repeatable / comma-separated; alias: --endpoints; default: every endpoint)
+
+.PP
 \fB--failed\fP[=false]
 	only run evals that did not pass on a previous run (combine with --new to also rerun missing ones)
 

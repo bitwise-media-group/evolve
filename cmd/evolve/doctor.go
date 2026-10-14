@@ -7,13 +7,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/bitwise-media-group/evolve/internal/cli"
+	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/run"
@@ -23,7 +27,7 @@ import (
 
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Check each harness (CLI on PATH, credential) and each vendor's counting API",
+	Short: "Check each harness (CLI on PATH, credential), each vendor's counting API, and any agent endpoints",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := opts.ChecksConfig().ValidateSignals(); err != nil {
@@ -73,6 +77,10 @@ var doctorCmd = &cobra.Command{
 			return err
 		}
 
+		if err := renderAgentEndpoints(cmd.OutOrStdout()); err != nil {
+			return err
+		}
+
 		warnings, err := opts.UnsupportedModelWarnings()
 		if err != nil {
 			return err
@@ -93,6 +101,66 @@ var doctorCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
+}
+
+// renderAgentEndpoints prints, for a hosted-agent repository, every agent's
+// endpoints: the URL's host (as authored — ${VAR}s stay unexpanded) and the
+// environment variables its URL and headers reference, set or not. It makes no
+// live calls and never prints a header or variable value. A no-op outside an
+// agent repository (or outside any repository).
+func renderAgentEndpoints(w io.Writer) error {
+	repo, err := opts.Repo()
+	if err != nil || !repo.IsAgentRepo() {
+		return nil
+	}
+	suites, err := cli.AgentSuites(repo)
+	if err != nil {
+		return err
+	}
+	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "\nAGENT\tENDPOINT\tPROTOCOL\tHOST\tENV")
+	for _, s := range suites {
+		names := make([]string, 0, len(s.Agent.Endpoints))
+		for name := range s.Agent.Endpoints {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			ep := s.Agent.Endpoints[name]
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Set.Skill, name, s.Agent.Protocol, endpointHost(ep.URL),
+				envStatus(ep))
+		}
+	}
+	return tw.Flush()
+}
+
+// endpointHost renders an endpoint URL's host as authored.
+func endpointHost(raw string) string {
+	rest := raw
+	if _, after, ok := strings.Cut(raw, "://"); ok {
+		rest = after
+	}
+	host, _, _ := strings.Cut(rest, "/")
+	if host == "" {
+		return raw
+	}
+	return host
+}
+
+// envStatus summarizes an endpoint's ${VAR}s: none, or each marked set/unset.
+func envStatus(ep evalspec.Endpoint) string {
+	set, unset := cli.EndpointEnvVars(ep)
+	if len(set)+len(unset) == 0 {
+		return "none"
+	}
+	var parts []string
+	for _, v := range set {
+		parts = append(parts, v+" (set)")
+	}
+	for _, v := range unset {
+		parts = append(parts, v+" (UNSET)")
+	}
+	return strings.Join(parts, ", ")
 }
 
 // versionPinStatus renders the repository's version pin verdict for the doctor
@@ -127,8 +195,8 @@ func judgeStatus() string {
 	if err != nil {
 		return fmt.Sprintf("UNAVAILABLE — %v", err)
 	}
-	cli, _ := harness.Available(sel.Harness)
-	return fmt.Sprintf("%s via %s (%s)", sel.Model.ID, sel.Harness.ID(), cli)
+	cliPath, _ := harness.Available(sel.Harness)
+	return fmt.Sprintf("%s via %s (%s)", sel.Model.ID, sel.Harness.ID(), cliPath)
 }
 
 // offeredStatus renders one harness's offered-models probe verdict.

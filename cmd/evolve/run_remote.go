@@ -78,11 +78,14 @@ func runRemote(cmd *cobra.Command, f *SweepFlags, tiers plan.Tiers, runs int, ev
 	if f.CountOnly {
 		return errors.New("--count-only is a local operation; drop --remote")
 	}
-	url, err := requireRemoteURL(cmd)
+	repo, err := opts.Repo()
 	if err != nil {
 		return err
 	}
-	repo, err := opts.Repo()
+	if repo.IsAgentRepo() {
+		return errors.New("remote execution does not support hosted-agent repositories yet; run without --remote")
+	}
+	url, err := requireRemoteURL(cmd)
 	if err != nil {
 		return err
 	}

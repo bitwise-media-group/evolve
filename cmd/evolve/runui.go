@@ -17,6 +17,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/harness"
+	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -87,8 +88,8 @@ func runWithUI(cmd *cobra.Command, session *plan.Session, cat []plan.SkillCatalo
 	engine func(ctx context.Context, req tui.RunRequest, rep run.Reporter) (bool, error),
 ) (bool, error) {
 	runReq := make(chan tui.RunRequest, 1)
-	model := tui.New(session, cat, evalFilter, prior, thresholds, runReq)
-	p := tea.NewProgram(model)
+	root := tui.New(session, cat, evalFilter, prior, thresholds, runReq)
+	p := tea.NewProgram(root)
 	rep := tui.NewReporter(p)
 
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -124,6 +125,55 @@ func runWithUI(cmd *cobra.Command, session *plan.Session, cat []plan.SkillCatalo
 		engErr = nil // a user-initiated quit is not an error
 	}
 	return engFailed, engErr
+}
+
+// formChoices resolves what the selection form lists: the models (or, in an
+// agent repository, the hosted endpoints), the harnesses (the hosted protocols
+// there), the harness ids the flags enable, and each installed CLI's
+// offered-models probe.
+func formChoices(cmd *cobra.Command, sweep *SweepFlags, agentRepo bool, allSels []harness.Selection) (
+	models []model.Model, harnesses []harness.Harness, eligibleIDs []string, offered map[string][]string, err error,
+) {
+	offered = map[string][]string{}
+	if agentRepo {
+		// Endpoints are the run matrix; there is no CLI to probe.
+		seen := map[string]bool{}
+		for _, sel := range allSels {
+			models = append(models, sel.Model)
+			if !seen[sel.Harness.ID()] {
+				seen[sel.Harness.ID()] = true
+				harnesses = append(harnesses, sel.Harness)
+				eligibleIDs = append(eligibleIDs, sel.Harness.ID())
+			}
+		}
+		return models, harnesses, eligibleIDs, offered, nil
+	}
+	if models, err = opts.ConfiguredModels(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if harnesses, err = opts.Harnesses(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	// Ask each installed CLI which models it actually offers the operator so the
+	// form deselects registry models the account cannot pick (fail open: a
+	// harness with no listing surface or a failed probe deselects nothing).
+	// Skipped when --model names models explicitly — that selection is intent,
+	// not a default to second-guess. Probes run unconfined: they only list, and
+	// the CLIs write their own operator-side state a workspace sandbox would
+	// break.
+	if len(sweep.Models) == 0 {
+		probeCtx, cancelProbe := context.WithTimeout(cmd.Context(), offeredModelsProbeTimeout)
+		offered = run.ProbeOfferedModels(probeCtx, &runner.Exec{}, harnesses, offeredModelsProbeTimeout)
+		cancelProbe()
+	}
+	eligible, err := opts.EligibleHarnesses(sweep.Harness)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	for _, h := range eligible {
+		eligibleIDs = append(eligibleIDs, h.ID())
+	}
+	return models, harnesses, eligibleIDs, offered, nil
 }
 
 // runSub runs a sibling subcommand (checks/report) inline, folding an
@@ -195,39 +245,14 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 		return err
 	}
 	reasons := run.CaseReasons(common, cat, allSels, def, evalFilter)
-	models, err := opts.ConfiguredModels()
+	models, harnesses, eligibleIDs, offered, err := formChoices(cmd, sweep, common.Repo.IsAgentRepo(), allSels)
 	if err != nil {
 		return err
-	}
-	harnesses, err := opts.Harnesses()
-	if err != nil {
-		return err
-	}
-	// Ask each installed CLI which models it actually offers the operator so the
-	// form deselects registry models the account cannot pick (fail open: a
-	// harness with no listing surface or a failed probe deselects nothing).
-	// Skipped when --model names models explicitly — that selection is intent,
-	// not a default to second-guess. Probes run unconfined: they only list, and
-	// the CLIs write their own operator-side state a workspace sandbox would
-	// break.
-	offered := map[string][]string{}
-	if len(sweep.Models) == 0 {
-		probeCtx, cancelProbe := context.WithTimeout(cmd.Context(), offeredModelsProbeTimeout)
-		offered = run.ProbeOfferedModels(probeCtx, &runner.Exec{}, harnesses, offeredModelsProbeTimeout)
-		cancelProbe()
 	}
 	var hstates []plan.HarnessState
 	for _, h := range harnesses {
 		_, avail := harness.Available(h)
 		hstates = append(hstates, plan.HarnessState{Harness: h, Available: avail, Models: offered[h.ID()]})
-	}
-	eligible, err := opts.EligibleHarnesses(sweep.Harness)
-	if err != nil {
-		return err
-	}
-	var eligibleIDs []string
-	for _, h := range eligible {
-		eligibleIDs = append(eligibleIDs, h.ID())
 	}
 	var enabledKeys []string
 	for _, sel := range common.Selected {
@@ -251,6 +276,11 @@ func uiRun(cmd *cobra.Command, sweep *SweepFlags, def plan.Tiers,
 		// logs from the same events; a no-op when telemetry is disabled.
 		base.Reporter = telemetry.WrapReporter(rep)
 		base.Selected = req.Models
+		// Hosted endpoints resolve their ${VAR}s now, for the endpoints the form
+		// enabled, so an unset variable only blocks a run that needs it.
+		if err := resolveAgents(&base); err != nil {
+			return false, err
+		}
 		// The per-model filters already encode the plugin/skill narrowing.
 		base.PluginFilter = nil
 		base.SkillFilter = nil

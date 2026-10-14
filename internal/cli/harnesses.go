@@ -81,7 +81,13 @@ func (o *Options) EligibleHarnesses(filter []string) ([]harness.Harness, error) 
 // ValidateFilterRestrictions errors when a --harness or --model filter value
 // falls outside the configured `harnesses` / `models` restriction, or names an
 // unknown harness/model. A filter may only narrow a restriction, never widen it.
+//
+// An agent repository has no model restriction to check (its selections are
+// endpoints; ValidateSelectionFlags rejects --model/--harness there).
 func (o *Options) ValidateFilterRestrictions(harnessFlag, modelFlag []string) error {
+	if o.agentRepo() {
+		return nil
+	}
 	knownH := map[string]bool{}
 	for _, h := range harness.All() {
 		knownH[h.ID()] = true
@@ -137,6 +143,9 @@ func (o *Options) ValidateFilterRestrictions(harnessFlag, modelFlag []string) er
 func (o *Options) UnsupportedModelWarnings() ([]string, error) {
 	if len(o.Viper.GetStringSlice("models")) == 0 {
 		return nil, nil
+	}
+	if o.agentRepo() {
+		return nil, nil // the root models config does not apply to an agent repository
 	}
 	models, err := o.ConfiguredModels()
 	if err != nil {

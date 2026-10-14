@@ -141,8 +141,13 @@ func (o *Options) Coverage(repo *layout.Repo, strict bool) ([]report.SkillCovera
 }
 
 // DefinedModelKeys is the configured model matrix as sorted keys — the strict
-// --check denominator.
+// --check denominator. In an agent repository it is every agent's endpoint
+// keys; the report narrows it to each agent's own.
 func (o *Options) DefinedModelKeys() ([]string, error) {
+	if o.agentRepo() {
+		keys, err := o.agentEndpointKeys()
+		return sortedKeys(keys), err
+	}
 	configured, err := o.ConfiguredModels()
 	if err != nil {
 		return nil, err

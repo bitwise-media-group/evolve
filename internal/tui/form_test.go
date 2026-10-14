@@ -10,6 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/harness"
+	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
@@ -318,5 +321,29 @@ func TestFormMouseWheel(t *testing.T) {
 	wheel(l.models.x0+3, l.models.y0+1, tea.MouseWheelDown)
 	if f.models.cursor != 1 || f.focus != paneFilters {
 		t.Errorf("models cursor=%d focus=%d, want the models list scrolled without focus", f.models.cursor, f.focus)
+	}
+}
+
+// TestFormAgentRepoTitles: an agent repository's form lists endpoints under
+// protocols and agents in the tree, with the panes titled for that.
+func TestFormAgentRepoTitles(t *testing.T) {
+	sel, _ := harness.HostedSelection("ag-ui", "local", "")
+	cat := []plan.SkillCatalog{{
+		Plugin: "agents", Skill: "support", Title: "support", Agent: true, Models: []string{"ag-ui/local"},
+		Evals: []evalspec.Eval{{ID: "refund", Prompt: "p"}},
+	}}
+	session := plan.NewSession(cat, []model.Model{sel.Model},
+		[]plan.HarnessState{{Harness: sel.Harness, Available: true}}, plan.PriorMetrics{}, plan.Reasons{},
+		plan.Filters{}, []string{"ag-ui"}, []string{"ag-ui/local"})
+	f := New(session, cat, "", plan.PriorMetrics{}, testThresholds, make(chan RunRequest, 1)).form
+	f.w, f.h = 120, 40
+	view := f.view()
+	for _, want := range []string{"Protocols", "Endpoints", "Agents / Cases", "AG-UI", "local", "agents"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
+	}
+	if req := f.request(); len(req.Models) != 1 || req.Models[0].Key() != "ag-ui/local" {
+		t.Errorf("request models = %+v", req.Models)
 	}
 }

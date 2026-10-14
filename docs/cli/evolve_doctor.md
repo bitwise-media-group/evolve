@@ -1,6 +1,6 @@
 ## evolve doctor
 
-Check each harness (CLI on PATH, credential) and each vendor's counting API
+Check each harness (CLI on PATH, credential), each vendor's counting API, and any agent endpoints
 
 ```
 evolve doctor [flags]

@@ -175,7 +175,14 @@ func (o *Options) ModelsSpec(flag string) string {
 // (model, harness) selections a sweep runs: models from ConfiguredModels bound
 // to their runnable harness within the eligible (configured ∩ PATH ∩ --harness)
 // set. Models with no eligible harness are dropped (see UnsupportedModelWarnings).
+//
+// In an agent repository the selections are its endpoints instead (see
+// HostedSelections): the flags and the root models/harnesses config do not
+// apply there.
 func (o *Options) RunnableSelections(modelsFlag, harnessFlag string) ([]harness.Selection, error) {
+	if o.agentRepo() {
+		return o.HostedSelections(nil)
+	}
 	models, err := o.ConfiguredModels()
 	if err != nil {
 		return nil, err
@@ -192,8 +199,14 @@ func (o *Options) RunnableSelections(modelsFlag, harnessFlag string) ([]harness.
 // and whether any restriction is configured. PATH-independent: a configured
 // model whose harness is not installed still counts as active so its committed
 // results are not dropped. When nothing is configured, configured is false and
-// callers must not filter.
+// callers must not filter. In an agent repository the agents' endpoint keys are
+// the active set (always configured), so results for a removed endpoint are
+// stale.
 func (o *Options) ActiveModelKeys() (keys map[string]bool, configured bool, err error) {
+	if o.agentRepo() {
+		keys, err := o.agentEndpointKeys()
+		return keys, err == nil, err
+	}
 	allowedH, hConfigured := o.AllowedHarnessIDs()
 	mConfigured := len(o.Viper.GetStringSlice("models")) > 0
 	if !mConfigured && !hConfigured {

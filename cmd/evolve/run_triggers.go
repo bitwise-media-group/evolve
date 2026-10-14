@@ -29,6 +29,12 @@ var triggersCmd = &cobra.Command{
 		if err := opts.CheckVersionPin(version.Version, cmd.ErrOrStderr()); err != nil {
 			return err
 		}
+		if agents, err := opts.IsAgentRepo(); err != nil {
+			return err
+		} else if agents {
+			fmt.Fprintln(cmd.OutOrStdout(), "triggers: hosted agents have no trigger tier; nothing to run")
+			return nil
+		}
 		if isRemote, err := remoteMode(cmd); err != nil {
 			return err
 		} else if isRemote {

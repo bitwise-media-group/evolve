@@ -78,6 +78,18 @@ type formModel struct {
 	focus    int
 	btnFocus int // which button is selected while focus == paneButtons
 	w, h     int
+	// agents marks a hosted-agent repository: the model pane lists endpoints,
+	// the harness pane protocols, and the tree agents.
+	agents bool
+}
+
+// paneTitles names the form's harness, model, and tree panes for the
+// repository's kind.
+func (f formModel) paneTitles() (harnesses, models, tree string) {
+	if f.agents {
+		return "Protocols", "Endpoints", "Agents / Cases"
+	}
+	return "Harnesses", "Models", "Plugins / Skills / Cases"
 }
 
 func newForm(session *plan.Session, cat []plan.SkillCatalog, evalFilter string) formModel {
@@ -89,7 +101,8 @@ func newForm(session *plan.Session, cat []plan.SkillCatalog, evalFilter string) 
 			{label: "modified", id: "modified"},
 			{label: "failed", id: "failed"},
 		}},
-		tree: buildCaseTree(cat),
+		tree:   buildCaseTree(cat),
+		agents: len(cat) > 0 && cat[0].Agent,
 	}
 	for _, h := range session.Harnesses() {
 		f.harness.items = append(f.harness.items, listItem{label: h.Harness.Name(), id: h.Harness.ID()})
@@ -531,18 +544,19 @@ func (f formModel) view() string {
 	// our tall right pane (pink). The title stays bright and only the border dims
 	// when a pane is unfocused — same as the dashboard.
 	cw := panelContentWidth(leftW)
+	harnessTitle, modelsTitle, treeTitle := f.paneTitles()
 	filters := panel(1, "Filters", "", "",
 		f.renderFilters(cw, l.filters.h()-2), f.focus == paneFilters, leftW, l.filters.h(), accentRollup)
-	harness := panel(2, "Harnesses", "", "",
+	harness := panel(2, harnessTitle, "", "",
 		f.renderHarness(cw, l.harness.h()-2), f.focus == paneHarness, leftW, l.harness.h(), accentRuns)
-	models := panel(3, "Models", f.modelCount(), "",
+	models := panel(3, modelsTitle, f.modelCount(), "",
 		f.renderModels(cw, l.models.h()-2), f.focus == paneModels, leftW, l.models.h(), accentDetails)
 	left := lipgloss.JoinVertical(lipgloss.Left, filters, harness, models)
 
 	// A glyph legend sits directly under the tree pane: one row when it fits the pane
 	// width, two when it does not. On a short terminal it is dropped so the tree keeps
 	// usable height. The height is recomputed every render, so resize re-flows it.
-	tree := panel(4, "Plugins / Skills / Cases", "", "",
+	tree := panel(4, treeTitle, "", "",
 		f.renderTree(panelContentWidth(rightW), l.tree.h()-2), f.focus == paneTree, rightW, l.tree.h(), accentExec)
 	right := tree
 	if l.paneH >= 13 {

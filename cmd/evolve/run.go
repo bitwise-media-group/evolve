@@ -14,6 +14,7 @@ import (
 
 	"github.com/bitwise-media-group/evolve/internal/cli"
 	"github.com/bitwise-media-group/evolve/internal/grade"
+	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/run"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -59,6 +60,7 @@ type SweepFlags struct {
 	Skill          []string
 	Models         []string
 	Harness        []string
+	Endpoint       []string
 	Timeout        int
 	Jobs           int
 	MaxTurns       int
@@ -83,6 +85,9 @@ func (f *SweepFlags) register(cmd *cobra.Command, defaultTimeout int) {
 	cmd.Flags().StringSliceVar(&f.Harness, "harness", nil,
 		"only drive models with these harnesses: claude, codex, gemini, cursor, copilot, antigravity, grok "+
 			"(repeatable / comma-separated; alias: --harnesses; filters within config harnesses)")
+	cmd.Flags().StringSliceVar(&f.Endpoint, "endpoint", nil,
+		"agent repositories only: run against these endpoints (names from the agents' evals files, e.g. local, "+
+			"staging; repeatable / comma-separated; alias: --endpoints; default: every endpoint)")
 	cmd.Flags().IntVar(&f.Timeout, "timeout", defaultTimeout, "seconds per agent run")
 	cmd.Flags().IntVar(&f.Jobs, "jobs", model.DefaultJobs(), "concurrent agent runs (default: ceil(cpus/2))")
 	cmd.Flags().IntVar(&f.MaxTurns, "max-turns", model.DefaultMaxTurns,
@@ -121,6 +126,8 @@ func sweepFlagAliases(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 		name = "model"
 	case "harnesses":
 		name = "harness"
+	case "endpoints":
+		name = "endpoint"
 	}
 	return pflag.NormalizedName(name)
 }
@@ -179,12 +186,32 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 	if err != nil {
 		return run.Options{}, err
 	}
+	// --endpoint selects an agent repository's runs, --model/--harness a plugin
+	// repository's; the wrong one for the repository is a hard error.
+	if err := opts.ValidateSelectionFlags(f.Harness, f.Models, f.Endpoint); err != nil {
+		return run.Options{}, err
+	}
 	// A --harness/--model filter may only narrow the configured restriction; a
 	// value outside it is a hard error, before any work begins.
 	if err := opts.ValidateFilterRestrictions(f.Harness, f.Models); err != nil {
 		return run.Options{}, err
 	}
-	selected, err := opts.RunnableSelections(strings.Join(f.Models, ","), strings.Join(f.Harness, ","))
+	var selected []harness.Selection
+	if repo.IsAgentRepo() {
+		selected, err = opts.HostedSelections(f.Endpoint)
+		if err == nil && f.CountOnly {
+			// A hosted agent's prompt is not ours to count: count-only has
+			// nothing to do, and must not touch its stored results.
+			fmt.Fprintln(counterOut, "WARN: --count-only: hosted agents have no token counts; nothing to run")
+			selected = nil
+		}
+	} else {
+		selected, err = opts.RunnableSelections(strings.Join(f.Models, ","), strings.Join(f.Harness, ","))
+	}
+	if err != nil {
+		return run.Options{}, err
+	}
+	registry, err := opts.AvailableModels()
 	if err != nil {
 		return run.Options{}, err
 	}
@@ -213,6 +240,7 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 	return run.Options{
 		Repo:           repo,
 		Selected:       selected,
+		Registry:       registry,
 		Counter:        counter,
 		Runner:         &runner.Exec{Sandbox: sandbox},
 		HostSandboxed:  sandbox.Enabled,
@@ -238,6 +266,19 @@ func (f *SweepFlags) sweepOptionsW(cmd *cobra.Command, counterOut io.Writer) (ru
 		// path overrides Reporter in uiRun with its own wrapped reporter.
 		Reporter: telemetry.WrapReporter(run.NewPlainReporter(stdout, stderr)),
 	}, nil
+}
+
+// resolveAgents expands the ${VAR} references of the hosted endpoints the run
+// selected — at sweep start, and only for those — into common.Agents. An unset
+// variable fails the command as a configuration error (exit 2). A no-op
+// outside agent repositories.
+func resolveAgents(common *run.Options) error {
+	agents, err := opts.ResolveAgents(common.Selected)
+	if err != nil {
+		return err
+	}
+	common.Agents = agents
+	return nil
 }
 
 // perTierTimeouts resolves the triggers/evals timeouts for a combined sweep: the

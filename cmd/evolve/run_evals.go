@@ -50,6 +50,9 @@ var evalsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if err := resolveAgents(&common); err != nil {
+			return err
+		}
 		judge, err := evalsFlags.resolveJudge(cmd, common, cmd.ErrOrStderr())
 		if err != nil {
 			return err
