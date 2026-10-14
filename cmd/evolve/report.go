@@ -87,8 +87,13 @@ var reportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "report: regenerated EVALUATION.md and %s (%d plugins)\n",
-			report.SummaryName(opts.ResultsFormat), len(summary.Plugins))
+		n, noun := len(summary.Plugins), "plugins"
+		if repo.IsAgentRepo() {
+			n = len(repo.Agents)
+			noun = plural(n, "agent", "agents")
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "report: regenerated EVALUATION.md and %s (%d %s)\n",
+			report.SummaryName(opts.ResultsFormat), n, noun)
 
 		if !reportFlags.Check {
 			return nil

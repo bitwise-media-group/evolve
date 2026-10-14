@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/bitwise-media-group/evolve/internal/encfmt"
+	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/manifest"
@@ -27,6 +28,13 @@ the harness-reported consumption of live case sessions (input includes cache
 writes/reads). Cells show "—" when a figure has not been measured yet and
 "n/a" when the provider cannot produce it (no counting API, no usage
 reporting, or no published pricing).`
+
+const agentMethodology = `Each eval is a scripted conversation with an already-deployed agent, run once
+per endpoint. Measured usage is the token usage the agent reported over the
+conversation (input includes cache writes/reads); its cost is shown only when
+every usage entry names a priced model. Hosted agents have no input-token
+estimate, and no without-skill baseline. Cells show "—" when a figure was not
+reported and "n/a" when it cannot be produced.`
 
 // Options configures report generation.
 type Options struct {
@@ -135,13 +143,21 @@ func Generate(opts Options) (*Summary, error) {
 		return nil, err
 	}
 	caps := capabilities(opts.Models)
+	agents := opts.Repo.IsAgentRepo()
+	if agents {
+		caps.providerCol, caps.modelCol = "Protocol", "Endpoint"
+	}
 
 	// When `models` is configured, drop non-active models from the tables and
-	// surface the excluded set in a note at the top of the report.
+	// surface the excluded set in a note at the top of the report. An agent
+	// repository's active set is its endpoints, so results for a removed
+	// endpoint drop, but the registry's models are not "excluded" from it.
 	var excluded []excludedProvider
 	if opts.ActiveModels != nil {
 		filterActive(loaded, opts.ActiveModels)
-		excluded = excludedModels(opts.Models, opts.ActiveModels)
+		if !agents {
+			excluded = excludedModels(opts.Models, opts.ActiveModels)
+		}
 	}
 
 	summary := &Summary{Schema: SummarySchema, ToolVersion: opts.ToolVersion, Plugins: map[string]*PluginSummary{}}
@@ -170,7 +186,9 @@ func Generate(opts Options) (*Summary, error) {
 	if err := writeSummary(opts.Repo.Root, opts.Format, summary); err != nil {
 		return nil, err
 	}
-	if opts.Repo.Kind != layout.Single {
+	// Multi-plugin repositories get a detail page per plugin; a single plugin's
+	// and an agent repository's details live in the root report.
+	if opts.Repo.Kind != layout.Single && !agents {
 		for _, pf := range loaded {
 			if len(pf.files) == 0 {
 				continue
@@ -305,8 +323,12 @@ func Check(repo *layout.Repo, summary *Summary, th Thresholds, active map[string
 // reads the manifest only from that absolute directory — never a cwd-relative
 // path — so an empty or manifest-less directory classifies as MaturityUnknown
 // (never gated) instead of parsing whatever `.claude-plugin/plugin.json` happens
-// to sit in the process's working directory.
+// to sit in the process's working directory. Hosted agents have no manifest
+// version: their group is gated as stable.
 func pluginMaturity(sets []layout.EvalSet) Maturity {
+	if len(sets) > 0 && sets[0].Agent {
+		return MaturityStable
+	}
 	if len(sets) == 0 || sets[0].Plugin.Dir == "" {
 		return MaturityUnknown
 	}
@@ -356,6 +378,10 @@ func pluginIssues(
 		authoredTriggers = authoredTriggers || set.TriggersPath != ""
 		authoredEvals = authoredEvals || set.EvalsPath != ""
 	}
+	// An agent repository's matrix is per agent (its own endpoints), so its
+	// strict evidence gate checks each agent below rather than holding every
+	// agent to the union of endpoints here.
+	agents := len(sets) > 0 && sets[0].Agent
 
 	var issues []string
 	check := func(kind string, minRate float64, authored bool) {
@@ -364,7 +390,7 @@ func pluginIssues(
 		}
 		keys := th.Models
 		if len(keys) == 0 {
-			if th.Strict {
+			if th.Strict && !agents {
 				// Hold every configured model to the threshold, so a defined model
 				// with no stored results breaches rather than passing by absence.
 				keys = append(keys, th.Defined...)
@@ -391,9 +417,39 @@ func pluginIssues(
 	check("triggers", th.TriggersMinPassRate, authoredTriggers)
 	check("evals", th.EvalsMinPassRate, authoredEvals)
 	if th.Strict {
+		if agents && len(th.Models) == 0 {
+			issues = append(issues, agentEvidenceIssues(plugin, sets, files)...)
+		}
 		// Staleness is the strict evidence gate; a plain --check stays a
 		// pass-rate gate and does not inspect authored-content drift.
 		issues = append(issues, staleIssues(sets, files)...)
+	}
+	return issues
+}
+
+// agentEvidenceIssues is the strict no-stored-results check for an agent
+// repository: each agent must have executed results for every endpoint its
+// own suite defines.
+func agentEvidenceIssues(plugin string, sets []layout.EvalSet, files []*results.File) []string {
+	fileBySkill := map[string]*results.File{}
+	for _, f := range files {
+		fileBySkill[f.Skill] = f
+	}
+	var issues []string
+	for _, set := range sets {
+		spec, err := evalspec.LoadEvals(set.EvalsPath)
+		if err != nil || spec.Agent == nil {
+			continue
+		}
+		for _, key := range spec.Restriction() {
+			var entry *results.EvalEntry
+			if f := fileBySkill[set.Skill]; f != nil {
+				entry = f.Eval(key)
+			}
+			if entry == nil || !entry.Executed || entry.Summary.Total == 0 {
+				issues = append(issues, fmt.Sprintf("%s: evals: %s: no stored results for %s", plugin, set.Skill, key))
+			}
+		}
 	}
 	return issues
 }
@@ -527,13 +583,26 @@ type capabilityMap struct {
 	counts  map[string]bool
 	usage   map[string]bool
 	display map[string]string
+
+	// providerCol and modelCol head the tables' identity columns: Provider and
+	// Model, or Protocol and Endpoint in an agent repository.
+	providerCol, modelCol string
 }
 
 // capabilities derives, per provider id, whether the vendor has a token-counting
 // API (counts) and whether any of its models is driven by a usage-reporting
-// harness (usage), plus the vendor display name.
+// harness (usage), plus the vendor display name. Hosted-agent protocols never
+// count tokens, and may report usage (AG-UI's is optional, so an agent that
+// does not renders "—", not "n/a").
 func capabilities(models []model.Model) capabilityMap {
-	caps := capabilityMap{counts: map[string]bool{}, usage: map[string]bool{}, display: map[string]string{}}
+	caps := capabilityMap{
+		counts: map[string]bool{}, usage: map[string]bool{}, display: map[string]string{},
+		providerCol: "Provider", modelCol: "Model",
+	}
+	for _, p := range model.HostedProviders() {
+		caps.usage[p.ID] = true
+		caps.display[p.ID] = p.Name
+	}
 	for _, m := range models {
 		pid := m.ProviderID
 		_, caps.counts[pid] = model.CounterFor(pid)

@@ -44,7 +44,12 @@ func renderExcluded(excluded []excludedProvider) string {
 func renderRoot(opts Options, loaded []pluginFiles, summary *Summary, caps capabilityMap,
 	excluded []excludedProvider) string {
 	var b strings.Builder
-	b.WriteString(generatedMarker + "\n\n# Skill evaluations\n\n" + methodology + "\n")
+	agents := opts.Repo.IsAgentRepo()
+	title, method := "Skill evaluations", methodology
+	if agents {
+		title, method = "Agent evaluations", agentMethodology
+	}
+	b.WriteString(generatedMarker + "\n\n# " + title + "\n\n" + method + "\n")
 	b.WriteString(renderExcluded(excluded))
 
 	for _, pf := range loaded {
@@ -52,10 +57,15 @@ func renderRoot(opts Options, loaded []pluginFiles, summary *Summary, caps capab
 		if ps == nil {
 			continue
 		}
-		fmt.Fprintf(&b, "\n## %s\n", pf.plugin.Name)
+		group := pf.plugin.Name
+		if agents && group == layout.AgentsGroup {
+			group = "Agents"
+		}
+		fmt.Fprintf(&b, "\n## %s\n", group)
 		if len(ps.Triggers) > 0 {
 			b.WriteString("\n### Triggers\n\n")
-			b.WriteString("| Provider | Model | Passed | Pass rate | Δ rate | Avg run | Input tokens | Est. input cost |\n")
+			fmt.Fprintf(&b, "| %s | %s | Passed | Pass rate | Δ rate | Avg run | Input tokens | Est. input cost |\n",
+				caps.providerCol, caps.modelCol)
 			b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
 			for _, key := range sortedKeys(ps.Triggers) {
 				m := ps.Triggers[key]
@@ -67,8 +77,8 @@ func renderRoot(opts Options, loaded []pluginFiles, summary *Summary, caps capab
 		}
 		if len(ps.Evals) > 0 {
 			b.WriteString("\n### Evals\n\n")
-			b.WriteString("| Provider | Model | Passed | Δ rate | Lift vs base | Avg run | Input tokens" +
-				" | Est. input cost | Measured in/out | Cache rd/wr | Measured cost |\n")
+			fmt.Fprintf(&b, "| %s | %s | Passed | Δ rate | Lift vs base | Avg run | Input tokens"+
+				" | Est. input cost | Measured in/out | Cache rd/wr | Measured cost |\n", caps.providerCol, caps.modelCol)
 			b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 			for _, key := range sortedKeys(ps.Evals) {
 				m := ps.Evals[key]
@@ -81,7 +91,7 @@ func renderRoot(opts Options, loaded []pluginFiles, summary *Summary, caps capab
 		}
 	}
 
-	if opts.Repo.Kind == layout.Single {
+	if opts.Repo.Kind == layout.Single || agents {
 		for _, pf := range loaded {
 			b.WriteString(renderDetail(pf, caps))
 		}
@@ -149,7 +159,8 @@ func renderTriggerCases(b *strings.Builder, f *results.File, caps capabilityMap)
 			}
 		}
 		fmt.Fprintf(b, "\n#### %s (expected: %s)\n\n", heading(q), yesNo(expected))
-		b.WriteString("| Provider | Model | Result | Rate | Δ rate | Avg run | Input tokens | Est. cost |\n")
+		fmt.Fprintf(b, "| %s | %s | Result | Rate | Δ rate | Avg run | Input tokens | Est. cost |\n",
+			caps.providerCol, caps.modelCol)
 		b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
 		for _, key := range keys {
 			entry := f.Models[key].Triggers
@@ -186,8 +197,8 @@ func renderEvalCases(b *strings.Builder, f *results.File, caps capabilityMap) {
 			}
 		}
 		fmt.Fprintf(b, "\n#### %s\n\n", heading(title))
-		b.WriteString("| Provider | Model | Result | Δ rate | Lift vs base | Avg run | Input tokens | Est. cost" +
-			" | Measured in/out | Cache rd/wr | Measured cost |\n")
+		fmt.Fprintf(b, "| %s | %s | Result | Δ rate | Lift vs base | Avg run | Input tokens | Est. cost"+
+			" | Measured in/out | Cache rd/wr | Measured cost |\n", caps.providerCol, caps.modelCol)
 		b.WriteString("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
 		for _, key := range keys {
 			entry := f.Models[key].Evals

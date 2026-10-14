@@ -896,3 +896,103 @@ func TestGenerateRefusesNewerResults(t *testing.T) {
 		t.Error("EVALUATION.md must not be written when a results file is newer")
 	}
 }
+
+// agentReportRepo is an agents-layout repository: support defines local and
+// staging and has results for local only; billing defines local and has it.
+func agentReportRepo(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		os.MkdirAll(filepath.Dir(path), 0o755)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("agents/support/evals.json", `{"agent":{"endpoints":{"local":{"url":"http://x"},"staging":{"url":"http://y"}}},`+
+		`"evals":[{"id":"refund","prompt":"p","assertions":[{"type":"outcome","expect":"completed"}]}]}`)
+	write("agents/billing/evals.json", `{"agent":{"endpoints":{"local":{"url":"http://x"}}},`+
+		`"evals":[{"id":"invoice","prompt":"p","assertions":[{"type":"conformance"}]}]}`)
+	for _, agent := range []string{"support", "billing"} {
+		id := map[string]string{"support": "refund", "billing": "invoice"}[agent]
+		f := &results.File{Schema: results.Schema, Plugin: layout.AgentsGroup, Skill: agent}
+		f.SetEval("ag-ui/local", &results.EvalEntry{
+			Header: results.Header{
+				Provider: "ag-ui", Model: "local", Display: "Local", Harness: "ag-ui",
+				ToolVersion: "test", RanAt: "2026-10-14T10:00:00Z", Executed: true, TimeoutSeconds: 600,
+			},
+			Results: []results.EvalResult{{
+				ID: id, Passed: new(true), Timing: &results.Timing{ExecutorDurationSeconds: new(3.0)},
+				Measured:     &results.Measured{InputTokens: new(400), OutputTokens: new(100)},
+				Conversation: &results.Conversation{Runs: 2, Outcome: "completed"},
+			}},
+			Summary: results.EvalSummary{Passed: new(1), Failed: new(0), Total: 1, PassRate: new(1.0),
+				AvgRunSeconds: new(3.0), Measured: &results.Measured{InputTokens: new(400), OutputTokens: new(100)}},
+		})
+		if _, err := f.SaveDir(filepath.Join(root, "agents", agent), "json"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+func TestGenerateAgentRepo(t *testing.T) {
+	repo := agentReportRepo(t)
+	active := map[string]bool{"ag-ui/local": true, "ag-ui/staging": true}
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil), ActiveModels: active})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Plugins[layout.AgentsGroup] == nil || summary.Plugins[layout.AgentsGroup].Evals["ag-ui/local"] == nil {
+		t.Fatalf("summary = %+v", summary.Plugins)
+	}
+	data, err := os.ReadFile(filepath.Join(repo.Root, "EVALUATION.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := string(data)
+	for _, want := range []string{
+		"# Agent evaluations", "\n## Agents\n", "| Protocol | Endpoint | Passed |", "| AG-UI | Local (`local`) | 2/2 |", "| 800/200 |",
+		"\n## billing\n", "\n## support\n", "#### refund", "| AG-UI | Local (`local`) | PASS |",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("EVALUATION.md missing %q:\n%s", want, md)
+		}
+	}
+	for _, unwanted := range []string{"Excluded models", "Skill evaluations"} {
+		if strings.Contains(md, unwanted) {
+			t.Errorf("EVALUATION.md contains %q:\n%s", unwanted, md)
+		}
+	}
+	// The root report is the only one: nothing is written into the agents.
+	for _, agent := range []string{"support", "billing"} {
+		if _, err := os.Stat(filepath.Join(repo.Root, "agents", agent, "EVALUATION.md")); err == nil {
+			t.Errorf("a detail page was written for %s", agent)
+		}
+	}
+}
+
+func TestCheckAgentRepoStrict(t *testing.T) {
+	repo := agentReportRepo(t)
+	active := map[string]bool{"ag-ui/local": true, "ag-ui/staging": true}
+	summary, err := Generate(Options{Repo: repo, ToolVersion: "test", Models: model.AllModels(nil), ActiveModels: active})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := Thresholds{TriggersMinPassRate: 0.5, EvalsMinPassRate: 0.66, Maturity: DefaultGatedMaturity}
+	if fails, warns := Check(repo, summary, th, active); len(fails) != 0 || len(warns) != 0 {
+		t.Errorf("plain check: fails = %v, warns = %v", fails, warns)
+	}
+	// Strict holds each agent to its own endpoints: support lacks staging,
+	// billing (which defines only local) is complete. Agents gate as stable.
+	th.Strict, th.Defined = true, []string{"ag-ui/local", "ag-ui/staging"}
+	fails, warns := Check(repo, summary, th, active)
+	if len(fails) != 1 || fails[0] != "agents: evals: support: no stored results for ag-ui/staging" || len(warns) != 0 {
+		t.Errorf("strict check: fails = %v, warns = %v", fails, warns)
+	}
+}

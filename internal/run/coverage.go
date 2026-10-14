@@ -102,7 +102,7 @@ func skillCovered(p layout.Plugin, skill, skillDir string, configured []model.Mo
 	}
 
 	if strict {
-		keys := definedKeys(configured, ef.Models)
+		keys := definedKeys(configured, ef.Restriction())
 		if len(keys) == 0 {
 			return false // no model is both configured and allowed here
 		}

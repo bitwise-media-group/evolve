@@ -334,6 +334,9 @@ func ModelByID(models []Model, id string) (Model, bool) {
 // and the model registry exclude them.
 var hostedProviders = []Provider{{ID: ProviderAGUI, Name: "AG-UI"}}
 
+// HostedProviders returns the display-only hosted-agent providers.
+func HostedProviders() []Provider { return slices.Clone(hostedProviders) }
+
 // IsHostedProvider reports whether id names a hosted-agent protocol rather
 // than a model vendor.
 func IsHostedProvider(id string) bool {
