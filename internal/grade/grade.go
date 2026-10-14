@@ -4,6 +4,7 @@
 package grade
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/bitwise-media-group/evolve/internal/agui"
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/runner"
@@ -40,7 +43,7 @@ Assertions to verify:
 
 The agent's workspace is at: %s
 You may inspect any files in it to verify the assertions.
-
+%s
 Grade every assertion independently. Reply with ONLY a JSON object of exactly this shape:
 {"verdicts": [{"id": 1, "passed": true, "evidence": "<short quote or file fact supporting the verdict>"}, ...]}
 Include exactly one verdict for every assertion id, 1 through %d.`
@@ -78,9 +81,23 @@ type Options struct {
 	// Judge grades llm assertions; nil fails them loudly.
 	Judge Judge
 	// ToolCalls are the agent's observed tool invocations; nil when the harness
-	// cannot report them (a tool_call assertion is then skipped), a non-nil
-	// empty slice when it reported zero (the assertion fails).
+	// cannot report them (tool_call and tool_sequence assertions are then
+	// skipped), a non-nil empty slice when it reported zero (they fail).
 	ToolCalls []model.ToolCall
+
+	// The hosted-agent conversation's signals, each nil (or "") when the run
+	// has none — a CLI agent — so its assertions skip. State is the final
+	// shared state; HITL the human-in-the-loop requests (non-nil empty when
+	// there were none); Outcome how the conversation ended; Violations the
+	// error-severity protocol-conformance violations (non-nil empty when
+	// conformant).
+	State      json.RawMessage
+	HITL       []model.HITLRequest
+	Outcome    string
+	Violations []string
+	// JudgeContext, when set, is appended to the judge prompt — e.g. that the
+	// agent ran remotely and where its transcript is in the workspace.
+	JudgeContext string
 }
 
 // Verdict is one graded assertion's outcome, index-aligned with the input.
@@ -204,48 +221,297 @@ func one(ctx context.Context, a evalspec.Assertion, opts Options) (passed *bool,
 
 	case "tool_call":
 		return gradeToolCall(a, opts.ToolCalls)
+	case "tool_sequence":
+		return gradeToolSequence(a, opts.ToolCalls)
+	case "state":
+		return gradeState(a, opts.State)
+	case "hitl":
+		return gradeHITL(a, opts.HITL)
+	case "outcome":
+		return gradeOutcome(a, opts.Outcome)
+	case "conformance":
+		return gradeConformance(opts.Violations)
 	}
 
 	f := false
 	return &f, "unknown assertion type: " + a.Type
 }
 
-// gradeToolCall passes when some observed tool call's name matches a.Tool and,
-// when a.Pattern is set, its JSON-serialized arguments match that too. nil calls
-// means the harness cannot report tool calls (the assertion is skipped); a
-// non-nil empty slice means it reported none (the assertion fails).
+// gradeOutcome passes when the conversation ended as a.Expect; "" (no
+// hosted conversation) skips.
+func gradeOutcome(a evalspec.Assertion, outcome string) (*bool, string) {
+	if outcome == "" {
+		return nil, "skipped: not a hosted-agent conversation"
+	}
+	verdict := outcome == a.Expect
+	return &verdict, "conversation ended " + outcome
+}
+
+// gradeConformance passes when there are no error-severity protocol
+// violations; nil (no hosted conversation) skips.
+func gradeConformance(violations []string) (*bool, string) {
+	if violations == nil {
+		return nil, "skipped: not a hosted-agent conversation"
+	}
+	verdict := len(violations) == 0
+	if verdict {
+		return &verdict, "no protocol violations"
+	}
+	return &verdict, fmt.Sprintf("%d %s: %s", len(violations), plural(len(violations), "violation", "violations"),
+		truncate(strings.Join(violations, "; "), 200))
+}
+
+// gradeToolCall counts the observed calls whose name matches a.Tool and,
+// when set, whose JSON-serialized arguments match a.Pattern and whose result
+// matches a.Result, and passes when the count is within [min, max]: min
+// defaults to 1 (0 when max is 0, so max: 0 asserts the tool was never
+// called) and max to unbounded. nil calls means the harness cannot report
+// tool calls (the assertion is skipped); a non-nil empty slice means it
+// reported none.
 func gradeToolCall(a evalspec.Assertion, calls []model.ToolCall) (*bool, string) {
 	if calls == nil {
 		return nil, "skipped: harness does not report tool calls"
 	}
-	nameRE, err := regexp.Compile(a.Tool)
+	nameRE, argsRE, resultRE, err := compileToolCall(a)
 	if err != nil {
 		f := false
-		return &f, fmt.Sprintf("invalid tool pattern: %v", err)
+		return &f, err.Error()
 	}
-	var argsRE *regexp.Regexp
+	var matched []model.ToolCall
+	for _, tc := range calls {
+		if !nameRE.MatchString(tc.Name) || (argsRE != nil && !argsRE.MatchString(string(tc.Input))) {
+			continue
+		}
+		if resultRE != nil && (tc.Result == nil || !resultRE.MatchString(*tc.Result)) {
+			continue
+		}
+		matched = append(matched, tc)
+	}
+	lo, hi := bounds(a)
+	verdict := len(matched) >= lo && (hi < 0 || len(matched) <= hi)
+	switch {
+	case len(matched) == 0:
+		return &verdict, "no tool_call matched /" + a.Tool + "/"
+	case a.Min == nil && a.Max == nil && verdict:
+		return &verdict, callEvidence(matched[0])
+	}
+	return &verdict, fmt.Sprintf("%d matching %s (%s): %s", len(matched), plural(len(matched), "call", "calls"),
+		boundsText(lo, hi), callEvidence(matched[0]))
+}
+
+// compileToolCall compiles a tool_call's name, args, and result patterns
+// (nil when unset).
+func compileToolCall(a evalspec.Assertion) (nameRE, argsRE, resultRE *regexp.Regexp, err error) {
+	if nameRE, err = regexp.Compile(a.Tool); err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid tool pattern: %v", err)
+	}
 	if a.Pattern != "" {
 		if argsRE, err = regexp.Compile(a.Pattern); err != nil {
-			f := false
-			return &f, fmt.Sprintf("invalid pattern: %v", err)
+			return nil, nil, nil, fmt.Errorf("invalid pattern: %v", err)
 		}
 	}
+	if a.Result != "" {
+		if resultRE, err = regexp.Compile(a.Result); err != nil {
+			return nil, nil, nil, fmt.Errorf("invalid result pattern: %v", err)
+		}
+	}
+	return nameRE, argsRE, resultRE, nil
+}
+
+// callEvidence renders one call as evidence: its name and (truncated) args.
+func callEvidence(tc model.ToolCall) string {
+	if len(tc.Input) == 0 {
+		return tc.Name
+	}
+	return tc.Name + " " + truncate(string(tc.Input), 120)
+}
+
+// bounds resolves a match-count assertion's [min, max]; max -1 is unbounded.
+// min defaults to 1, or 0 when max is 0.
+func bounds(a evalspec.Assertion) (lo, hi int) {
+	lo, hi = 1, -1
+	if a.Max != nil {
+		hi = *a.Max
+		if hi == 0 {
+			lo = 0
+		}
+	}
+	if a.Min != nil {
+		lo = *a.Min
+	}
+	return lo, hi
+}
+
+// boundsText renders [lo, hi] for evidence and descriptions.
+func boundsText(lo, hi int) string {
+	switch {
+	case hi == 0:
+		return "never"
+	case hi < 0:
+		return fmt.Sprintf("at least %d", lo)
+	case lo == hi:
+		return fmt.Sprintf("exactly %d", lo)
+	case lo == 0:
+		return fmt.Sprintf("at most %d", hi)
+	}
+	return fmt.Sprintf("between %d and %d", lo, hi)
+}
+
+// boundsCount is boundsText with a counted noun ("exactly 1 time", "at least
+// 2 requests"); "never" stands alone.
+func boundsCount(lo, hi int, one, many string) string {
+	if hi == 0 {
+		return "never"
+	}
+	n := hi
+	if hi < 0 {
+		n = lo
+	}
+	return boundsText(lo, hi) + " " + plural(n, one, many)
+}
+
+// gradeToolSequence passes when the a.Tools patterns match an ordered
+// subsequence of the observed calls' names (other calls may come between).
+func gradeToolSequence(a evalspec.Assertion, calls []model.ToolCall) (*bool, string) {
+	if calls == nil {
+		return nil, "skipped: harness does not report tool calls"
+	}
+	res := make([]*regexp.Regexp, len(a.Tools))
+	for i, expr := range a.Tools {
+		re, err := regexp.Compile(expr)
+		if err != nil {
+			f := false
+			return &f, fmt.Sprintf("invalid tools[%d] pattern: %v", i, err)
+		}
+		res[i] = re
+	}
+	var seen []string
+	next := 0
 	for _, tc := range calls {
-		if !nameRE.MatchString(tc.Name) {
-			continue
+		if next < len(res) && res[next].MatchString(tc.Name) {
+			seen = append(seen, tc.Name)
+			next++
 		}
-		if argsRE != nil && !argsRE.MatchString(string(tc.Input)) {
-			continue
-		}
-		verdict := true
-		evidence := tc.Name
-		if len(tc.Input) > 0 {
-			evidence += " " + truncate(string(tc.Input), 120)
-		}
-		return &verdict, evidence
+	}
+	verdict := next == len(res)
+	if verdict {
+		return &verdict, strings.Join(seen, " → ")
+	}
+	evidence := fmt.Sprintf("matched %d/%d; no call to /%s/", next, len(res), a.Tools[next])
+	if next > 0 {
+		evidence += " after " + seen[next-1]
+	}
+	return &verdict, evidence
+}
+
+// gradeState checks the final shared state at a.Pointer: that it exists, or
+// equals a.Equals (JSON equality), or (rendered as text: a string verbatim,
+// anything else as compact JSON) matches a.Pattern.
+func gradeState(a evalspec.Assertion, state json.RawMessage) (*bool, string) {
+	if state == nil {
+		return nil, "skipped: no shared state (not a hosted-agent conversation)"
 	}
 	f := false
-	return &f, "no tool_call matched /" + a.Tool + "/"
+	ptr, err := agui.ParsePointer(a.Pointer)
+	if err != nil {
+		return &f, err.Error()
+	}
+	var doc any
+	if err := json.Unmarshal(state, &doc); err != nil {
+		return &f, fmt.Sprintf("final state is not JSON: %v", err)
+	}
+	where := "state" + a.Pointer
+	v, ok := ptr.Get(doc)
+	if !ok {
+		return &f, where + " is absent"
+	}
+	text := jsonText(v)
+	switch {
+	case a.Equals != nil:
+		var want any
+		if err := json.Unmarshal(a.Equals, &want); err != nil {
+			return &f, fmt.Sprintf("invalid equals: %v", err)
+		}
+		verdict := reflect.DeepEqual(v, want)
+		if verdict {
+			return &verdict, where + " = " + truncate(text, 120)
+		}
+		return &verdict, fmt.Sprintf("%s = %s, want %s", where, truncate(text, 80), truncate(jsonText(want), 80))
+	case a.Pattern != "":
+		re, err := regexp.Compile("(?m)" + a.Pattern)
+		if err != nil {
+			return &f, fmt.Sprintf("invalid pattern: %v", err)
+		}
+		verdict := re.MatchString(text)
+		return &verdict, where + " = " + truncate(text, 120)
+	}
+	t := true
+	return &t, where + " = " + truncate(text, 120)
+}
+
+// jsonText renders a decoded JSON value as text: a string verbatim, anything
+// else as compact JSON.
+func jsonText(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	data, _ := json.Marshal(v)
+	return string(data)
+}
+
+// gradeHITL counts the conversation's human-in-the-loop requests that match
+// — a.Tool on the requested tool's name, a.Reason on an interrupt's reason
+// (only interrupts count then), a.Pattern on the tool arguments or interrupt
+// message — and passes when the count is within [min, max], defaulting like
+// tool_call. nil requests means no hosted conversation (skipped).
+func gradeHITL(a evalspec.Assertion, reqs []model.HITLRequest) (*bool, string) {
+	if reqs == nil {
+		return nil, "skipped: not a hosted-agent conversation"
+	}
+	f := false
+	var toolRE, reasonRE, patternRE *regexp.Regexp
+	for _, p := range []struct {
+		dst  **regexp.Regexp
+		expr string
+		name string
+	}{{&toolRE, a.Tool, "tool"}, {&reasonRE, a.Reason, "reason"}, {&patternRE, a.Pattern, "pattern"}} {
+		if p.expr == "" {
+			continue
+		}
+		re, err := regexp.Compile(p.expr)
+		if err != nil {
+			return &f, fmt.Sprintf("invalid %s pattern: %v", p.name, err)
+		}
+		*p.dst = re
+	}
+	var matched []model.HITLRequest
+	for _, r := range reqs {
+		if toolRE != nil && !toolRE.MatchString(r.Name) {
+			continue
+		}
+		if reasonRE != nil && (r.Kind != "interrupt" || !reasonRE.MatchString(r.Reason)) {
+			continue
+		}
+		if patternRE != nil && !patternRE.MatchString(r.Detail) {
+			continue
+		}
+		matched = append(matched, r)
+	}
+	lo, hi := bounds(a)
+	verdict := len(matched) >= lo && (hi < 0 || len(matched) <= hi)
+	if len(matched) == 0 {
+		return &verdict, fmt.Sprintf("no matching human-in-the-loop request (%d in total)", len(reqs))
+	}
+	first := matched[0]
+	label := first.Name
+	if first.Kind == "interrupt" && first.Reason != "" {
+		label = first.Reason
+		if first.Name != "" {
+			label += " (" + first.Name + ")"
+		}
+	}
+	return &verdict, fmt.Sprintf("%d matching %s (%s): %s %s", len(matched), plural(len(matched), "request", "requests"),
+		boundsText(lo, hi), first.Kind, label)
 }
 
 // judgeBatch grades every llm assertion of a case in one judge session,
@@ -296,8 +562,12 @@ func judgeBatchVerdicts(ctx context.Context, llm []evalspec.Assertion, opts Opti
 		expected = "\nThe eval author's description of the expected output (context, not a " +
 			"separate assertion):\n---\n" + truncate(opts.ExpectedOutput, 2000) + "\n---\n\n"
 	}
+	judgeContext := ""
+	if opts.JudgeContext != "" {
+		judgeContext = "\n" + opts.JudgeContext + "\n"
+	}
 	prompt := fmt.Sprintf(judgePrompt, len(llm), block.String(), expected,
-		truncate(opts.Output, 8000), opts.Workspace, len(llm))
+		truncate(opts.Output, 8000), opts.Workspace, judgeContext, len(llm))
 	text, err := opts.Judge.Judge(ctx, opts.Workspace, prompt, opts.Timeout)
 	if err != nil {
 		slog.DebugContext(ctx, "judge error", slog.Any("error", err))
@@ -391,14 +661,83 @@ func Describe(a evalspec.Assertion) string {
 		}
 		return fmt.Sprintf("command `%s` exits %d", a.Run, exit)
 	case "tool_call":
-		if a.Pattern != "" {
-			return "agent called tool /" + a.Tool + "/ with args /" + a.Pattern + "/"
+		return describeToolCall(a)
+	case "tool_sequence":
+		seq := make([]string, len(a.Tools))
+		for i, t := range a.Tools {
+			seq[i] = "/" + t + "/"
 		}
-		return "agent called tool /" + a.Tool + "/"
+		return "agent called tools in order: " + strings.Join(seq, " → ")
+	case "state":
+		where := "state" + a.Pointer
+		switch {
+		case a.Equals != nil:
+			return where + " equals " + compactJSON(a.Equals)
+		case a.Pattern != "":
+			return where + " matches /" + a.Pattern + "/"
+		}
+		return where + " exists"
+	case "hitl":
+		s := "agent asked for human input"
+		if a.Tool != "" {
+			s += " via tool /" + a.Tool + "/"
+		}
+		if a.Reason != "" {
+			s += " with reason /" + a.Reason + "/"
+		}
+		if a.Pattern != "" {
+			s += " matching /" + a.Pattern + "/"
+		}
+		if a.Min != nil || a.Max != nil {
+			lo, hi := bounds(a)
+			s += " (" + boundsCount(lo, hi, "request", "requests") + ")"
+		}
+		return s
+	case "outcome":
+		return "conversation ended " + a.Expect
+	case "conformance":
+		return "agent's event stream conforms to the protocol"
 	case "llm":
 		return a.Text
 	}
 	return a.Type
+}
+
+// describeToolCall renders a tool_call; one without the count/result fields
+// keeps its original wording so committed expectation text does not churn.
+func describeToolCall(a evalspec.Assertion) string {
+	verb := "called"
+	lo, hi := bounds(a)
+	if hi == 0 {
+		verb = "never called"
+	}
+	s := "agent " + verb + " tool /" + a.Tool + "/"
+	if a.Pattern != "" {
+		s += " with args /" + a.Pattern + "/"
+	}
+	if a.Result != "" {
+		s += " returning /" + a.Result + "/"
+	}
+	if (a.Min != nil || a.Max != nil) && hi != 0 {
+		s += " (" + boundsCount(lo, hi, "time", "times") + ")"
+	}
+	return s
+}
+
+// compactJSON renders raw JSON on one line (verbatim if it does not parse).
+func compactJSON(raw json.RawMessage) string {
+	var buf bytes.Buffer
+	if json.Compact(&buf, raw) != nil {
+		return string(raw)
+	}
+	return buf.String()
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func truncate(s string, n int) string {

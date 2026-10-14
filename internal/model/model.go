@@ -65,9 +65,27 @@ type Usage struct {
 // Name is the invoked tool name — an MCP tool surfaces as "mcp__<server>__<tool>"
 // under Claude and as the bare function name elsewhere. Input is the raw JSON
 // arguments exactly as the CLI emitted them, or nil when reported without args.
+// ID is the call's id where the output carries one. Result is the call's
+// result as text, or nil when the output reports none (the harness cannot
+// capture results, or the call never returned).
 type ToolCall struct {
-	Name  string
-	Input json.RawMessage
+	ID     string
+	Name   string
+	Input  json.RawMessage
+	Result *string
+}
+
+// HITLRequest is one human-in-the-loop request a hosted agent made during a
+// conversation: a frontend tool call (Kind "tool", Name the tool) or an
+// interrupt (Kind "interrupt", Reason its reason, Name its linked tool call's
+// name if any). Detail is the tool arguments or the interrupt message;
+// Answered reports whether a scripted response answered it.
+type HITLRequest struct {
+	Kind     string
+	Name     string
+	Reason   string
+	Detail   string
+	Answered bool
 }
 
 // DefaultMaxTurns is the agent-turn ceiling for a behavioral eval when neither

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // Package grade evaluates case assertions against an agent's workspace and
-// final output: deterministic checks (files, regexes, commands) first, then
+// final output: deterministic checks (files, regexes, commands, tool calls
+// and their order, and — for a hosted agent's conversation — its final shared
+// state, human-in-the-loop requests, outcome, and protocol conformance) first,
+// then
 // one LLM-judge session grading all of the case's subjective (llm) assertions
 // at once — the judge runs with the full eval tool posture, so evidence is
 // collected before it can touch the workspace. The judge is one pinned model

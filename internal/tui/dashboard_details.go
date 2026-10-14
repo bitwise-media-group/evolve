@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
+	"github.com/bitwise-media-group/evolve/internal/grade"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 )
 
@@ -205,7 +206,7 @@ func (d dashboardModel) writeSpec(b *strings.Builder, e execItem, w int) {
 			if a.FromExpectation {
 				continue
 			}
-			b.WriteString(wrap.Render("• " + assertionLine(a)))
+			b.WriteString(wrap.Render("• " + grade.Describe(a)))
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
@@ -285,29 +286,4 @@ func findEval(sc *plan.SkillCatalog, id string) *evalspec.Eval {
 		}
 	}
 	return nil
-}
-
-// assertionLine renders a one-line human description of an assertion.
-func assertionLine(a evalspec.Assertion) string {
-	switch a.Type {
-	case "file_exists":
-		return "file exists: " + a.Path
-	case "file_absent":
-		return "file absent: " + a.Path
-	case "regex":
-		return "output matches /" + a.Pattern + "/"
-	case "not_regex":
-		return "output lacks /" + a.Pattern + "/"
-	case "command":
-		return "command: " + a.Run
-	case "tool_call":
-		if a.Pattern != "" {
-			return "tool /" + a.Tool + "/ with args /" + a.Pattern + "/"
-		}
-		return "tool /" + a.Tool + "/"
-	case "llm":
-		return a.Text
-	default:
-		return a.Type
-	}
 }

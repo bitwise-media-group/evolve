@@ -340,3 +340,217 @@ func TestLLMJudgeExpectedOutputContext(t *testing.T) {
 		t.Errorf("prompt missing expected-output context:\n%s", j.gotPrompt)
 	}
 }
+
+func TestToolCallCounting(t *testing.T) {
+	ok := `{"status":"ok"}`
+	calls := []model.ToolCall{
+		{ID: "c1", Name: "confirm_refund", Input: json.RawMessage(`{"orderId":"1234"}`), Result: new(`{"approved":true}`)},
+		{ID: "c2", Name: "issue_refund", Input: json.RawMessage(`{"orderId":"1234"}`), Result: &ok},
+		{ID: "c3", Name: "issue_refund", Input: json.RawMessage(`{"orderId":"9"}`)},
+	}
+	tests := []struct {
+		name string
+		a    evalspec.Assertion
+		want string
+	}{
+		{"default min 1", evalspec.Assertion{Type: "tool_call", Tool: "^issue_refund$"}, "pass"},
+		{"max 1 exceeded", evalspec.Assertion{Type: "tool_call", Tool: "^issue_refund$", Max: new(1)}, "fail"},
+		{"max 1 with args narrowing", evalspec.Assertion{Type: "tool_call", Tool: "^issue_refund$",
+			Pattern: `"1234"`, Max: new(1)}, "pass"},
+		{"result match", evalspec.Assertion{Type: "tool_call", Tool: "issue", Result: `"status":\s*"ok"`, Max: new(1)},
+			"pass"},
+		{"result requires a result", evalspec.Assertion{Type: "tool_call", Tool: "issue", Pattern: `"9"`,
+			Result: "."}, "fail"},
+		{"never called holds", evalspec.Assertion{Type: "tool_call", Tool: "delete_account", Max: new(0)}, "pass"},
+		{"never called broken", evalspec.Assertion{Type: "tool_call", Tool: "confirm_refund", Max: new(0)}, "fail"},
+		{"min 2", evalspec.Assertion{Type: "tool_call", Tool: "issue_refund", Min: new(2)}, "pass"},
+		{"min 3", evalspec.Assertion{Type: "tool_call", Tool: "issue_refund", Min: new(3)}, "fail"},
+		{"min 0 max 0 none", evalspec.Assertion{Type: "tool_call", Tool: "x", Min: new(0), Max: new(0)}, "pass"},
+		{"invalid result regex", evalspec.Assertion{Type: "tool_call", Tool: "x", Result: "("}, "fail"},
+	}
+	for _, tt := range tests {
+		o := opts(t, "")
+		o.ToolCalls = calls
+		passed, evidence := caseOne(t, tt.a, o)
+		if boolish(passed) != tt.want {
+			t.Errorf("%s: (%s, %q), want %s", tt.name, boolish(passed), evidence, tt.want)
+		}
+	}
+	o := opts(t, "")
+	o.ToolCalls = calls
+	if _, evidence := caseOne(t, evalspec.Assertion{Type: "tool_call", Tool: "issue_refund", Max: new(1)}, o); evidence !=
+		`2 matching calls (exactly 1): issue_refund {"orderId":"1234"}` {
+		t.Errorf("evidence = %q", evidence)
+	}
+}
+
+func TestToolSequence(t *testing.T) {
+	calls := []model.ToolCall{{Name: "lookup"}, {Name: "confirm_refund"}, {Name: "log"}, {Name: "issue_refund"}}
+	tests := []struct {
+		name  string
+		tools []string
+		calls []model.ToolCall
+		want  string
+	}{
+		{"ordered subsequence", []string{"^confirm_refund$", "^issue_refund$"}, calls, "pass"},
+		{"wrong order", []string{"^issue_refund$", "^confirm_refund$"}, calls, "fail"},
+		{"repeated pattern needs repeated calls", []string{"refund", "refund", "refund"}, calls, "fail"},
+		{"skip without reporter", []string{"x"}, nil, "skip"},
+		{"none reported", []string{"x"}, []model.ToolCall{}, "fail"},
+	}
+	for _, tt := range tests {
+		o := opts(t, "")
+		o.ToolCalls = tt.calls
+		passed, evidence := caseOne(t, evalspec.Assertion{Type: "tool_sequence", Tools: tt.tools}, o)
+		if boolish(passed) != tt.want {
+			t.Errorf("%s: (%s, %q), want %s", tt.name, boolish(passed), evidence, tt.want)
+		}
+	}
+	o := opts(t, "")
+	o.ToolCalls = calls
+	if _, evidence := caseOne(t, evalspec.Assertion{Type: "tool_sequence",
+		Tools: []string{"confirm", "issue", "email"}}, o); evidence != "matched 2/3; no call to /email/ after issue_refund" {
+		t.Errorf("evidence = %q", evidence)
+	}
+}
+
+func TestStateAssertions(t *testing.T) {
+	state := json.RawMessage(`{"refunds":[{"orderId":"1234","amount":20.5}],"note":"Receipt sent","a/b":true}`)
+	tests := []struct {
+		name  string
+		a     evalspec.Assertion
+		state json.RawMessage
+		want  string
+	}{
+		{"exists", evalspec.Assertion{Type: "state", Pointer: "/refunds/0"}, state, "pass"},
+		{"absent", evalspec.Assertion{Type: "state", Pointer: "/refunds/1"}, state, "fail"},
+		{"equals string", evalspec.Assertion{Type: "state", Pointer: "/refunds/0/orderId",
+			Equals: json.RawMessage(`"1234"`)}, state, "pass"},
+		{"equals number", evalspec.Assertion{Type: "state", Pointer: "/refunds/0/amount",
+			Equals: json.RawMessage(`20.50`)}, state, "pass"},
+		{"equals object", evalspec.Assertion{Type: "state", Pointer: "/refunds/0",
+			Equals: json.RawMessage(`{"amount":20.5,"orderId":"1234"}`)}, state, "pass"},
+		{"equals mismatch", evalspec.Assertion{Type: "state", Pointer: "/refunds/0/orderId",
+			Equals: json.RawMessage(`1234`)}, state, "fail"},
+		{"pattern on string", evalspec.Assertion{Type: "state", Pointer: "/note", Pattern: "(?i)receipt"}, state, "pass"},
+		{"pattern on object", evalspec.Assertion{Type: "state", Pointer: "/refunds", Pattern: `"orderId":"1234"`},
+			state, "pass"},
+		{"escaped pointer", evalspec.Assertion{Type: "state", Pointer: "/a~1b", Equals: json.RawMessage(`true`)},
+			state, "pass"},
+		{"whole state", evalspec.Assertion{Type: "state", Pattern: "Receipt"}, state, "pass"},
+		{"skip without state", evalspec.Assertion{Type: "state", Pointer: "/x"}, nil, "skip"},
+		{"bad pointer", evalspec.Assertion{Type: "state", Pointer: "x"}, state, "fail"},
+	}
+	for _, tt := range tests {
+		o := opts(t, "")
+		o.State = tt.state
+		passed, evidence := caseOne(t, tt.a, o)
+		if boolish(passed) != tt.want {
+			t.Errorf("%s: (%s, %q), want %s", tt.name, boolish(passed), evidence, tt.want)
+		}
+	}
+}
+
+func TestHITLAssertions(t *testing.T) {
+	reqs := []model.HITLRequest{
+		{Kind: "tool", Name: "confirm_refund", Detail: `{"orderId":"1234"}`, Answered: true},
+		{Kind: "interrupt", Reason: "confirmation", Name: "send_email", Detail: "Send the receipt?", Answered: true},
+	}
+	tests := []struct {
+		name string
+		a    evalspec.Assertion
+		reqs []model.HITLRequest
+		want string
+	}{
+		{"any request", evalspec.Assertion{Type: "hitl"}, reqs, "pass"},
+		{"by tool", evalspec.Assertion{Type: "hitl", Tool: "^confirm_refund$"}, reqs, "pass"},
+		{"interrupt linked tool", evalspec.Assertion{Type: "hitl", Tool: "send_email"}, reqs, "pass"},
+		{"by reason", evalspec.Assertion{Type: "hitl", Reason: "^confirmation$"}, reqs, "pass"},
+		{"reason only counts interrupts", evalspec.Assertion{Type: "hitl", Reason: ".*", Max: new(1)}, reqs, "pass"},
+		{"by pattern", evalspec.Assertion{Type: "hitl", Pattern: "(?i)receipt"}, reqs, "pass"},
+		{"never asked broken", evalspec.Assertion{Type: "hitl", Max: new(0)}, reqs, "fail"},
+		{"never asked holds", evalspec.Assertion{Type: "hitl", Max: new(0)}, []model.HITLRequest{}, "pass"},
+		{"too few", evalspec.Assertion{Type: "hitl", Min: new(3)}, reqs, "fail"},
+		{"skip outside a conversation", evalspec.Assertion{Type: "hitl"}, nil, "skip"},
+	}
+	for _, tt := range tests {
+		o := opts(t, "")
+		o.HITL = tt.reqs
+		passed, evidence := caseOne(t, tt.a, o)
+		if boolish(passed) != tt.want {
+			t.Errorf("%s: (%s, %q), want %s", tt.name, boolish(passed), evidence, tt.want)
+		}
+	}
+}
+
+func TestOutcomeAndConformance(t *testing.T) {
+	o := opts(t, "")
+	if passed, _ := caseOne(t, evalspec.Assertion{Type: "outcome", Expect: "completed"}, o); passed != nil {
+		t.Error("outcome must skip outside a conversation")
+	}
+	if passed, _ := caseOne(t, evalspec.Assertion{Type: "conformance"}, o); passed != nil {
+		t.Error("conformance must skip outside a conversation")
+	}
+	o.Outcome = "awaiting_input"
+	if passed, ev := caseOne(t, evalspec.Assertion{Type: "outcome", Expect: "completed"}, o); boolish(passed) != "fail" ||
+		ev != "conversation ended awaiting_input" {
+		t.Errorf("outcome = %s %q", boolish(passed), ev)
+	}
+	if passed, _ := caseOne(t, evalspec.Assertion{Type: "outcome", Expect: "awaiting_input"}, o); boolish(passed) != "pass" {
+		t.Error("matching outcome must pass")
+	}
+	o.Violations = []string{}
+	if passed, _ := caseOne(t, evalspec.Assertion{Type: "conformance"}, o); boolish(passed) != "pass" {
+		t.Error("no violations must pass")
+	}
+	o.Violations = []string{"pairing: message m1 still open at RUN_FINISHED"}
+	if passed, ev := caseOne(t, evalspec.Assertion{Type: "conformance"}, o); boolish(passed) != "fail" ||
+		!strings.Contains(ev, "1 violation: pairing") {
+		t.Errorf("conformance = %s %q", boolish(passed), ev)
+	}
+}
+
+func TestJudgeContext(t *testing.T) {
+	o := opts(t, "out")
+	j := o.Judge.(*fakeJudge)
+	j.response = `{"verdicts":[{"id":1,"passed":true,"evidence":"e"}]}`
+	o.JudgeContext = "The agent ran remotely; its transcript is at .agent/transcript.md."
+	caseOne(t, evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	if !strings.Contains(j.gotPrompt, "verify the assertions.\n\nThe agent ran remotely; its transcript is at "+
+		".agent/transcript.md.\n\nGrade every assertion") {
+		t.Errorf("prompt = %s", j.gotPrompt)
+	}
+	o.JudgeContext = ""
+	caseOne(t, evalspec.Assertion{Type: "llm", Text: "t"}, o)
+	if !strings.Contains(j.gotPrompt, "verify the assertions.\n\nGrade every assertion") {
+		t.Errorf("prompt without context = %s", j.gotPrompt)
+	}
+}
+
+func TestDescribeNewTypes(t *testing.T) {
+	tests := []struct {
+		a    evalspec.Assertion
+		want string
+	}{
+		{evalspec.Assertion{Type: "tool_call", Tool: "Write"}, "agent called tool /Write/"},
+		{evalspec.Assertion{Type: "tool_call", Tool: "Bash", Pattern: "go"}, "agent called tool /Bash/ with args /go/"},
+		{evalspec.Assertion{Type: "tool_call", Tool: "issue", Result: "ok", Max: new(1)},
+			"agent called tool /issue/ returning /ok/ (exactly 1 time)"},
+		{evalspec.Assertion{Type: "tool_call", Tool: "rm", Max: new(0)}, "agent never called tool /rm/"},
+		{evalspec.Assertion{Type: "tool_call", Tool: "t", Min: new(2)}, "agent called tool /t/ (at least 2 times)"},
+		{evalspec.Assertion{Type: "tool_sequence", Tools: []string{"a", "b"}}, "agent called tools in order: /a/ → /b/"},
+		{evalspec.Assertion{Type: "state", Pointer: "/x"}, "state/x exists"},
+		{evalspec.Assertion{Type: "state", Pointer: "/x", Equals: json.RawMessage(`{ "a": 1 }`)}, `state/x equals {"a":1}`},
+		{evalspec.Assertion{Type: "state", Pointer: "/x", Pattern: "y"}, "state/x matches /y/"},
+		{evalspec.Assertion{Type: "hitl", Tool: "confirm", Max: new(1)},
+			"agent asked for human input via tool /confirm/ (exactly 1 request)"},
+		{evalspec.Assertion{Type: "hitl", Reason: "confirmation"}, "agent asked for human input with reason /confirmation/"},
+		{evalspec.Assertion{Type: "outcome", Expect: "completed"}, "conversation ended completed"},
+		{evalspec.Assertion{Type: "conformance"}, "agent's event stream conforms to the protocol"},
+	}
+	for _, tt := range tests {
+		if got := Describe(tt.a); got != tt.want {
+			t.Errorf("Describe(%+v) = %q, want %q", tt.a, got, tt.want)
+		}
+	}
+}
