@@ -5,9 +5,10 @@
 # release-please watches main and keeps a release PR current from the Conventional
 # Commit history; when that PR merges the workflow cuts the draft GitHub release +
 # vX.Y.Z tag and GoReleaser adopts it — binary archives + checksums + SBOMs +
-# keyless cosign signatures (linux/windows), Developer ID-signed + notarized
-# darwin binaries, the Homebrew cask pushed to bitwise-media-group/homebrew-tap,
-# and a SLSA build-provenance attestation over everything in checksums.txt.
+# keyless cosign signatures over every binary, Developer ID-signed + notarized
+# darwin binaries (cosign signs them after notarization), the Homebrew cask
+# pulled into bitwise-media-group/homebrew-tap, and a SLSA build-provenance
+# attestation over everything in checksums.txt.
 #
 # When that release is cut the reusable workflow's docs job (keyed off the
 # zensical.toml at the repo root) also runs: it rebuilds the Zensical documentation

@@ -23,8 +23,9 @@ env:
   - CGO_ENABLED=0
 
 # ^ref: https://goreleaser.com/customization/build/
-# Cross-platform binaries: keyless cosign signatures over linux/windows and
-# Developer ID-signed, notarized darwin binaries (notarize.macos below).
+# Cross-platform binaries: Developer ID-signed, notarized darwin binaries
+# (notarize.macos below) and a keyless cosign bundle over every binary as it
+# ships (the cosign entry under sboms below).
 builds:
   - id: evolve
     main: ./cmd/evolve
@@ -34,35 +35,15 @@ builds:
     # withui embeds the report-viewer SPA built in the before-hook above.
     tags:
       - withui
-    # shared with the darwin build below (same binary, split only by goos)
-    ldflags: &evolve_ldflags
+    ldflags:
       - -s -w
       - -X github.com/bitwise-media-group/evolve/internal/version.Version={{ .Version }}
       - -X github.com/bitwise-media-group/evolve/internal/version.Commit={{ .ShortCommit }}
       - -X github.com/bitwise-media-group/evolve/internal/version.BuildDate={{ .Date }}
     goos:
       - linux
-      - windows
-    goarch:
-      - amd64
-      - arm64
-  # darwin is a separate build id purely so binary_signs (cosign) can exclude
-  # it by id: goreleaser runs binary_signs BEFORE notarize, and notarization
-  # rewrites the Mach-O in place, so a cosign bundle over the pre-notarized
-  # bytes would never verify against the shipped binary. The OSS binary_signs
-  # has no per-artifact `if`, so the build id is the only handle. Archive
-  # names are unchanged (the template keys on Binary/Os/Arch, not the id), and
-  # dockers_v2 keeps sourcing its linux binaries from the `evolve` id.
-  - id: evolve-darwin
-    main: ./cmd/evolve
-    binary: evolve
-    flags:
-      - -trimpath
-    tags:
-      - withui
-    ldflags: *evolve_ldflags
-    goos:
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
@@ -144,28 +125,12 @@ dockers_v2:
 checksum:
   name_template: checksums.txt
 
-# ^ref: https://goreleaser.com/customization/sign/sign/
-# Keyless cosign signatures over the linux/windows binaries; the reusable
-# release workflow supplies the GitHub Actions OIDC token. The darwin binaries
-# are excluded by build id and carry the Apple signature + notarization below
-# instead (cosign runs before notarize and would sign the wrong bytes); the
-# SLSA attestation over checksums.txt still covers their archives.
-binary_signs:
-  - cmd: cosign
-    ids: [evolve]
-    signature: "{{ .Binary }}_{{ .Os }}_{{ .Arch }}.sigstore.json"
-    args:
-      - sign-blob
-      - --bundle=${signature}
-      - ${artifact}
-      - --yes
-    output: true
-
 # ^ref: https://goreleaser.com/customization/sign/notarize/
 # Developer ID signing + Apple notarization of the darwin binaries, done
-# cross-platform by goreleaser's embedded quill (no macOS runner). Certificate
-# and API key arrive as env from the reusable release workflow, from the org
-# secrets shared by every open-source repo that notarizes.
+# cross-platform by goreleaser's embedded quill (no macOS runner); the pipe
+# only touches darwin artifacts, so it shares the one `evolve` build id.
+# Certificate and API key arrive as env from the reusable release workflow,
+# from the org secrets shared by every open-source repo that notarizes.
 # enabled: every real release notarizes and fails if the secrets are missing
 # (a published release is never un-notarized, which is what lets the cask
 # skip the quarantine workaround); a snapshot only does when MACOS_SIGN_P12 is
@@ -174,7 +139,7 @@ binary_signs:
 notarize:
   macos:
     - enabled: '{{ or (not .IsSnapshot) (isEnvSet "MACOS_SIGN_P12") }}'
-      ids: [evolve-darwin]
+      ids: [evolve]
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
         password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
@@ -195,6 +160,34 @@ sboms:
       - $artifact
       - --output
       - spdx-json=$document
+  # Keyless cosign bundles over every binary, hosted in the sboms pipe on
+  # purpose: it is the only OSS hook that both reaches the raw build binaries
+  # and runs AFTER notarize. binary_signs runs before notarize, which rewrites
+  # the darwin Mach-O in place, so its bundle would never verify against the
+  # shipped binary; signs only reaches uploadable artifacts (archives, not the
+  # binaries inside them). setup-evolve verifies these bundles against the
+  # extracted binary, so they must cover the final bytes on every platform.
+  # Registered as SBOM-typed artifacts, the bundles upload under the names
+  # below and land in checksums.txt, so the SLSA attestation covers them too.
+  # The sboms pipe hands its cmd a scrubbed environment, so the GitHub Actions
+  # OIDC request variables the reusable release workflow provides are passed
+  # through for keyless signing (empty outside Actions: cosign falls back to
+  # its interactive flow). Off in snapshots, like `--skip=sign`.
+  - id: cosign
+    artifacts: binary
+    ids: [evolve]
+    disable: "{{ .IsSnapshot }}"
+    cmd: cosign
+    documents:
+      - "{{ .Binary }}_{{ .Os }}_{{ .Arch }}.sigstore.json"
+    env:
+      - ACTIONS_ID_TOKEN_REQUEST_URL={{ envOrDefault "ACTIONS_ID_TOKEN_REQUEST_URL" "" }}
+      - ACTIONS_ID_TOKEN_REQUEST_TOKEN={{ envOrDefault "ACTIONS_ID_TOKEN_REQUEST_TOKEN" "" }}
+    args:
+      - sign-blob
+      - --bundle=$document
+      - $artifact
+      - --yes
 
 # ^ref: https://goreleaser.com/customization/publish/snapshots/
 snapshot:

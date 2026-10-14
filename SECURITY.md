@@ -12,9 +12,9 @@ evolve is a CLI you install from signed releases and run locally to evaluate cod
 is the integrity of the distributed binary and the parsing of untrusted authored input. It defends against:
 
 - **Tampered release artifacts** — every release ships `checksums.txt`, a GitHub SLSA build-provenance attestation over
-  those checksums, a keyless Sigstore (cosign) bundle per linux/windows binary signed with the release workflow's GitHub
-  OIDC identity, Developer ID-signed and Apple-notarized darwin binaries, and an SPDX SBOM per archive, so a downloaded
-  binary can be verified as exactly what the release workflow built.
+  those checksums, a keyless Sigstore (cosign) bundle per binary signed with the release workflow's GitHub OIDC
+  identity, Developer ID-signed and Apple-notarized darwin binaries (their cosign bundles cover the notarized bytes),
+  and an SPDX SBOM per archive, so a downloaded binary can be verified as exactly what the release workflow built.
 
 - **Untrusted spec and config parsing** — evolve reads authored config (`.evolve.<ext>`) and trigger/eval spec files in
   JSON, JSONC, YAML, or TOML; decoding rejects malformed input with an error instead of crashing, and fixture path
