@@ -87,11 +87,6 @@ func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (fa
 	))
 	defer func() { endSpan(span, err) }()
 
-	// Hosted agents run only against hosted endpoint selections, which no sweep
-	// carries yet; skill selections never drive an agent suite.
-	if set.Agent {
-		return false, nil
-	}
 	specs, err := loadSweepSpecs(opts, set)
 	if err != nil || (!specs.runTriggers && !specs.runEvals) {
 		return false, err // nothing authored for these tiers, or narrowed away (e.g. --eval matched nothing)
@@ -187,10 +182,10 @@ func loadSweepSpecs(opts SweepOptions, set layout.EvalSet) (sweepSpecs, error) {
 			return sp, err
 		}
 		warnSkillName(&opts.Options, set, set.EvalsPath, spec.SkillName)
-		sp.allowedModels = spec.Models
+		sp.allowedModels = spec.Restriction()
 		sp.allEvals = spec.Evals
 		sp.evals = filterEvals(spec.Evals, opts.EvalFilter)
-		sp.runEvals = len(sp.evals) > 0
+		sp.runEvals = len(sp.evals) > 0 && suiteFits(&opts.Options, set, spec)
 	} else if sp.runTriggers && set.EvalsPath != "" {
 		// Triggers honor the skill's models restriction (defined on the evals
 		// file) even when the evals tier is not part of this sweep.
@@ -219,6 +214,9 @@ type sweepUnit struct {
 // runSweepModel runs one model's triggers then evals within a sweep set. A nil
 // per-model filter (the model is already complete under --new) skips it cleanly.
 func runSweepModel(ctx context.Context, u sweepUnit, sel harness.Selection) (failed bool, err error) {
+	if u.set.Agent != harness.IsHosted(sel.Harness) {
+		return false, nil // an eval set runs only on selections of its own kind
+	}
 	filter := u.opts.Filter
 	if u.opts.Filters != nil {
 		filter = u.opts.Filters[sel.Key()]

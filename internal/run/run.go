@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/bitwise-media-group/evolve/internal/agui"
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/model"
@@ -93,6 +94,19 @@ type Options struct {
 	// Reporter receives progress events. When nil the engine uses a
 	// PlainReporter over Stdout/Stderr, preserving the historical line output.
 	Reporter Reporter
+
+	// Agents holds the resolved endpoints of a hosted-agent repository, keyed by
+	// agent (eval set) name then endpoint name: URLs and headers with their
+	// ${VAR} references expanded. A hosted selection runs an agent's evals
+	// against Agents[agent][endpoint]; the command layer resolves only the
+	// selected pairs, so secrets for unselected endpoints are never needed.
+	Agents map[string]map[string]agui.Endpoint
+	// Converse drives a hosted AG-UI conversation; nil uses agui.Converse.
+	// Tests inject a fake.
+	Converse ConverseFunc
+	// Registry is the effective model registry hosted-agent usage is priced
+	// against (a usage entry naming a priced model); nil uses the builtins.
+	Registry []model.Model
 
 	// RetainRoot, when non-empty, is a directory every workspace is created
 	// under and kept (rather than removed at its per-unit cleanup), plus where

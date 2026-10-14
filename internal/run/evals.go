@@ -49,9 +49,7 @@ func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
 		return false, err
 	}
 	for _, set := range sets {
-		// Hosted agents run only against hosted endpoint selections, which no
-		// sweep carries yet; skill selections never drive an agent suite.
-		if set.EvalsPath == "" || set.Agent || !opts.selects(set.Plugin.Name, set.Skill) {
+		if set.EvalsPath == "" || !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runEvalSet(ctx, opts, set)
@@ -75,6 +73,9 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 		return false, err
 	}
 	warnSkillName(&opts.Options, set, set.EvalsPath, spec.SkillName)
+	if !suiteFits(&opts.Options, set, spec) {
+		return false, nil
+	}
 	allEvals := filterEvals(spec.Evals, opts.EvalFilter)
 	if len(allEvals) == 0 {
 		return false, nil
@@ -92,7 +93,7 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 	}
 
 	for _, sel := range opts.Selected {
-		unitFailed, err := runEvalUnit(ctx, opts, set, sel, file, skillMD, contentHash, allEvals, spec.Models)
+		unitFailed, err := runEvalUnit(ctx, opts, set, sel, file, skillMD, contentHash, allEvals, spec.Restriction())
 		failed = failed || unitFailed
 		if err != nil {
 			return failed, err
@@ -104,12 +105,25 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 // runEvalUnit runs one (skill, model) eval unit against the shared results file
 // and skill payload. allEvals is the skill's eval list after any --eval narrowing;
 // per-provider skips and the selection filter are applied here. A unit with no
-// applicable evals reports nothing and returns cleanly.
+// applicable evals reports nothing and returns cleanly. A hosted agent's unit
+// runs its evals as conversations with the selected endpoint: no without-skill
+// baseline (there is no skill to remove) and no token counting (the agent's
+// prompt is not ours to count).
 func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel harness.Selection,
 	file *results.File, skillMD []byte, contentHash string, allEvals []evalspec.Eval, allowedModels []string,
 ) (failed bool, err error) {
+	hosted := harness.IsHosted(sel.Harness)
+	if set.Agent != hosted {
+		return false, nil // an eval set runs only on selections of its own kind
+	}
+	if set.Agent {
+		opts.Baseline = false
+	}
 	rep := opts.reporter()
 	execute, reportsUsage, priced := evalCapabilities(opts.Options, sel)
+	if hosted && !execute {
+		return false, nil // count-only: nothing to count, and real results must not be overwritten
+	}
 
 	// modelApplicable is every eval valid for this model (the eval-set models
 	// restriction + skill only), ignoring the selection filter, so a partial rerun
@@ -151,11 +165,14 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	// Token counting fans out over opts.Jobs: on a cache miss each count is a
 	// network round-trip, so a sequential loop stalls the unit before any eval
 	// run starts (see Options.countTokens).
-	texts := make([]string, len(runSet))
-	for i, c := range runSet {
-		texts[i] = payload(skillMD, c.Prompt)
+	tokens := make([]*int, len(runSet))
+	if !hosted {
+		texts := make([]string, len(runSet))
+		for i, c := range runSet {
+			texts[i] = payload(skillMD, c.Prompt)
+		}
+		tokens = opts.countTokens(ctx, sel, texts)
 	}
-	tokens := opts.countTokens(ctx, sel, texts)
 	entryResults := make([]results.EvalResult, len(runSet))
 	for i, c := range runSet {
 		entryResults[i] = results.EvalResult{
@@ -179,7 +196,12 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	// at the end of the unit. freshBaseline collects the baselines that re-ran.
 	var freshBaseline map[string]results.EvalResult
 	if execute {
-		sess := newCLISession(opts, sel)
+		var sess sessionRunner = newCLISession(opts, sel)
+		if hosted {
+			if sess, err = newHostedSession(opts, set.Skill, sel); err != nil {
+				return false, err
+			}
+		}
 		batchFailed, fresh, err := runEvals(ctx, opts, set, ref, sess, runSet, entryResults, priorBaseline)
 		failed = failed || batchFailed
 		if err != nil {
@@ -241,6 +263,12 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, ref pla
 	evals []evalspec.Eval, entryResults []results.EvalResult, priorBaseline *results.EvalSnapshot,
 ) (bool, map[string]results.EvalResult, error) {
 	var failedAny bool
+	// The with-skill run symlinks the skill under test into the workspace; a
+	// hosted agent is not in the workspace at all.
+	var skills []string
+	if !set.Agent {
+		skills = []string{set.SkillDir}
+	}
 	g, runCtx := errgroup.WithContext(ctx)
 	g.SetLimit(opts.Jobs)
 	outcomes := make([]evalOutcome, len(evals))
@@ -260,7 +288,7 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, ref pla
 					baselines[i] = &base
 				}
 			}
-			outcome, result, err := runEval(runCtx, opts, ref, sess, c, i, []string{set.SkillDir}, false)
+			outcome, result, err := runEval(runCtx, opts, ref, sess, c, i, skills, false)
 			if err != nil {
 				return err
 			}
@@ -293,6 +321,21 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, ref pla
 		fresh[evals[i].ID] = *m
 	}
 	return failedAny, fresh, nil
+}
+
+// suiteFits reports whether a set's evals file is of the set's kind — an
+// agent suite for a hosted agent, a skill suite for a skill — warning and
+// skipping a mismatch (checks reports it as an error).
+func suiteFits(opts *Options, set layout.EvalSet, spec *evalspec.EvalsFile) bool {
+	if set.Agent == (spec.Kind() == evalspec.KindAgent) {
+		return true
+	}
+	want := "a skill suite"
+	if set.Agent {
+		want = "an agent suite (with an agent block)"
+	}
+	opts.reporter().Warn("  warn: %s: not %s; skipped (see evolve run checks)\n", opts.Repo.Rel(set.EvalsPath), want)
+	return false
 }
 
 // evalRunSet narrows the applicable evals to those a --new/--failed/--modified
@@ -473,6 +516,7 @@ func runEval(ctx context.Context, opts EvalOptions, ref plan.UnitRef, sess sessi
 			Name:         c.Name,
 			RuntimeError: s.runtimeError,
 			Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
+			Conversation: s.conversation,
 		}, nil
 	}
 
@@ -533,6 +577,7 @@ func runEval(ctx context.Context, opts EvalOptions, ref plan.UnitRef, sess sessi
 		Summary:      results.SummarizeExpectations(graded),
 		Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
 		Measured:     s.measured,
+		Conversation: s.conversation,
 	}
 	if result.Measured != nil {
 		result.Timing.TotalTokens = result.Measured.TotalTokens()

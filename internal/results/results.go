@@ -277,6 +277,39 @@ type EvalResult struct {
 	// hash the baseline was run against, so a baseline is recomputed only when the
 	// eval itself changes (not when the skill changes). Empty elsewhere.
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// Conversation summarizes a hosted agent's scripted conversation; nil for
+	// skill evals. Additive and omitempty (like RuntimeError), so it needs no
+	// schema bump, and TrimEval drops it from snapshots.
+	Conversation *Conversation `json:"conversation,omitempty"`
+}
+
+// Conversation is how a hosted-agent eval's conversation went: how many runs
+// it took, how it ended (completed, awaiting_input, cancelled, max_turns, or
+// error), the human-in-the-loop requests the agent made, and the
+// protocol-conformance violations observed (deduplicated).
+type Conversation struct {
+	Runs                  int                    `json:"runs"`
+	Outcome               string                 `json:"outcome"`
+	HITL                  []HITLExchange         `json:"hitl,omitempty"`
+	ConformanceViolations []ConformanceViolation `json:"conformance_violations,omitempty"`
+}
+
+// HITLExchange is one human-in-the-loop request: a frontend tool call or an
+// interrupt (Name is the tool, or the interrupt's reason), and whether a
+// scripted response answered it.
+type HITLExchange struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name,omitempty"`
+	Answered bool   `json:"answered"`
+}
+
+// ConformanceViolation is one protocol-conformance problem; Run is the first
+// run it was seen in.
+type ConformanceViolation struct {
+	Severity string `json:"severity"`
+	Rule     string `json:"rule"`
+	Message  string `json:"message"`
+	Run      int    `json:"run,omitempty"`
 }
 
 // RunSeconds is the eval's executor (agent-run) duration, or nil when untimed.

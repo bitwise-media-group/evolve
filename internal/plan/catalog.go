@@ -73,11 +73,13 @@ func modelAllowed(m model.Model, allowedModels []string) bool {
 	return len(allowedModels) == 0 || m.MatchedBy(allowedModels)
 }
 
-// Allows reports whether model m may run this skill's cases under its eval-set
-// models restriction. It is the per-skill gate the engine's case-by-case
-// previews share with ApplicableTriggers/ApplicableEvals.
+// Allows reports whether model m may run this skill's cases: m is of the
+// set's kind (a hosted endpoint for an agent, a registry model for a skill)
+// and within its restriction (eval-set models, or an agent's endpoints). It is
+// the per-skill gate the engine's case-by-case previews share with
+// ApplicableTriggers/ApplicableEvals.
 func (sc SkillCatalog) Allows(m model.Model) bool {
-	return modelAllowed(m, sc.Models)
+	return sc.Agent == model.IsHostedProvider(m.ProviderID) && modelAllowed(m, sc.Models)
 }
 
 // ApplicableTriggers is every trigger model m under skill could run: those the

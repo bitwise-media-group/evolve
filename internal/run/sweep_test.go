@@ -193,8 +193,11 @@ func TestSweepAgentRepoRunsNothingOnSkillSelections(t *testing.T) {
 		}
 	}
 	cat, err := Catalog(eo.Options)
-	if err != nil || len(cat) != 0 {
-		t.Errorf("catalog = %+v, %v; want no runnable sets", cat, err)
+	if err != nil || len(cat) != 2 || !cat[0].Agent {
+		t.Fatalf("catalog = %+v, %v; want both agent sets", cat, err)
+	}
+	if units := Plan(cat, eo.Selected, nil, plan.Tiers{Triggers: true, Evals: true}); len(units) != 0 {
+		t.Errorf("plan = %+v, want no units for a skill selection", units)
 	}
 }
 

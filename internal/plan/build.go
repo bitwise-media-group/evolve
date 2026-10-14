@@ -36,6 +36,9 @@ func Build(cat []SkillCatalog, models []harness.Selection, sel Selection, prior 
 func buildSkill(sc SkillCatalog, models []harness.Selection, sel Selection, prior PriorMetrics) Skill {
 	sk := Skill{Skill: sc.Skill, Title: sc.Title}
 	for _, m := range models {
+		if !sc.Allows(m.Model) {
+			continue
+		}
 		key := m.Key()
 		var units []Unit
 		if trig := ApplicableTriggers(sc.Triggers, m.Model, sc.Models, sc.Skill, nil); len(trig) > 0 {

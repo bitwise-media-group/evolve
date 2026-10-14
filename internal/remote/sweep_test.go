@@ -350,3 +350,17 @@ func TestUploadBundlesDedupes(t *testing.T) {
 		t.Errorf("re-uploaded already-cached bundles (%d puts total)", got)
 	}
 }
+
+func TestSweepRefusesAgentRepos(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "agents", "support", "evals.json"),
+		`{"agent":{"endpoints":{"local":{"url":"http://localhost:8000/"}}},"evals":[]}`)
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Sweep(context.Background(), sweepOptions(repo, nil, nil))
+	if err == nil || !strings.Contains(err.Error(), "hosted-agent repositories") {
+		t.Errorf("err = %v, want a refusal", err)
+	}
+}

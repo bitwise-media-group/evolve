@@ -26,4 +26,17 @@
 // first, LLM judge last. Executed runs record the harness-reported usage of
 // the live session where the provider exposes it; the agent's wall clock
 // excludes grading so the model-speed signal stays clean.
+//
+// Hosted agents: in an agent repository each agent's evals run against its
+// endpoints instead of a model — one hosted selection per protocol endpoint,
+// bound to a harness.Hosted descriptor. runEval stages the workspace the
+// same way, but a sessionRunner decides what drives the session: a CLI
+// session builds the harness's command, a hosted session (hosted.go) drives a
+// scripted conversation with the deployed agent (agui.Converse), writes its
+// transcript under .agent/ for command assertions and the judge, and hands
+// the conversation's state, human-in-the-loop requests, outcome, and
+// conformance violations to the grader. Grading, results, and reporting are
+// common. An eval set runs only on selections of its own kind, agents get no
+// without-skill baseline and no token estimate, and --modified tracks the
+// agent's directory (its definition) rather than a SKILL.md.
 package run

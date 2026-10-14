@@ -15,6 +15,12 @@ const (
 	ProviderGoogle    = "google"
 	ProviderCursor    = "cursor"
 	ProviderXAI       = "xai"
+
+	// ProviderAGUI is the display-only provider of hosted AG-UI endpoints:
+	// it owns no registry models (an endpoint selection is synthesized per
+	// agent repository), has no pricing or counting API, and cannot be
+	// overridden from config.
+	ProviderAGUI = "ag-ui"
 )
 
 // Harness ids, referenced by the Supported maps below. The harness package
@@ -27,6 +33,9 @@ const (
 	HarnessCopilot     = "copilot"
 	HarnessAntigravity = "antigravity"
 	HarnessGrok        = "grok"
+
+	// HarnessAGUI drives hosted AG-UI endpoints (no CLI).
+	HarnessAGUI = "ag-ui"
 )
 
 // Providers returns the model vendors in display order.
@@ -320,9 +329,21 @@ func ModelByID(models []Model, id string) (Model, bool) {
 	return Model{}, false
 }
 
-// ProviderByID returns the vendor with the given id, if any.
+// hostedProviders are the display-only providers of hosted-agent endpoints:
+// known to ProviderByID (for display names) but not vendors — Providers()
+// and the model registry exclude them.
+var hostedProviders = []Provider{{ID: ProviderAGUI, Name: "AG-UI"}}
+
+// IsHostedProvider reports whether id names a hosted-agent protocol rather
+// than a model vendor.
+func IsHostedProvider(id string) bool {
+	return slices.ContainsFunc(hostedProviders, func(p Provider) bool { return p.ID == id })
+}
+
+// ProviderByID returns the vendor (or hosted-agent provider) with the given
+// id, if any.
 func ProviderByID(id string) (Provider, bool) {
-	for _, p := range Providers() {
+	for _, p := range append(Providers(), hostedProviders...) {
 		if p.ID == id {
 			return p, true
 		}

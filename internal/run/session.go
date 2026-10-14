@@ -44,6 +44,9 @@ type agentSession struct {
 	// extend adds executor-specific grading signals (a hosted conversation's
 	// state, HITL requests, outcome, violations, judge context); nil adds none.
 	extend func(*grade.Options)
+	// conversation summarizes a hosted agent's conversation for the results
+	// file; nil for a CLI session.
+	conversation *results.Conversation
 }
 
 // cliSession runs an eval through a local agent CLI: the harness's headless

@@ -245,6 +245,13 @@ func maximalResults() *results.File {
 				TotalSteps: new(2), FilesCreated: []string{"out.txt"},
 				ErrorsEncountered: new(0), OutputChars: new(120), TranscriptChars: new(3200),
 			},
+			Conversation: &results.Conversation{
+				Runs: 3, Outcome: "completed",
+				HITL: []results.HITLExchange{{Kind: "tool", Name: "confirm_refund", Answered: true}},
+				ConformanceViolations: []results.ConformanceViolation{
+					{Severity: "warning", Rule: "unknown", Message: `TEXT_MESSAGE_START: unknown field "x"; ignored`, Run: 1},
+				},
+			},
 			Timing: &results.Timing{
 				TotalTokens: new(1030), DurationMS: new(23332), TotalDurationSeconds: new(23.3),
 				ExecutorStart: "2026-06-12T11:00:00Z", ExecutorEnd: "2026-06-12T11:02:45Z",

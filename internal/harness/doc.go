@@ -20,4 +20,10 @@
 // callers fail open — a harness without the capability, or a failed probe,
 // deselects nothing. Token counting is a vendor concern and lives in
 // internal/model, not here.
+//
+// Hosted is the one non-CLI harness: a descriptor for agents hosted behind a
+// protocol endpoint (AG-UI). It has no binary (Available is always true), no
+// skill directories, and no EvalRunner, so it can never be the judge;
+// HostedSelection binds an endpoint to it as an unpriced model keyed
+// "<protocol>/<endpoint>".
 package harness

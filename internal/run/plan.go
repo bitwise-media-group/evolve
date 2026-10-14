@@ -25,11 +25,6 @@ func Catalog(opts Options) ([]plan.SkillCatalog, error) {
 	}
 	cat := make([]plan.SkillCatalog, 0, len(sets))
 	for _, set := range sets {
-		// Hosted agents run only against hosted endpoint selections, which no
-		// sweep carries yet, so the form lists none of them.
-		if set.Agent {
-			continue
-		}
 		sc := plan.SkillCatalog{
 			Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir,
 			Agent: set.Agent,
@@ -47,9 +42,11 @@ func Catalog(opts Options) ([]plan.SkillCatalog, error) {
 				sc.Triggers = tf.Triggers
 			}
 		}
+		// A suite of the wrong kind for its set (checks flags it) contributes no
+		// cases, matching the engine, which skips it.
 		if set.EvalsPath != "" {
-			if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil {
-				sc.Models = ef.Models
+			if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil && set.Agent == (ef.Kind() == evalspec.KindAgent) {
+				sc.Models = ef.Restriction()
 				sc.Evals = ef.Evals
 			}
 		}
@@ -66,6 +63,9 @@ func Plan(cat []plan.SkillCatalog, sels []harness.Selection, f *plan.Filter, tie
 	var units []plan.UnitRef
 	for _, sc := range cat {
 		for _, sel := range sels {
+			if !sc.Allows(sel.Model) {
+				continue
+			}
 			if tiers.Triggers && len(plan.ApplicableTriggers(sc.Triggers, sel.Model, sc.Models, sc.Skill, f)) > 0 {
 				units = append(units, plan.UnitRef{Skill: sc.Skill, Key: sel.Key(), Kind: plan.KindTriggers})
 			}
@@ -272,7 +272,7 @@ func needEvals(opts Options, sc plan.SkillCatalog, sels []harness.Selection, fla
 				// A missing/stale baseline is an additive gap (--baseline): it selects
 				// the eval even when --new/--failed/--modified would not, matching the
 				// engine's run-set.
-				if reason == ReasonNone && evalBaselineNeeded(file, sel.Key(), c, execute, opts.Baseline) {
+				if reason == ReasonNone && evalBaselineNeeded(file, sel.Key(), c, execute, opts.Baseline && !sc.Agent) {
 					reason = ReasonBaselineMissing
 				}
 			}
@@ -295,7 +295,14 @@ func triggerExecutes(opts Options, sel harness.Selection) bool {
 
 // evalCapabilities mirrors runEvalUnit's per-model knobs: whether it executes,
 // whether the harness reports measured usage, and whether the model is priced.
+// A hosted selection executes unless count-only (there is no CLI to find); its
+// usage reporting is optional in the protocol, so it never counts as missing,
+// and an endpoint is never priced — so --new never reruns a complete hosted
+// result for want of usage or cost.
 func evalCapabilities(opts Options, sel harness.Selection) (execute, reportsUsage, priced bool) {
+	if harness.IsHosted(sel.Harness) {
+		return !opts.CountOnly, false, false
+	}
 	evalRunner, isEvalRunner := sel.Harness.(harness.EvalRunner)
 	_, cliFound := harness.Available(sel.Harness)
 	execute = isEvalRunner && (cliFound || opts.AssumeRunnable) && !opts.CountOnly

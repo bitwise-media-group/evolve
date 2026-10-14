@@ -156,8 +156,12 @@ func ByID(id string) (Harness, bool) {
 	return nil, false
 }
 
-// Available finds the first of the harness's runner binaries on PATH.
+// Available finds the first of the harness's runner binaries on PATH. A
+// hosted harness has no binary and is always available (path "").
 func Available(h Harness) (path string, ok bool) {
+	if IsHosted(h) {
+		return "", true
+	}
 	for _, name := range h.CLI() {
 		if p, err := exec.LookPath(name); err == nil {
 			return p, true

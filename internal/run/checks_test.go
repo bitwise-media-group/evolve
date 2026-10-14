@@ -356,3 +356,24 @@ func TestAgentSuiteWarningsDoNotFail(t *testing.T) {
 		t.Errorf("findings = %+v, want one warning", findings)
 	}
 }
+
+func TestAgentDirChecks(t *testing.T) {
+	root := t.TempDir()
+	suite := `{"agent":{"name":"%s","endpoints":{"local":{"url":"http://localhost:8000/"}}},` +
+		`"evals":[{"id":"e","prompt":"p","assertions":["ok"]}]}`
+	writeFile(t, filepath.Join(root, "agents", "support", "evals.json"), fmt.Sprintf(suite, "helpdesk"))
+	writeFile(t, filepath.Join(root, "agents", "billing", "evals.json"), fmt.Sprintf(suite, "billing"))
+	writeFile(t, filepath.Join(root, "agents", "billing", "triggers.json"), `{"triggers":[]}`)
+	msgs := messages(checkDir(t, root, DefaultCheckConfig()))
+	for _, want := range []string{
+		"agents/support/evals.json: agent.name 'helpdesk' != directory 'support'",
+		"agents/billing/triggers.json: agents have no trigger tier",
+	} {
+		if !containsSubstring(msgs, want) {
+			t.Errorf("findings missing %q:\n  %s", want, strings.Join(msgs, "\n  "))
+		}
+	}
+	if len(msgs) != 2 {
+		t.Errorf("findings = %v, want exactly those two", msgs)
+	}
+}

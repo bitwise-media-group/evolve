@@ -33,6 +33,10 @@ func (o *Options) ModelOverrides() (map[string][]model.Model, map[string]bool, e
 		if !ok {
 			return nil, nil, fmt.Errorf("config providers.%s: expected an object", name)
 		}
+		if model.IsHostedProvider(name) {
+			return nil, nil, fmt.Errorf("config providers.%s: hosted-agent endpoints are not configurable models "+
+				"(define them in each agent's evals file)", name)
+		}
 		modelsRaw, ok := entry["models"]
 		if !ok {
 			continue

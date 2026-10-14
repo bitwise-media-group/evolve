@@ -57,6 +57,9 @@ type plannedUnit struct {
 // file, saved with the same rotation a local run performs. failed reports
 // graded failures (the --strict signal).
 func Sweep(ctx context.Context, opts SweepOptions) (failed bool, err error) {
+	if opts.Repo.IsAgentRepo() {
+		return false, errors.New("remote execution does not support hosted-agent repositories yet; run without --remote")
+	}
 	rep := opts.Reporter
 	if rep == nil {
 		rep = run.NewPlainReporter(opts.Stdout, opts.Stderr)

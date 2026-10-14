@@ -134,6 +134,9 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 	file *results.File, skillMD []byte, contentHash string, triggers []evalspec.Trigger, allowedModels []string, ws string,
 ) (failed bool, err error) {
 
+	if harness.IsHosted(sel.Harness) {
+		return false, nil // hosted selections drive agents, which have no trigger tier
+	}
 	rep := opts.reporter()
 	// modelApplicable is every query valid for this model (the eval-set models
 	// restriction + skill only), ignoring the selection filter, so a partial rerun
@@ -170,8 +173,7 @@ func runTriggerUnit(ctx context.Context, opts TriggerOptions, set layout.EvalSet
 		}
 	}
 	if !execute && !opts.CountOnly {
-		rep.Warn("  warn: `%s` CLI not found; %s gets token counts only\n",
-			sel.Harness.CLI()[0], sel.Key())
+		rep.Warn("  warn: `%s` CLI not found; %s gets token counts only\n", cliName(sel.Harness), sel.Key())
 	}
 
 	mode := plan.ModeCountOnly
@@ -451,6 +453,15 @@ func estCost(e *results.Estimate) *float64 {
 		return nil
 	}
 	return e.InputCostUSD
+}
+
+// cliName is the harness's preferred CLI binary for messages, or its id when
+// it has none (a hosted harness).
+func cliName(h harness.Harness) string {
+	if clis := h.CLI(); len(clis) > 0 {
+		return clis[0]
+	}
+	return h.ID()
 }
 
 func truncate(s string, n int) string {

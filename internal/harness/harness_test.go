@@ -67,3 +67,36 @@ func TestToolCallReporterCapability(t *testing.T) {
 		}
 	}
 }
+
+func TestHosted(t *testing.T) {
+	sel, ok := HostedSelection("ag-ui", "staging", "Support (staging)")
+	if !ok {
+		t.Fatal("HostedSelection(ag-ui) = false")
+	}
+	m := sel.Model
+	if sel.Key() != "ag-ui/staging" || m.ProviderID != "ag-ui" || m.BareID() != "staging" || m.Name != "Support (staging)" ||
+		m.InputUSD != nil || m.OutputUSD != nil {
+		t.Errorf("model = %+v", m)
+	}
+	if id, _ := m.CLIModelID("ag-ui"); id != "staging" {
+		t.Errorf("endpoint id = %q", id)
+	}
+	if !IsHosted(sel.Harness) || IsHosted(NewClaude()) {
+		t.Error("IsHosted misclassifies")
+	}
+	if path, ok := Available(sel.Harness); !ok || path != "" {
+		t.Errorf("Available(hosted) = %q, %v; want always available with no path", path, ok)
+	}
+	if _, ok := sel.Harness.(EvalRunner); ok {
+		t.Error("a hosted harness must not be an EvalRunner (it can never judge)")
+	}
+	if sel.Harness.CLI() != nil || sel.Harness.SkillDirs() != nil {
+		t.Error("a hosted harness has no CLI or skill dirs")
+	}
+	if _, ok := HostedSelection("a2a", "x", ""); ok {
+		t.Error("an unsupported protocol must not yield a selection")
+	}
+	if sel, _ := HostedSelection("ag-ui", "local", ""); sel.Model.Name != "local" {
+		t.Errorf("display defaults to the endpoint name, got %q", sel.Model.Name)
+	}
+}

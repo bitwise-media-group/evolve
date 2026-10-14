@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -65,5 +66,13 @@ func TestActiveModelKeysHarnessRestriction(t *testing.T) {
 	}
 	if !keys["openai/gpt-6-sol"] {
 		t.Error("gpt-6-sol (codex) must be active under a codex restriction")
+	}
+}
+
+func TestModelOverridesRejectHostedProvider(t *testing.T) {
+	o := &Options{Viper: viper.New()}
+	o.Viper.Set("providers", map[string]any{"ag-ui": map[string]any{"models": []any{map[string]any{"id": "local"}}}})
+	if _, _, err := o.ModelOverrides(); err == nil || !strings.Contains(err.Error(), "providers.ag-ui") {
+		t.Errorf("err = %v, want a hosted-provider rejection", err)
 	}
 }

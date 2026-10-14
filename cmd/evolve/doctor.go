@@ -36,8 +36,11 @@ var doctorCmd = &cobra.Command{
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 2, 4, 2, ' ', 0)
 		fmt.Fprintln(w, "HARNESS\tCLI\tCREDENTIAL")
 		for _, h := range harnesses {
-			cliPath := "missing (" + h.CLI()[0] + ")"
-			if path, ok := harness.Available(h); ok {
+			cliPath := "n/a (hosted)"
+			if clis := h.CLI(); len(clis) > 0 {
+				cliPath = "missing (" + clis[0] + ")"
+			}
+			if path, ok := harness.Available(h); ok && path != "" {
 				cliPath = path
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\n", h.ID(), cliPath, credentialStatus(h.EnvKeys()))

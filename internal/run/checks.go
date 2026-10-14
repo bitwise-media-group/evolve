@@ -14,6 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/layout"
 	"github.com/bitwise-media-group/evolve/internal/manifest"
@@ -153,6 +154,9 @@ func (c *checker) checkEvalSpecs() {
 				}
 			}
 		}
+		if set.Agent {
+			c.checkAgentDir(set)
+		}
 		if !set.Agent && !isDir(set.SkillDir) {
 			c.errf("%s: evals/%s has no matching skill at %s",
 				c.repo.Rel(set.Plugin.Dir), set.Skill, c.repo.Rel(set.SkillDir))
@@ -177,7 +181,8 @@ func (c *checker) warnf(format string, args ...any) {
 
 // checkSuiteKind enforces that a repository's evals files are all of its
 // kind: agent suites (with an agent block) in an agent repository, skill
-// suites (without one) in a plugin repository.
+// suites (without one) in a plugin repository. In the agents layout an
+// agent's authored name must be its directory's.
 func (c *checker) checkSuiteKind(set layout.EvalSet, spec *evalspec.EvalsFile, rel string) {
 	switch {
 	case set.Agent && spec.Kind() != evalspec.KindAgent:
@@ -185,6 +190,21 @@ func (c *checker) checkSuiteKind(set layout.EvalSet, spec *evalspec.EvalsFile, r
 	case !set.Agent && spec.Kind() == evalspec.KindAgent:
 		c.errf("%s: agent block in a plugin repository (agent suites live in an agent repository: "+
 			"agents/<name>/ or agent/)", rel)
+	case set.Agent && c.repo.Kind == layout.Agents && spec.Agent.Name != "" && spec.Agent.Name != set.Skill:
+		c.errf("%s: agent.name '%s' != directory '%s'", rel, spec.Agent.Name, set.Skill)
+	}
+}
+
+// checkAgentDir flags what an agent's directory must not hold: a triggers
+// file (agents have no trigger tier).
+func (c *checker) checkAgentDir(set layout.EvalSet) {
+	path, err := encfmt.FindOne(set.SkillDir, "triggers")
+	if err != nil {
+		c.errf("%s: %v", c.repo.Rel(set.SkillDir), err)
+		return
+	}
+	if path != "" {
+		c.errf("%s: agents have no trigger tier (remove the triggers file)", c.repo.Rel(path))
 	}
 }
 
