@@ -32,7 +32,7 @@ func runChecksCfg(t *testing.T, fixture string, cfg CheckConfig) []Finding {
 }
 
 func TestValidRepos(t *testing.T) {
-	for _, fixture := range []string{"marketplace", "multi", "single"} {
+	for _, fixture := range []string{"marketplace", "multi", "single", "agents", "agent"} {
 		t.Run(fixture, func(t *testing.T) {
 			for _, f := range runChecks(t, fixture) {
 				t.Errorf("unexpected finding: %s", f.Message)

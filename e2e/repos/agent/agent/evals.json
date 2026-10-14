@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json",
+  "agent": {
+    "name": "concierge",
+    "protocol": "ag-ui",
+    "endpoints": { "local": { "url": "http://localhost:8000/concierge" } }
+  },
+  "evals": [
+    {
+      "id": "book-a-table",
+      "prompt": "Book a table for two tonight.",
+      "tools": [{ "name": "pick_time", "description": "Ask the guest for a time" }],
+      "responses": [{ "tool": "pick_time", "result": "19:30" }],
+      "max_turns": 6,
+      "timeout_seconds": 120,
+      "assertions": [
+        { "type": "outcome", "expect": "completed" },
+        { "type": "state", "pointer": "/booking/time", "equals": "19:30" },
+        { "type": "command", "run": "jq -e '.booking.guests == 2' .agent/state.json", "requires": "jq" }
+      ]
+    }
+  ]
+}

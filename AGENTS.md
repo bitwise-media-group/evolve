@@ -9,7 +9,9 @@ usage read [README.md](README.md). This file is the "where things are"; DESIGN.m
 `evolve` is a single Go CLI (module `github.com/bitwise-media-group/evolve`, entry `cmd/evolve`) that evaluates
 coding-agent plugins across tiers: static checks (Tier 0), trigger-accuracy evals (Tier 1), and behavioral evals (Tier
 2), then writes committed Markdown/JSON reports. It drives real agent CLIs (Anthropic, OpenAI, Google, Cursor, Copilot,
-Antigravity) in throwaway workspaces and grades the results.
+Antigravity) in throwaway workspaces and grades the results. It also evaluates **hosted agents** behind an AG-UI
+endpoint: an agent repository (`agents/<name>/evals.<ext>` or `agent/evals.<ext>`, never mixed with plugins) runs the
+same behavioral evals as scripted conversations, one selection per endpoint (DESIGN.md → Hosted agents).
 
 ## Layout
 
@@ -54,7 +56,8 @@ snippet-includes the generated config fragments.
 
 ## Packages (`internal/`)
 
-- `cli` — shared command plumbing: global `Options`, layered `.evolve` config, harness/model/repo/threshold resolution.
+- `cli` — shared command plumbing: global `Options`, layered `.evolve` config, harness/model/repo/threshold resolution,
+  and an agent repository's endpoint selections and lazy `${VAR}` resolution (`agents.go`).
 - `plan` — the planner: the single owner of _what runs, for which models, in what order_. Holds the structural types
   (`UnitRef`, `Kind`, `Status`, `Mode`, `ItemMetrics`, `CaseRef`, `Filter`, `Tiers`, `SkillCatalog`), applicability +
   prior-metrics, the canonical model — `Plan` (ordered plugin→skill→model→unit→case tree), `Selection` (enable/disable
@@ -63,7 +66,8 @@ snippet-includes the generated config fragments.
   that resolves through the same `Build`. `run` and `tui` both import it and must not re-derive ordering or selection.
 - `run` — the three eval engines (`checks.go`, `triggers.go`, `evals.go`, `sweep.go`), the unit enumeration / preselect
   matrix (`plan.go`: `Catalog`/`Plan`/`Needs`/`CaseReasons`), and the `Reporter` seam (`reporter.go`) the TUI and plain
-  output both implement. Executes the per-model filters `plan.Build` resolves.
+  output both implement. Executes the per-model filters `plan.Build` resolves. `runEval` drives each session through a
+  `sessionRunner` (`session.go`: the CLI session; `hosted.go`: the AG-UI conversation for agent sets).
 - `tui` — the interactive bubbletea selection form and live run dashboard; a presentation layer over `plan` (the form
   drives a `plan.Session`; the dashboard projects the `plan.Plan` the engine runs). **See DESIGN.md → TUI for the full
   wiring.**
@@ -71,7 +75,8 @@ snippet-includes the generated config fragments.
   provider-qualified ids, pricing, the harnesses each model can be driven by (the `Supported` map), and the vendor
   token-counting clients. The lowest-level domain package (imports no other internal package); owns the shared value
   types `CommandSpec`, `EvalInput`, `Usage`.
-- `harness` — the agent CLIs evolve drives (Claude Code, Codex, Gemini, Cursor, Copilot, Antigravity, Grok): runner-CLI
+- `harness` — the agent CLIs evolve drives (Claude Code, Codex, Gemini, Cursor, Copilot, Antigravity, Grok), plus the
+  `Hosted` descriptor (`hosted.go`) that binds an agent endpoint to a selection (no CLI, never a judge): runner-CLI
   command construction, output parsing, the optional `EvalRunner` and `OfferedModels` capabilities (the latter probes
   which models the operator's installed CLI actually serves, so the TUI can deselect the rest by default), and
   `Selection`/`RunnableHarness` that bind a model to the one harness that runs it (evals run once per model, never once
@@ -93,7 +98,11 @@ snippet-includes the generated config fragments.
   embedded under `-tags withui`; git-ignored, built by `make ui`). Backs the `view` command.
 - `evalspec` — parses authored triggers/evals definitions.
 - `manifest` — parses plugin/marketplace manifests and SKILL.md frontmatter.
-- `layout` — detects the repo shape (single/multi/marketplace) and enumerates plugins + eval sets.
+- `layout` — detects the repo shape (single/multi/marketplace, or the hosted-agent agents/agent) and enumerates plugins
+  (or agents) + eval sets; an agent's set has `Agent: true` and groups under the synthetic `agents` plugin.
+- `agui` — the AG-UI 1.0 client (a stdlib-only leaf): SSE reader, event decoding + conformance validation, RFC 6902/6901
+  patching, and `Converse`, which drives one scripted conversation (answering frontend-tool and interrupt HIL requests
+  from canned responses, sending follow-ups) into a `Transcript`; `WriteArtifacts` writes it under `.agent/`.
 - `tokencount` — caches vendor-reported input-token counts (from official counting APIs, never a local tokenizer).
 - `encfmt` — reads/writes JSON, JSONC, YAML behind one data model.
 - `configdoc` — renders the configuration reference and annotated example configs.

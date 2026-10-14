@@ -66,6 +66,18 @@ Per-case detail differs by tier. A **trigger** result records the `query`, wheth
 a tri-state `passed` (null when skipped or errored), a `runtime_error` string when the agent run failed outright, the
 graded `expectations` (each with its `text`, `passed`, and `evidence`), and `execution_metrics`/`timing` for the run.
 
+A [hosted agent's](agents.md) results live in its own directory (`agents/<name>/results.<ext>`), keyed
+`ag-ui/<endpoint>`, and each eval result adds a `conversation` summary:
+
+| Field                    | Meaning                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `runs`                   | Request/response exchanges the conversation took.                                                     |
+| `outcome`                | `completed`, `awaiting_input`, `cancelled`, `max_turns`, or `error` (a runtime error).                |
+| `hitl`                   | The human-in-the-loop requests, in order: `kind` (`tool` or `interrupt`), `name`, and `answered`.     |
+| `conformance_violations` | Protocol violations observed, deduplicated: `severity` (`error`/`warning`), `rule`, `message`, `run`. |
+
+`conversation` is dropped from the `previous` snapshot like the rest of the per-case detail.
+
 !!! note "Usage and pricing are grouped, not nulled"
 
     Token figures live in two optional sub-objects: `estimate` (input tokens from the provider's counting API over

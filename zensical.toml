@@ -29,6 +29,7 @@ nav = [
     { "Triggers" = "evaluations/triggers.md" },
     { "Behavioral evals" = "evaluations/evals.md" },
     { "Assertions" = "evaluations/assertions.md" },
+    { "Hosted agents" = "evaluations/agents.md" },
     { "How evaluations run" = "evaluations/execution.md" },
     { "Results" = "evaluations/results.md" },
   ] },

@@ -111,6 +111,38 @@ The CLI reference in `docs/cli` and the man pages in `docs/man` are generated fr
 configuration reference plus annotated example config files in `docs/config` from `internal/configdoc`'s schema (all via
 `make docs`) and committed, so reviewing a flag or config change shows the documentation diff alongside the code.
 
+### Hosted agents
+
+An agent repository (`agents/<name>/` or `agent/`, never mixed with plugins) evaluates agents already deployed behind an
+AG-UI endpoint. The design keeps every seam the CLI path uses and swaps only what drives the session:
+
+- **Discovery reuses the skill shape.** `layout` yields one `EvalSet` per agent with `Agent: true`, grouped under a
+  synthetic `agents` plugin rooted at the repository, `Skill` the agent name and `SkillDir`/`ResultsDir` its directory.
+  So the planner, TUI, report, and viewer get their plugin → skill slots without a rename, and `Repo.Plugins` stays
+  empty so the plugin-walking checks, signals, and coverage are untouched.
+- **Endpoints are the run matrix.** `cli.HostedSelections` builds one `harness.Selection` per distinct
+  `<protocol>/<endpoint>` across the agents: an unpriced model keyed `ag-ui/<endpoint>` bound to a `harness.Hosted`
+  descriptor (no CLI, always available, deliberately not an `EvalRunner`, so it can never judge). Each agent's own
+  endpoint keys gate which selections reach it through the existing restriction plumbing — `EvalsFile.Restriction()`
+  returns a skill suite's `models` or an agent suite's endpoint keys, and `plan.SkillCatalog.Allows` additionally
+  requires a set and a selection to be of the same kind, so a skill selection never drives an agent and vice versa.
+  `${VAR}`s in endpoint URLs and headers resolve only for the selected endpoints, at sweep start (`run.Options.Agents`).
+- **The session is the only fork.** `runEval` stages the workspace, then a `sessionRunner` drives the session: a
+  `cliSession` builds the harness's command exactly as before; a hosted session (`run/hosted.go`) drives `agui.Converse`
+  and writes the transcript under `.agent/` in the workspace. Both return an `agentSession` — output, tool calls,
+  measured usage, run log, runtime failure — and grading, results, and reporting are common. A hosted session adds the
+  conversation's grading signals (state, HIL requests, outcome, conformance violations, a judge note) through
+  `grade.Options`, nil for a CLI run, and a `conversation` summary on the result.
+- **The protocol client is a leaf.** `internal/agui` imports only the standard library: the SSE reader, the 1.0 event
+  decoder and conformance validator, RFC 6902/6901 patching, and the conversation driver that answers HIL requests from
+  the eval's `responses`. The community Go SDK predates 1.0 and its SSE reader is lossy, so evolve carries its own.
+- **What does not apply is gated, not special-cased downstream.** Agents have no trigger tier, no without-skill baseline
+  (`--baseline` is cleared per agent set), no token estimate, and no skill symlinks in the workspace; `evalCapabilities`
+  marks a hosted selection executable but neither usage-reporting nor priced, so `--new` never reruns a complete result
+  for a missing figure; count-only never touches hosted results. `--modified` fingerprints the agent's directory minus
+  its evals file, results file, and staged fixtures (`agentContentHash`), and `StaleTiers`, `Needs`, and `CaseReasons`
+  share that one helper with the engine.
+
 ### Remote execution
 
 Runs can execute on a patchy cluster instead of the workstation (`--remote`, or `remote.default` with a configured

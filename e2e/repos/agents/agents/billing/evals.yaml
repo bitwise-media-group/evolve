@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json
+agent:
+  endpoints:
+    local: { url: "http://localhost:8000/billing" }
+evals:
+  - id: charge-needs-confirmation
+    prompt: Charge the card on file for invoice 77.
+    responses:
+      - interrupt: '^confirmation$'
+        message: '(?i)charge'
+        payload: { approved: true }
+    assertions:
+      - { type: hitl, reason: '^confirmation$', max: 1 }
+      - { type: outcome, expect: completed }
+      - { type: conformance }

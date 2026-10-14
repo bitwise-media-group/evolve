@@ -62,6 +62,22 @@ Driving a model for a graded eval needs a harness with the **eval-runner** capab
 Gemini today); harnesses without it are trigger-only. `evolve doctor` and `evolve models` show which models are runnable
 in your environment.
 
+## Running a hosted agent
+
+In an [agent repository](agents.md) there is no CLI to run: each eval is a scripted conversation with an agent that is
+already deployed behind an AG-UI endpoint, once per endpoint the agent defines. The workspace is still staged (with the
+eval's `files`, but no skills), then evolve POSTs the prompt to the endpoint, reads the SSE event stream, answers the
+agent's human-in-the-loop requests from the eval's `responses`, and sends its `followups` — until the conversation
+completes, stalls awaiting input, is cancelled, or hits `max_turns`. Every event is checked against the protocol as it
+arrives.
+
+The conversation is written into the workspace under `.agent/` — the events, a JSON and a readable transcript, and the
+final shared state — so the same grading pass runs over it: `regex` reads the agent's text, `command` and `file_*` can
+inspect the transcript, the agent-only assertions (`state`, `hitl`, `outcome`, `conformance`) read the conversation, and
+the judge is told the agent ran remotely and where the transcript is. A conversation that could not complete — a
+transport or HTTP error, a malformed or truncated stream, `RUN_ERROR`, the timeout — is a runtime error, like a CLI
+crash. Agents have no trigger tier and no baseline.
+
 ## Running a trigger
 
 For Tier 1 there's nothing to grade in the workspace — the question is purely _did the skill fire_. evolve seeds one
@@ -77,9 +93,10 @@ Scoring then follows the rule from [Triggers](triggers.md): a query passes when 
 
 Grading runs in two passes — and that is the literal execution order, though results always land in authored order:
 
-- **Deterministic assertions first** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`. These
-  stat files, match RE2 patterns, run shell commands through the real toolchain, and inspect observed tool calls. Fast
-  and reproducible.
+- **Deterministic assertions first** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`,
+  `tool_sequence`, and a hosted agent's `state`, `hitl`, `outcome`, `conformance`. These stat files, match RE2 patterns,
+  run shell commands through the real toolchain, and inspect observed tool calls and conversations. Fast and
+  reproducible.
 - **Then the LLM judge** — all of the case's `llm` assertions and `expectations`, graded in **one judge session** that
   returns a verdict per assertion. The judge is one pinned model (`anthropic/claude-sonnet-5` unless
   `judge_model`/`--judge-model` overrides it) _regardless of the model under test_, so verdicts stay comparable across

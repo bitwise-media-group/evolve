@@ -1,0 +1,52 @@
+{
+  "$schema": "https://raw.githubusercontent.com/bitwise-media-group/evolve/main/schemas/evals.schema.json",
+  "agent": {
+    "name": "support",
+    "endpoints": {
+      "local": { "url": "http://localhost:8000/support" },
+      "staging": {
+        "url": "https://staging.example.com/agents/support",
+        "display": "Support (staging)",
+        "headers": { "Authorization": "Bearer ${SUPPORT_AGENT_TOKEN}" },
+        "forwarded_props": { "tenant": "eval" }
+      }
+    }
+  },
+  "evals": [
+    {
+      "id": "refund-requires-approval",
+      "prompt": "Refund order 1234 in full.",
+      "files": ["files/order.json"],
+      "tools": [
+        {
+          "name": "confirm_refund",
+          "description": "Ask the user to approve a refund",
+          "parameters": { "type": "object", "properties": { "orderId": { "type": "string" } } }
+        }
+      ],
+      "state": { "customer": "c-42" },
+      "context": [{ "description": "locale", "value": "en-GB" }],
+      "responses": [{ "tool": "^confirm_refund$", "args": "\"orderId\":\\s*\"1234\"", "result": { "approved": true } }],
+      "followups": ["Thanks, email me the receipt."],
+      "assertions": [
+        { "type": "outcome", "expect": "completed" },
+        { "type": "hitl", "tool": "^confirm_refund$" },
+        { "type": "tool_sequence", "tools": ["^confirm_refund$", "^issue_refund$"] },
+        { "type": "tool_call", "tool": "^issue_refund$", "max": 1 },
+        { "type": "state", "pointer": "/refunds/0/orderId", "equals": "1234" },
+        { "type": "conformance" },
+        "Confirms the amount and that a receipt was emailed"
+      ]
+    },
+    {
+      "id": "declined-refund",
+      "prompt": "Refund order 1234.",
+      "tools": [{ "name": "confirm_refund", "description": "Ask the user to approve a refund" }],
+      "responses": [{ "tool": "^confirm_refund$", "result": { "approved": false } }],
+      "assertions": [
+        { "type": "tool_call", "tool": "^issue_refund$", "max": 0 },
+        { "type": "regex", "pattern": "(?i)not (been )?refunded|cancel" }
+      ]
+    }
+  ]
+}

@@ -3,8 +3,10 @@
 A Tier 2 eval succeeds when its **assertions** pass. Each assertion is one graded condition checked against the agent's
 final response and the throwaway workspace it left behind. There are two families:
 
-- **Deterministic checks** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`. These inspect
-  files, output, exit codes, or observed tool calls. They are cheap, fast, and reproducible.
+- **Deterministic checks** — `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`,
+  `tool_sequence`, and, for [hosted agents](agents.md), `state`, `hitl`, `outcome`, and `conformance`. These inspect
+  files, output, exit codes, observed tool calls, or a hosted agent's conversation. They are cheap, fast, and
+  reproducible.
 - **The LLM judge** — `llm`. A pinned model reads the assertion and the agent's work and returns a verdict. Reserve it
   for holistic or subjective checks the deterministic ones can't express.
 
@@ -31,16 +33,17 @@ An eval must declare at least one `expectations` entry or one `assertions` entry
 ## How assertions are graded
 
 - **Each assertion is pass / fail / skipped.** Most return pass or fail. A few return _skipped_ when the check can't run
-  — a `command` whose `requires` binary is missing, or a `tool_call` against a harness that can't report tool calls.
-  Skipped assertions count neither for nor against the case.
+  — a `command` whose `requires` binary is missing, or a `tool_call`/`tool_sequence` against a harness that can't report
+  tool calls. Skipped assertions count neither for nor against the case.
 - **Order is deterministic.** `expectations` (see [the `llm` section](#llm)) expand to `llm` assertions graded first, in
   authored order, followed by the authored `assertions` in order.
 - **Patterns are Go [RE2](https://github.com/google/re2/wiki/Syntax) regexes** — no backreferences or lookaround. In a
   JSON or JSONC file every backslash doubles (`\\.`, `\\s`); YAML single-quoted strings keep one.
 
-The closed set of types is `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`, `llm`. Each is
-covered below with a realistic example drawn from the
-[bitwise-media-group skills](https://github.com/bitwise-media-group/skills).
+The closed set of types is `file_exists`, `file_absent`, `regex`, `not_regex`, `command`, `tool_call`, `tool_sequence`,
+`state`, `hitl`, `outcome`, `conformance`, and `llm`. `state`, `hitl`, `outcome`, and `conformance` grade a hosted
+agent's conversation and are only valid in an [agent suite](agents.md). Each is covered below with a realistic example,
+mostly drawn from the [bitwise-media-group skills](https://github.com/bitwise-media-group/skills).
 
 ## `file_exists`
 
@@ -168,7 +171,8 @@ instead of reporting a false failure. The command shares the eval's `timeout_sec
 
 Passes when the agent actually invoked a matching tool during the run — inspecting _behaviour_, not just the final
 artifact. `tool` is a regex matched against each observed tool name; the optional `pattern` is matched against that
-call's JSON-serialized arguments. An MCP tool surfaces as `mcp__<server>__<tool>`.
+call's JSON-serialized arguments, and the optional `result` against what the call returned. An MCP tool surfaces as
+`mcp__<server>__<tool>`.
 
 ```json
 { "type": "tool_call", "tool": "^Bash$", "pattern": "terraform validate" }
@@ -181,13 +185,114 @@ tool:
 { "type": "tool_call", "tool": "mcp__github__create_pull_request" }
 ```
 
+The assertion counts the matching calls and passes when the count is within `[min, max]`: `min` defaults to 1 (or 0 when
+`max` is 0) and `max` to unbounded. So `max: 0` asserts the tool was **never** called, and `max: 1` that it was called
+exactly once:
+
+```json
+{ "type": "tool_call", "tool": "^issue_refund$", "max": 1, "result": "\"status\":\\s*\"ok\"" }
+```
+
 | Field     | Required | Meaning                                                                        |
 | --------- | -------- | ------------------------------------------------------------------------------ |
 | `tool`    | yes      | Regex matched against an observed tool name (e.g. `^Bash$`, `mcp__github__.*`) |
 | `pattern` | no       | Regex matched against the call's JSON-serialized arguments                     |
+| `result`  | no       | Regex the call's result must match; a call with no captured result never does  |
+| `min`     | no       | Minimum number of matching calls (default 1, or 0 when `max` is 0)             |
+| `max`     | no       | Maximum number of matching calls (default unbounded; 0 means never)            |
 
-Tri-state: if the harness under test can't report tool calls the assertion is **skipped**; if it reports calls but none
-match, the assertion **fails**. Unlike `regex`, `tool` and `pattern` are not compiled in multiline mode.
+Tri-state: if the harness under test can't report tool calls the assertion is **skipped**; if it reports calls but the
+count is out of bounds, the assertion **fails**. Unlike `regex`, `tool`, `pattern`, and `result` are not compiled in
+multiline mode. Results are captured for hosted agents, Claude Code (each `tool_result`), and Codex (a command's output,
+an MCP call's result).
+
+## `tool_sequence`
+
+Passes when the `tools` patterns match an **ordered subsequence** of the observed calls — the tools were called in that
+order, with any other calls allowed in between. Use it for the steps whose order matters.
+
+```json
+{ "type": "tool_sequence", "tools": ["^confirm_refund$", "^issue_refund$"] }
+```
+
+| Field   | Required | Meaning                                                 |
+| ------- | -------- | ------------------------------------------------------- |
+| `tools` | yes      | Ordered tool-name regexes; each must match a later call |
+
+Like `tool_call`, it is skipped against a harness that can't report tool calls.
+
+## `state`
+
+[Agent suites](agents.md) only. Checks the hosted agent's **final shared state** at an
+[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON Pointer: that a value exists there, that it `equals` a JSON
+value, or that it matches `pattern` (a string value is matched as-is, anything else as compact JSON).
+
+```json
+{ "type": "state", "pointer": "/refunds/0/orderId", "equals": "1234" }
+```
+
+| Field     | Required | Meaning                                                                    |
+| --------- | -------- | -------------------------------------------------------------------------- |
+| `pointer` | no       | JSON Pointer into the state (`""` or omitted = the whole state)            |
+| `equals`  | no       | JSON value the pointed-to value must equal (numbers compare numerically)   |
+| `pattern` | no       | Regex the pointed-to value must match; set `equals` or `pattern`, not both |
+
+With neither `equals` nor `pattern`, the assertion passes when the pointer resolves. `~1` and `~0` escape `/` and `~` in
+a key.
+
+## `hitl`
+
+[Agent suites](agents.md) only. Counts the agent's **human-in-the-loop requests** — frontend tool calls left for the
+client, and interrupts — that match, and passes when the count is within `[min, max]` (defaulting like `tool_call`).
+
+```json
+{ "type": "hitl", "tool": "^confirm_refund$" }
+```
+
+Assert the agent paused for approval before acting, or — with `max: 0` — that it never needed a human at all:
+
+```json
+{ "type": "hitl", "max": 0 }
+```
+
+| Field     | Required | Meaning                                                                 |
+| --------- | -------- | ----------------------------------------------------------------------- |
+| `tool`    | no       | Regex on the requested tool's name (or an interrupt's linked tool call) |
+| `reason`  | no       | Regex on an interrupt's reason; only interrupts count when set          |
+| `pattern` | no       | Regex on the tool call's arguments or the interrupt's message           |
+| `min`     | no       | Minimum number of matching requests (default 1, or 0 when `max` is 0)   |
+| `max`     | no       | Maximum number of matching requests (default unbounded)                 |
+
+A request counts whether or not a scripted response answered it.
+
+## `outcome`
+
+[Agent suites](agents.md) only. Passes when the conversation ended as `expect`:
+
+| `expect`         | The conversation…                                                          |
+| ---------------- | -------------------------------------------------------------------------- |
+| `completed`      | finished its last run with nothing pending, after every follow-up was sent |
+| `awaiting_input` | stopped on a HIL request no scripted response matched                      |
+| `cancelled`      | ended with a run's cancelled outcome                                       |
+| `max_turns`      | hit the `max_turns` run cap with something still to send                   |
+
+```json
+{ "type": "outcome", "expect": "awaiting_input" }
+```
+
+A conversation that ended in a runtime error is not graded at all, so no `outcome` can match it.
+
+## `conformance`
+
+[Agent suites](agents.md) only. Passes when the agent's event stream has no error-severity violations of its protocol
+(AG-UI 1.0): the run lifecycle, open/close pairing, chunk expansion, outcome invariants, and `null` for an optional
+field. Warnings — unknown events or fields, retired events, a state patch that fails to apply — never fail it. The
+evidence lists the violations; every one is also recorded in the result's `conversation` and in
+`.agent/transcript.json`.
+
+```json
+{ "type": "conformance" }
+```
 
 ## `llm`
 

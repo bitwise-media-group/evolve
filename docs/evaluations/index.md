@@ -15,6 +15,10 @@ section walks the whole path, smallest first.
 4. **[How evaluations run](execution.md)** — what evolve actually does at runtime: the temporary workspace, the agent
    invocation, grading, the baseline, and how results are written.
 
+Evaluating an agent that is already deployed behind an AG-UI endpoint rather than a skill? See
+**[Hosted agents](agents.md)**: an agent repository holds agent suites instead of skills, and each eval is a scripted
+conversation with the endpoint.
+
 ## The eval directory
 
 Each eval directory holds the authored definitions plus the committed results the sweeps write:

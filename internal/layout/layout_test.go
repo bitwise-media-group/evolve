@@ -38,6 +38,8 @@ func TestDetect(t *testing.T) {
 		{"single", Single, []string{"solo"}},                // name from the manifest, not the checkout dir
 		{"plugins-no-manifests", Single, []string{"loner"}}, // plugins/ exists but holds no plugins
 		{"broken", Marketplace, []string{"oops", "vers"}},   // marketplace marker wins over stray root plugin.json
+		{"agents", Agents, nil},                             // hosted agents: no plugins
+		{"agent", Agent, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.fixture, func(t *testing.T) {

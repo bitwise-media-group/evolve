@@ -10,6 +10,9 @@ The pipeline is split into three tiers:
 - Tier 1 `triggers`: prompt-level checks that verify the expected skill activates.
 - Tier 2 `evals`: behavioral cases that run real agent CLIs and grade the result.
 
+It also evaluates **hosted agents** — agents already deployed behind an [AG-UI](https://docs.ag-ui.com/spec/1.0)
+endpoint — with the same behavioral evals, run as scripted conversations against each endpoint.
+
 <!-- prettier-ignore -->
 > [!TIP]
 > **New to evolve?** Read the full docs at **[oss.bitwisemedia.uk/evolve](https://oss.bitwisemedia.uk/evolve/)** —
@@ -31,6 +34,18 @@ Each eval directory may contain:
 - `triggers.<ext>` for trigger-accuracy prompts.
 - `evals.<ext>` for behavioral eval cases.
 - `results.<ext>` for stored model results.
+
+A repository of hosted agents (never mixed with plugins) keeps each agent's evals beside its definition:
+
+| Layout   | Marker                 | Agent paths                                  |
+| -------- | ---------------------- | -------------------------------------------- |
+| `agents` | `agents/*/evals.<ext>` | `agents/<agent>/` (the directory names it)   |
+| `agent`  | `agent/evals.<ext>`    | `agent/` (named by `agent.name` or the repo) |
+
+An agent's evals file declares the protocol and its endpoints, and its evals script the conversation — frontend tools,
+pre-canned answers to the agent's human-in-the-loop requests, follow-up turns — with assertions on the outcome, the
+shared state, the HIL requests, and protocol conformance. Runs select endpoints with `--endpoint`; see
+[Hosted agents](https://oss.bitwisemedia.uk/evolve/evaluations/agents/).
 
 Supported data formats are `json`, `jsonc`, `yaml`, and `yml`; for a given basename, only one matching file may exist.
 
@@ -215,7 +230,7 @@ Run-tier commands:
 Common global flags:
 
 - `--root PATH`: repository root to operate on.
-- `--layout auto|single|multi|marketplace`: repository layout.
+- `--layout auto|single|multi|marketplace|agents|agent`: repository layout.
 - `--results-format json|jsonc|yaml`: results and rollup format.
 - `--json`: emit machine-readable JSONL progress.
 - `-v, --verbose`: enable debug logging.
