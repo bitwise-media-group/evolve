@@ -33,7 +33,7 @@ evolve run triggers [flags]
 
 ```
       --json                    emit machine-readable JSONL progress on stdout
-      --layout string           repository layout: auto, marketplace, multi, or single (default "auto")
+      --layout string           repository layout: auto, marketplace, multi, single, agents, or agent (default "auto")
       --local                   execute locally even when remote.default is set
       --no-sandbox              disable the OS sandbox that confines agent writes to the workspace (config: sandbox.enabled)
       --remote                  execute on the configured patchy remote-evaluation service (config: remote.default)

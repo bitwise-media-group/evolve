@@ -56,6 +56,9 @@ var checksCmd = &cobra.Command{
 		var result error
 		if n := len(findings); n > 0 {
 			result = failOrWarn(cmd, "checks: %d %s", n, plural(n, "failure", "failures"))
+		} else if repo.IsAgentRepo() {
+			fmt.Fprintf(cmd.OutOrStdout(), "checks: all checks passed (%s layout, %d %s)\n",
+				repo.Kind, len(repo.Agents), plural(len(repo.Agents), "agent", "agents"))
 		} else {
 			fmt.Fprintf(cmd.OutOrStdout(), "checks: all checks passed (%s layout, %d %s)\n",
 				repo.Kind, len(repo.Plugins), plural(len(repo.Plugins), "plugin", "plugins"))

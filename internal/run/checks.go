@@ -90,8 +90,11 @@ func Checks(repo *layout.Repo, cfg CheckConfig) ([]Finding, error) {
 	}
 	c := &checker{repo: repo, cfg: cfg, triggerRE: triggerRE}
 
-	switch repo.Kind {
-	case layout.Single:
+	switch {
+	case repo.IsAgentRepo():
+		// A hosted-agent repository has no plugin layer: its agents are checked
+		// through their suites (checkEvalSpecs).
+	case repo.Kind == layout.Single:
 		c.checkPlugin(repo.Root, "")
 	default:
 		if repo.Kind == layout.Marketplace {
@@ -145,7 +148,7 @@ func (c *checker) checkEvalSpecs() {
 				}
 			}
 		}
-		if !isDir(set.SkillDir) {
+		if !set.Agent && !isDir(set.SkillDir) {
 			c.errf("%s: evals/%s has no matching skill at %s",
 				c.repo.Rel(set.Plugin.Dir), set.Skill, c.repo.Rel(set.SkillDir))
 		}

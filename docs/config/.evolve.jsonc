@@ -10,7 +10,8 @@
   // Default: unset — any evolve version may run.
   // "version": "~> 0.4",
 
-  // Repository layout: auto, marketplace, multi, or single.
+  // Repository layout: auto, marketplace, multi, single, agents, or agent
+  // (hosted-agent repositories).
   "layout": "auto",
 
   // Restriction on which models exist: provider ids, canonical model ids

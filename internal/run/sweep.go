@@ -87,56 +87,32 @@ func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (fa
 	))
 	defer func() { endSpan(span, err) }()
 
-	runTriggers := opts.Tiers.Triggers && set.TriggersPath != ""
-	runEvalsTier := opts.Tiers.Evals && set.EvalsPath != ""
-	if !runTriggers && !runEvalsTier {
+	// Hosted agents run only against hosted endpoint selections, which no sweep
+	// carries yet; skill selections never drive an agent suite.
+	if set.Agent {
 		return false, nil
 	}
-
-	var triggers []evalspec.Trigger
-	if runTriggers {
-		spec, err := evalspec.LoadTriggers(set.TriggersPath)
-		if err != nil {
-			return false, err
-		}
-		warnSkillName(&opts.Options, set, set.TriggersPath, spec.SkillName)
-		triggers = spec.Triggers
+	specs, err := loadSweepSpecs(opts, set)
+	if err != nil || (!specs.runTriggers && !specs.runEvals) {
+		return false, err // nothing authored for these tiers, or narrowed away (e.g. --eval matched nothing)
 	}
-	var evals []evalspec.Eval
-	var allowedModels []string
-	if runEvalsTier {
-		spec, err := evalspec.LoadEvals(set.EvalsPath)
-		if err != nil {
-			return false, err
-		}
-		warnSkillName(&opts.Options, set, set.EvalsPath, spec.SkillName)
-		allowedModels = spec.Models
-		evals = filterEvals(spec.Evals, opts.EvalFilter)
-		runEvalsTier = len(evals) > 0
-	} else if runTriggers && set.EvalsPath != "" {
-		// Triggers honor the skill's models restriction (defined on the evals
-		// file) even when the evals tier is not part of this sweep.
-		if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil {
-			allowedModels = ef.Models
-		}
-	}
-	if !runTriggers && !runEvalsTier {
-		return false, nil // both tiers narrowed away (e.g. --eval matched nothing)
-	}
+	runTriggers, runEvalsTier := specs.runTriggers, specs.runEvals
+	triggers, evals, allEvals, allowedModels := specs.triggers, specs.evals, specs.allEvals, specs.allowedModels
 
 	file, skillMD, err := loadSet(opts.Options, set)
 	if err != nil {
 		return false, err
 	}
 	// Content fingerprints persisted for --modified: a trigger entry hashes the
-	// SKILL.md frontmatter, an eval entry the whole skill directory.
+	// SKILL.md frontmatter, an eval entry the whole skill directory (or a hosted
+	// agent's definition, see setContentHash).
 	var triggerContent, evalContent string
 	if runTriggers {
 		triggerContent = triggerContentHash(skillMD)
 	}
 	if runEvalsTier {
-		if evalContent, err = skillContentHash(set.SkillDir); err != nil {
-			return false, fmt.Errorf("fingerprinting skill under test: %w", err)
+		if evalContent, err = setContentHash(set.SkillDir, set.Agent, allEvals); err != nil {
+			return false, fmt.Errorf("fingerprinting %s under test: %w", setNoun(set), err)
 		}
 	}
 	rep := opts.reporter()
@@ -178,6 +154,51 @@ func runSweepSet(ctx context.Context, opts SweepOptions, set layout.EvalSet) (fa
 		}
 	}
 	return failed, nil
+}
+
+// sweepSpecs is one set's authored cases for a sweep's tiers: which tiers
+// run, the triggers, the --eval-narrowed evals (and the full list, for
+// fingerprints), and the models restriction both tiers honor.
+type sweepSpecs struct {
+	runTriggers, runEvals bool
+	triggers              []evalspec.Trigger
+	evals, allEvals       []evalspec.Eval
+	allowedModels         []string
+}
+
+// loadSweepSpecs loads the triggers and evals files a sweep's tiers need. A
+// tier with no authored file, or whose evals --eval narrows to none, is off.
+func loadSweepSpecs(opts SweepOptions, set layout.EvalSet) (sweepSpecs, error) {
+	sp := sweepSpecs{
+		runTriggers: opts.Tiers.Triggers && set.TriggersPath != "",
+		runEvals:    opts.Tiers.Evals && set.EvalsPath != "",
+	}
+	if sp.runTriggers {
+		spec, err := evalspec.LoadTriggers(set.TriggersPath)
+		if err != nil {
+			return sp, err
+		}
+		warnSkillName(&opts.Options, set, set.TriggersPath, spec.SkillName)
+		sp.triggers = spec.Triggers
+	}
+	if sp.runEvals {
+		spec, err := evalspec.LoadEvals(set.EvalsPath)
+		if err != nil {
+			return sp, err
+		}
+		warnSkillName(&opts.Options, set, set.EvalsPath, spec.SkillName)
+		sp.allowedModels = spec.Models
+		sp.allEvals = spec.Evals
+		sp.evals = filterEvals(spec.Evals, opts.EvalFilter)
+		sp.runEvals = len(sp.evals) > 0
+	} else if sp.runTriggers && set.EvalsPath != "" {
+		// Triggers honor the skill's models restriction (defined on the evals
+		// file) even when the evals tier is not part of this sweep.
+		if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil {
+			sp.allowedModels = ef.Models
+		}
+	}
+	return sp, nil
 }
 
 // sweepUnit carries the per-skill invariants every model in a sweep set shares,
@@ -253,7 +274,8 @@ func filterEvals(evals []evalspec.Eval, id string) []evalspec.Eval {
 }
 
 // loadSet loads the shared per-skill state every unit reads and writes: the
-// results file (warning on a discarded incompatible schema) and the skill payload.
+// results file (warning on a discarded incompatible schema) and the skill
+// payload. A hosted agent has no SKILL.md; its payload is nil.
 func loadSet(opts Options, set layout.EvalSet) (*results.File, []byte, error) {
 	rep := opts.reporter()
 	file, reset, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
@@ -264,9 +286,20 @@ func loadSet(opts Options, set layout.EvalSet) (*results.File, []byte, error) {
 		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
 			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
 	}
+	if set.Agent {
+		return file, nil, nil
+	}
 	skillMD, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading skill under test: %w", err)
 	}
 	return file, skillMD, nil
+}
+
+// setNoun names what an eval set evaluates, for messages.
+func setNoun(set layout.EvalSet) string {
+	if set.Agent {
+		return "agent"
+	}
+	return "skill"
 }

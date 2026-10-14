@@ -109,7 +109,7 @@ func init() {
 	pf.StringVar(&opts.Root, "root", "",
 		"repository root to operate on (default: walk up from the current directory)")
 	pf.StringVar(&opts.Layout, "layout", "auto",
-		"repository layout: auto, marketplace, multi, or single")
+		"repository layout: auto, marketplace, multi, single, agents, or agent")
 	pf.BoolVar(&opts.JSON, "json", false, "emit machine-readable JSONL progress on stdout")
 	pf.StringVar(&opts.ResultsFormat, "results-format", "",
 		"format for results files and the EVALUATION rollup: json, jsonc, or yaml (default: config results_format or json)")

@@ -4,18 +4,22 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/bitwise-media-group/evolve/internal/harness"
 	"github.com/bitwise-media-group/evolve/internal/layout"
+	"github.com/bitwise-media-group/evolve/internal/model"
 	"github.com/bitwise-media-group/evolve/internal/plan"
 	"github.com/bitwise-media-group/evolve/internal/results"
+	"github.com/bitwise-media-group/evolve/internal/runner"
 	"github.com/bitwise-media-group/evolve/internal/tokencount"
 )
 
@@ -136,4 +140,68 @@ func TestSweepRefusesNewerSchema(t *testing.T) {
 	if after, _ := os.ReadFile(path); string(after) != string(content) {
 		t.Error("newer-schema results file must survive byte-identical")
 	}
+}
+
+// agentRepoFixture is a two-agent repository whose suites a skill selection
+// must never run.
+func agentRepoFixture(t *testing.T) *layout.Repo {
+	t.Helper()
+	root := t.TempDir()
+	for _, name := range []string{"billing", "support"} {
+		dir := filepath.Join(root, "agents", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SYSTEM_PROMPT.md"), []byte("Be helpful."), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		evals := `{"agent":{"endpoints":{"local":{"url":"http://localhost:8000/"}}},"evals":[{"id":"hi","prompt":"hi",` +
+			`"assertions":[{"type":"regex","pattern":"hello"}]}]}`
+		if err := os.WriteFile(filepath.Join(dir, "evals.json"), []byte(evals), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo, err := layout.Detect(root, layout.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+func TestSweepAgentRepoRunsNothingOnSkillSelections(t *testing.T) {
+	repo := agentRepoFixture(t)
+	p := &fakeEvalProvider{reportsUsage: true}
+	eo := evalOptions(t, repo, p)
+	rc := &countingRunner{}
+	eo.Runner = rc
+	var out bytes.Buffer
+	eo.Stdout = &out
+
+	if failed, err := Evals(context.Background(), eo); err != nil || failed {
+		t.Fatalf("Evals: failed=%v err=%v", failed, err)
+	}
+	if failed, err := Sweep(context.Background(), SweepOptions{Options: eo.Options,
+		Tiers: plan.Tiers{Triggers: true, Evals: true}, Runs: 1, Judge: passingJudge{}}); err != nil || failed {
+		t.Fatalf("Sweep: failed=%v err=%v", failed, err)
+	}
+	if n := rc.calls.Load(); n != 0 {
+		t.Errorf("runner called %d times, want 0", n)
+	}
+	for _, a := range repo.Agents {
+		if path := results.Find(a.Dir); path != "" {
+			t.Errorf("results written for %s: %s", a.Name, path)
+		}
+	}
+	cat, err := Catalog(eo.Options)
+	if err != nil || len(cat) != 0 {
+		t.Errorf("catalog = %+v, %v; want no runnable sets", cat, err)
+	}
+}
+
+// countingRunner counts invocations and runs nothing.
+type countingRunner struct{ calls atomic.Int64 }
+
+func (r *countingRunner) Run(context.Context, model.CommandSpec, time.Duration, *runner.Scan) (runner.Result, error) {
+	r.calls.Add(1)
+	return runner.Result{}, nil
 }

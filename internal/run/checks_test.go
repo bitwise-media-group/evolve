@@ -314,3 +314,16 @@ func containsSubstring(haystack []string, substr string) bool {
 	}
 	return false
 }
+
+// TestAgentRepoSkipsPluginChecks: a hosted-agent repository has no plugin
+// layer, so no manifest, skills, or matching-skill findings.
+func TestAgentRepoSkipsPluginChecks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "agents", "support", "SYSTEM_PROMPT.md"), "Be helpful.")
+	writeFile(t, filepath.Join(root, "agents", "support", "evals.json"),
+		`{"agent":{"endpoints":{"local":{"url":"http://localhost:8000/"}}},`+
+			`"evals":[{"id":"hi","prompt":"hi","assertions":[{"type":"regex","pattern":"hello"}]}]}`)
+	if findings := checkDir(t, root, DefaultCheckConfig()); len(findings) != 0 {
+		t.Errorf("findings = %v, want none", messages(findings))
+	}
+}

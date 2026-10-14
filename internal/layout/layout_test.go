@@ -167,3 +167,138 @@ func equal(a, b []string) bool {
 	}
 	return true
 }
+
+// writeTree creates each rel → content file under root.
+func writeTree(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	for rel, content := range files {
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestDetectAgents(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"agents/support/agent.py":         "print('hi')",
+		"agents/support/SYSTEM_PROMPT.md": "Be helpful.",
+		"agents/support/evals.json":       `{"agent":{"endpoints":{"local":{"url":"http://x"}}},"evals":[]}`,
+		"agents/billing/evals.yaml":       "agent:\n  endpoints: {}\nevals: []\n",
+		"agents/notes/README.md":          "no evals here",
+	})
+	repo, err := Detect(root, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.Kind != Agents || !repo.IsAgentRepo() || len(repo.Plugins) != 0 {
+		t.Fatalf("repo = %+v, want agents layout without plugins", repo)
+	}
+	if len(repo.Agents) != 2 || repo.Agents[0].Name != "billing" || repo.Agents[1].Name != "support" {
+		t.Errorf("agents = %+v, want billing, support", repo.Agents)
+	}
+	sets, err := repo.EvalSets()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 2 {
+		t.Fatalf("sets = %+v", sets)
+	}
+	s := sets[1]
+	wantDir := filepath.Join(root, "agents", "support")
+	if !s.Agent || s.Plugin.Name != AgentsGroup || s.Plugin.Dir != root || s.Skill != "support" ||
+		s.SkillDir != wantDir || s.ResultsDir != wantDir || s.TriggersPath != "" ||
+		s.EvalsPath != filepath.Join(wantDir, "evals.json") {
+		t.Errorf("support set = %+v", s)
+	}
+}
+
+func TestDetectSingleAgent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "my-checkout")
+	writeTree(t, root, map[string]string{
+		"agent/agent.py":   "",
+		"agent/evals.json": `{"agent":{"name":"concierge","endpoints":{}},"evals":[]}`,
+	})
+	repo, err := Detect(root, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.Kind != Agent || len(repo.Agents) != 1 || repo.Agents[0].Name != "concierge" ||
+		repo.Agents[0].Dir != filepath.Join(root, "agent") {
+		t.Errorf("repo = %+v", repo)
+	}
+	// Without agent.name the repository root's basename names the agent.
+	writeTree(t, root, map[string]string{"agent/evals.json": `{"agent":{"endpoints":{}},"evals":[]}`})
+	repo, err = Detect(root, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.Agents[0].Name != "my-checkout" {
+		t.Errorf("name = %q, want the root basename", repo.Agents[0].Name)
+	}
+	t.Chdir(filepath.Join(root, "agent"))
+	walked, err := Detect("", Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if walked.Kind != Agent {
+		t.Errorf("walk-up kind = %s, want agent", walked.Kind)
+	}
+}
+
+func TestDetectAgentForcedAndPrecedence(t *testing.T) {
+	// A single-layout plugin keeps its subagent definitions in agents/ (no
+	// evals file there): it must still detect as a plugin.
+	plugin := t.TempDir()
+	writeTree(t, plugin, map[string]string{
+		".claude-plugin/plugin.json": `{"name":"solo","version":"0.1.0"}`,
+		"agents/reviewer.md":         "---\nname: reviewer\n---\n",
+		"agents/helper/notes.md":     "",
+	})
+	repo, err := Detect(plugin, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.Kind != Single || len(repo.Agents) != 0 {
+		t.Errorf("kind = %s, agents = %v; want single with no agents", repo.Kind, repo.Agents)
+	}
+	if _, err := Detect(plugin, Agents); err == nil {
+		t.Error("forcing agents on a plugin repo: want error")
+	}
+
+	// Even with an agent marker present, the plugin marker wins under auto; a
+	// forced kind consults only its own marker.
+	both := t.TempDir()
+	writeTree(t, both, map[string]string{
+		".claude-plugin/plugin.json": `{"name":"solo","version":"0.1.0"}`,
+		"agents/a/evals.json":        `{"evals":[]}`,
+	})
+	if repo, _ := Detect(both, Auto); repo.Kind != Single {
+		t.Errorf("auto kind = %s, want single", repo.Kind)
+	}
+	if repo, err := Detect(both, Agents); err != nil || repo.Kind != Agents || len(repo.Agents) != 1 {
+		t.Errorf("forced agents = %+v, %v", repo, err)
+	}
+	if k, err := ParseKind("agent"); err != nil || k != Agent {
+		t.Errorf("ParseKind(agent) = %s, %v", k, err)
+	}
+}
+
+func TestEvalSetsAgentAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"agents/a/evals.json": `{"evals":[]}`,
+		"agents/a/evals.yaml": "evals: []\n",
+	})
+	repo, err := Detect(root, Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.EvalSets(); err == nil || !strings.Contains(err.Error(), "keep exactly one") {
+		t.Errorf("EvalSets error = %v, want ambiguity error", err)
+	}
+}

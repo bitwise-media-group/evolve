@@ -39,7 +39,7 @@ func Schema() []Option {
 		},
 		{
 			Key: "layout", Type: "string", Value: "auto",
-			Doc: "Repository layout: auto, marketplace, multi, or single.",
+			Doc: "Repository layout: auto, marketplace, multi, single, agents, or agent (hosted-agent repositories).",
 		},
 		{
 			Key: "models", Type: "list of strings", Example: []string{"anthropic/claude-sonnet-4-6"},

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bitwise-media-group/evolve/internal/encfmt"
 	"github.com/bitwise-media-group/evolve/internal/evalspec"
 	"github.com/bitwise-media-group/evolve/internal/manifest"
 )
@@ -48,13 +49,55 @@ func triggerContentHash(skillMD []byte) string {
 // Dotfiles and dot-directories (.DS_Store, editor cruft, VCS metadata) are
 // skipped as non-authored noise; symlinks and other irregular files are ignored.
 func skillContentHash(skillDir string) (string, error) {
+	return dirContentHash(skillDir, nil)
+}
+
+// agentContentHash fingerprints a hosted agent's directory the way
+// skillContentHash does a skill's — its declarative definition (agent code,
+// system prompt, …) — minus the files that are not the agent: the evals file
+// and results file (any supported extension) and every fixture the suite
+// stages, which evalFingerprint already folds into each eval's own hash. So an
+// edit to agent.py or SYSTEM_PROMPT.md reruns the agent's evals under
+// --modified, while a fixture edit reruns only the evals that stage it.
+func agentContentHash(agentDir string, evals []evalspec.Eval) (string, error) {
+	skip := map[string]bool{}
+	for _, ext := range encfmt.Extensions {
+		skip["evals."+ext] = true
+		skip["results."+ext] = true
+	}
+	for _, c := range evals {
+		for _, f := range c.Files {
+			if rel, err := filepath.Rel(agentDir, f.Source); err == nil && filepath.IsLocal(rel) {
+				skip[filepath.ToSlash(rel)] = true
+			}
+		}
+	}
+	return dirContentHash(agentDir, func(rel string) bool { return skip[rel] })
+}
+
+// setContentHash is the eval-tier content fingerprint of one eval set: the
+// whole skill directory for a skill, agentContentHash for a hosted agent
+// (whose exclusions need the suite's evals). The engine, the --new/--modified
+// previews (Needs, CaseReasons), and the strict staleness gate (StaleTiers)
+// all fingerprint through it, so they cannot disagree.
+func setContentHash(dir string, agent bool, evals []evalspec.Eval) (string, error) {
+	if agent {
+		return agentContentHash(dir, evals)
+	}
+	return skillContentHash(dir)
+}
+
+// dirContentHash hashes every regular, non-dot file under dir (see
+// skillContentHash) except those whose slash-separated relative path skip
+// reports true for.
+func dirContentHash(dir string, skip func(rel string) bool) (string, error) {
 	var rels []string
-	err := filepath.WalkDir(skillDir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if path != skillDir && strings.HasPrefix(d.Name(), ".") {
+			if path != dir && strings.HasPrefix(d.Name(), ".") {
 				return fs.SkipDir
 			}
 			return nil
@@ -62,11 +105,13 @@ func skillContentHash(skillDir string) (string, error) {
 		if strings.HasPrefix(d.Name(), ".") || !d.Type().IsRegular() {
 			return nil
 		}
-		rel, err := filepath.Rel(skillDir, path)
+		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
 		}
-		rels = append(rels, filepath.ToSlash(rel))
+		if rel = filepath.ToSlash(rel); skip == nil || !skip(rel) {
+			rels = append(rels, rel)
+		}
 		return nil
 	})
 	if err != nil {
@@ -75,7 +120,7 @@ func skillContentHash(skillDir string) (string, error) {
 	sort.Strings(rels)
 	h := sha256.New()
 	for _, rel := range rels {
-		data, err := os.ReadFile(filepath.Join(skillDir, filepath.FromSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if err != nil {
 			return "", err
 		}

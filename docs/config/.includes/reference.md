@@ -1,7 +1,7 @@
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `version` | string | unset — any evolve version may run | Terraform-style semver constraint ("0.4.0", "~> 0.4", ">= 0.4, < 1") the evolve binary must satisfy before run triggers/evals/all or report will rewrite results. Non-release builds (dev and snapshot/prerelease versions) warn and skip the check. |
-| `layout` | string | `"auto"` | Repository layout: auto, marketplace, multi, or single. |
+| `layout` | string | `"auto"` | Repository layout: auto, marketplace, multi, single, agents, or agent (hosted-agent repositories). |
 | `models` | list of strings | unset — every model runnable by an available harness | Restriction on which models exist: provider ids, canonical model ids (anthropic/claude-sonnet-4-6), or all. Unlisted models are unavailable. --model filters within it. |
 | `harnesses` | list of strings | unset — every harness found on PATH | Restriction on which agent CLIs (claude, codex, gemini, cursor, copilot, antigravity, grok) may drive models. --harness filters within it. |
 | `cache_dir` | string | unset — the OS user cache dir | Directory holding the token-count cache. |

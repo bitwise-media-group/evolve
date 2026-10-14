@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -51,7 +50,9 @@ func Evals(ctx context.Context, opts EvalOptions) (failed bool, err error) {
 		return false, err
 	}
 	for _, set := range sets {
-		if set.EvalsPath == "" || !opts.selects(set.Plugin.Name, set.Skill) {
+		// Hosted agents run only against hosted endpoint selections, which no
+		// sweep carries yet; skill selections never drive an agent suite.
+		if set.EvalsPath == "" || set.Agent || !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runEvalSet(ctx, opts, set)
@@ -79,24 +80,16 @@ func runEvalSet(ctx context.Context, opts EvalOptions, set layout.EvalSet) (fail
 	if len(allEvals) == 0 {
 		return false, nil
 	}
-	skillMD, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md"))
+	// A behavioral eval depends on the whole skill the agent sees (or a hosted
+	// agent's whole definition), so that is the content fingerprint persisted
+	// for --modified.
+	contentHash, err := setContentHash(set.SkillDir, set.Agent, spec.Evals)
 	if err != nil {
-		return false, fmt.Errorf("reading skill under test: %w", err)
+		return false, fmt.Errorf("fingerprinting %s under test: %w", setNoun(set), err)
 	}
-	// A behavioral eval depends on the whole skill the agent sees, so the entire
-	// skill directory is the content fingerprint persisted for --modified.
-	contentHash, err := skillContentHash(set.SkillDir)
-	if err != nil {
-		return false, fmt.Errorf("fingerprinting skill under test: %w", err)
-	}
-	rep := opts.reporter()
-	file, reset, err := results.LoadDir(set.ResultsDir, set.Plugin.Name, set.Skill)
+	file, skillMD, err := loadSet(opts.Options, set)
 	if err != nil {
 		return false, err
-	}
-	if reset {
-		rep.Warn("  warn: %s has an old or unreadable results schema; starting fresh (schema %d)\n",
-			opts.Repo.Rel(results.Find(set.ResultsDir)), results.Schema)
 	}
 
 	for _, sel := range opts.Selected {

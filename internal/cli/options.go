@@ -36,7 +36,7 @@ type Options struct {
 	Viper *viper.Viper
 
 	Root          string // --root: repository to operate on ("" = walk up from cwd)
-	Layout        string // --layout: auto|marketplace|multi|single
+	Layout        string // --layout: auto|marketplace|multi|single|agents|agent
 	JSON          bool   // --json: machine-readable JSONL progress on stdout
 	ResultsFormat string // --results-format: json|jsonc|yaml for results + EVALUATION rollup
 	TelemetryDir  string // --telemetry-dir: directory for the OTEL JSON exporter ("" = telemetry disabled)

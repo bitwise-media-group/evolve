@@ -45,7 +45,9 @@ func Triggers(ctx context.Context, opts TriggerOptions) (failed bool, err error)
 		return false, err
 	}
 	for _, set := range sets {
-		if set.TriggersPath == "" || !opts.selects(set.Plugin.Name, set.Skill) {
+		// A hosted agent has no trigger tier (layout never gives an agent set a
+		// triggers path; the guard keeps that explicit).
+		if set.TriggersPath == "" || set.Agent || !opts.selects(set.Plugin.Name, set.Skill) {
 			continue
 		}
 		setFailed, err := runTriggerSet(ctx, opts, set)

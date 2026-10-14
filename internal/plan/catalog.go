@@ -17,6 +17,7 @@ type SkillCatalog struct {
 	Description string
 	SkillDir    string   // the skill's root directory, fingerprinted for --modified
 	ResultsDir  string   // evals/<skill>, where results.<ext> persists
+	Agent       bool     // a hosted agent's suite (Skill is the agent name, SkillDir its directory)
 	Models      []string // eval-set models restriction (intersected with the root models); empty = all
 	Triggers    []evalspec.Trigger
 	Evals       []evalspec.Eval

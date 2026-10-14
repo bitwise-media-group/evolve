@@ -25,8 +25,18 @@ func Catalog(opts Options) ([]plan.SkillCatalog, error) {
 	}
 	cat := make([]plan.SkillCatalog, 0, len(sets))
 	for _, set := range sets {
-		sc := plan.SkillCatalog{Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir}
-		if fields, ok, _ := manifest.Frontmatter(filepath.Join(set.SkillDir, "SKILL.md")); ok {
+		// Hosted agents run only against hosted endpoint selections, which no
+		// sweep carries yet, so the form lists none of them.
+		if set.Agent {
+			continue
+		}
+		sc := plan.SkillCatalog{
+			Plugin: set.Plugin.Name, Skill: set.Skill, SkillDir: set.SkillDir, ResultsDir: set.ResultsDir,
+			Agent: set.Agent,
+		}
+		if set.Agent {
+			sc.Title = set.Skill
+		} else if fields, ok, _ := manifest.Frontmatter(filepath.Join(set.SkillDir, "SKILL.md")); ok {
 			if sc.Title = fields["title"]; sc.Title == "" {
 				sc.Title = fields["name"]
 			}
@@ -132,13 +142,13 @@ func CaseReasons(opts Options, cat []plan.SkillCatalog, sels []harness.Selection
 		}
 		file, _, _ := results.LoadDir(sc.ResultsDir, sc.Plugin, sc.Skill)
 		var triggerContent, evalContent string
-		if def.Triggers {
+		if def.Triggers && !sc.Agent {
 			if md, err := os.ReadFile(filepath.Join(sc.SkillDir, "SKILL.md")); err == nil {
 				triggerContent = triggerContentHash(md)
 			}
 		}
 		if def.Evals {
-			evalContent, _ = skillContentHash(sc.SkillDir)
+			evalContent, _ = setContentHash(sc.SkillDir, sc.Agent, sc.Evals)
 		}
 		if def.Triggers {
 			for _, t := range sc.Triggers {
@@ -193,13 +203,13 @@ func needContentHashes(opts Options, sc plan.SkillCatalog, def plan.Tiers) (trig
 	if !opts.Modified {
 		return "", ""
 	}
-	if def.Triggers {
+	if def.Triggers && !sc.Agent {
 		if md, err := os.ReadFile(filepath.Join(sc.SkillDir, "SKILL.md")); err == nil {
 			triggerContent = triggerContentHash(md)
 		}
 	}
 	if def.Evals {
-		evalContent, _ = skillContentHash(sc.SkillDir)
+		evalContent, _ = setContentHash(sc.SkillDir, sc.Agent, sc.Evals)
 	}
 	return triggerContent, evalContent
 }

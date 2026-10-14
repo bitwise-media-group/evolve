@@ -142,3 +142,62 @@ func TestEvalFingerprint(t *testing.T) {
 		t.Error("restoring fixture content must restore the fingerprint")
 	}
 }
+
+func TestAgentContentHashExclusions(t *testing.T) {
+	write := func(dir, rel, content string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := t.TempDir()
+	write(dir, "agent.py", "def run(): ...")
+	write(dir, "SYSTEM_PROMPT.md", "Be helpful.")
+	write(dir, "evals.json", `{"evals":[]}`)
+	write(dir, "files/order.json", `{"id":1}`)
+	write(dir, "files/unused.txt", "not staged")
+	evals := []evalspec.Eval{{ID: "e", Files: []evalspec.FileRef{
+		{Rel: "files/order.json", Source: filepath.Join(dir, "files", "order.json"), Dest: "order.json"},
+	}}}
+	base, err := agentContentHash(dir, evals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := setContentHash(dir, true, evals); got != base {
+		t.Error("setContentHash must route an agent set to agentContentHash")
+	}
+
+	// The suite, its results, and its staged fixtures are not the agent.
+	write(dir, "evals.json", `{"evals":[{"id":"e"}]}`)
+	write(dir, "results.json", `{"schema":5}`)
+	write(dir, "results.yaml", "schema: 5\n")
+	write(dir, "files/order.json", `{"id":2}`)
+	if again, _ := agentContentHash(dir, evals); again != base {
+		t.Error("evals, results, and staged fixtures must not change the agent content hash")
+	}
+
+	// The definition and unstaged files are.
+	for rel, content := range map[string]string{
+		"SYSTEM_PROMPT.md": "Be terse.",
+		"agent.py":         "def run(): return 1",
+		"files/unused.txt": "edited",
+	} {
+		write(dir, rel, content)
+		edited, _ := agentContentHash(dir, evals)
+		if edited == base {
+			t.Errorf("editing %s must change the agent content hash", rel)
+		}
+		base = edited
+	}
+
+	// A skill set still hashes the whole directory, suite included.
+	skill, _ := setContentHash(dir, false, evals)
+	whole, _ := skillContentHash(dir)
+	if skill != whole || skill == base {
+		t.Error("setContentHash must route a skill set to skillContentHash")
+	}
+}

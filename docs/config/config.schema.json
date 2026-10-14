@@ -14,13 +14,15 @@
       "type": "string"
     },
     "layout": {
-      "description": "Repository layout: auto, marketplace, multi, or single.",
+      "description": "Repository layout: auto, marketplace, multi, single, agents, or agent (hosted-agent repositories).",
       "type": "string",
       "enum": [
         "auto",
         "marketplace",
         "multi",
-        "single"
+        "single",
+        "agents",
+        "agent"
       ],
       "default": "auto"
     },

@@ -126,7 +126,10 @@ func leafSchema(o Option) *obj {
 func enumValues(key string) any {
 	switch key {
 	case "layout":
-		return []string{"auto", string(layout.Marketplace), string(layout.Multi), string(layout.Single)}
+		return []string{
+			"auto", string(layout.Marketplace), string(layout.Multi), string(layout.Single),
+			string(layout.Agents), string(layout.Agent),
+		}
 	case "results_format":
 		return encfmt.Formats
 	case "report.thresholds.maturity":

@@ -239,7 +239,7 @@ func StaleTiers(set layout.EvalSet, file *results.File) (triggersStale, evalsSta
 	if file == nil {
 		return false, false
 	}
-	if set.TriggersPath != "" {
+	if set.TriggersPath != "" && !set.Agent {
 		if tf, err := evalspec.LoadTriggers(set.TriggersPath); err == nil {
 			var content string
 			if md, err := os.ReadFile(filepath.Join(set.SkillDir, "SKILL.md")); err == nil {
@@ -250,7 +250,7 @@ func StaleTiers(set layout.EvalSet, file *results.File) (triggersStale, evalsSta
 	}
 	if set.EvalsPath != "" {
 		if ef, err := evalspec.LoadEvals(set.EvalsPath); err == nil {
-			content, _ := skillContentHash(set.SkillDir)
+			content, _ := setContentHash(set.SkillDir, set.Agent, ef.Evals)
 			evalsStale = staleEvals(file, ef.Evals, content)
 		}
 	}
