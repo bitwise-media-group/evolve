@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -110,8 +109,6 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	file *results.File, skillMD []byte, contentHash string, allEvals []evalspec.Eval, allowedModels []string,
 ) (failed bool, err error) {
 	rep := opts.reporter()
-	evalRunner, _ := sel.Harness.(harness.EvalRunner)
-	cli, _ := harness.Available(sel.Harness)
 	execute, reportsUsage, priced := evalCapabilities(opts.Options, sel)
 
 	// modelApplicable is every eval valid for this model (the eval-set models
@@ -182,7 +179,8 @@ func runEvalUnit(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel 
 	// at the end of the unit. freshBaseline collects the baselines that re-ran.
 	var freshBaseline map[string]results.EvalResult
 	if execute {
-		batchFailed, fresh, err := runEvals(ctx, opts, set, sel, ref, evalRunner, cli, runSet, entryResults, priorBaseline)
+		sess := newCLISession(opts, sel)
+		batchFailed, fresh, err := runEvals(ctx, opts, set, ref, sess, runSet, entryResults, priorBaseline)
 		failed = failed || batchFailed
 		if err != nil {
 			return failed, err
@@ -239,9 +237,8 @@ const (
 // before its own run rather than as a silent post-pass at the end of the unit.
 // priorBaseline is the entry's stored baseline (the staleness reference); the
 // returned map holds the baselines that re-ran this round, keyed by eval id.
-func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel harness.Selection, ref plan.UnitRef,
-	evalRunner harness.EvalRunner, cli string, evals []evalspec.Eval, entryResults []results.EvalResult,
-	priorBaseline *results.EvalSnapshot,
+func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, ref plan.UnitRef, sess sessionRunner,
+	evals []evalspec.Eval, entryResults []results.EvalResult, priorBaseline *results.EvalSnapshot,
 ) (bool, map[string]results.EvalResult, error) {
 	var failedAny bool
 	g, runCtx := errgroup.WithContext(ctx)
@@ -255,7 +252,7 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel har
 			if opts.Baseline {
 				fp := evalFingerprint(c)
 				if baselineStale(priorBaseline, c.ID, fp) {
-					_, base, err := runEval(runCtx, opts, sel, ref, evalRunner, cli, c, i, nil, true)
+					_, base, err := runEval(runCtx, opts, ref, sess, c, i, nil, true)
 					if err != nil {
 						return err
 					}
@@ -263,7 +260,7 @@ func runEvals(ctx context.Context, opts EvalOptions, set layout.EvalSet, sel har
 					baselines[i] = &base
 				}
 			}
-			outcome, result, err := runEval(runCtx, opts, sel, ref, evalRunner, cli, c, i, []string{set.SkillDir}, false)
+			outcome, result, err := runEval(runCtx, opts, ref, sess, c, i, []string{set.SkillDir}, false)
 			if err != nil {
 				return err
 			}
@@ -382,8 +379,12 @@ func mergeBaseline(old *results.EvalSnapshot, fresh map[string]results.EvalResul
 	return snap
 }
 
-func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref plan.UnitRef,
-	evalRunner harness.EvalRunner, cli string, c evalspec.Eval, index int, skills []string, baseline bool,
+// runEval runs one eval (or its without-skill baseline): it stages the
+// workspace, has sess drive the agent session in it, then grades and reports
+// the result. Whatever ran the session — a local agent CLI or a hosted agent —
+// grading, results, and reporting are common.
+func runEval(ctx context.Context, opts EvalOptions, ref plan.UnitRef, sess sessionRunner,
+	c evalspec.Eval, index int, skills []string, baseline bool,
 ) (evalOutcome, results.EvalResult, error) {
 	ctx, span := tracer().Start(ctx, "evolve.case", trace.WithAttributes(
 		attribute.String("skill", ref.Skill),
@@ -437,32 +438,21 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 	if maxTurns == 0 {
 		maxTurns = opts.MaxTurns
 	}
-	cliModelID, _ := sel.Model.CLIModelID(sel.Harness.ID())
-	spec := evalRunner.EvalSpec(ws, model.EvalInput{
-		Prompt:        c.Prompt,
-		MaxTurns:      maxTurns,
-		HostSandboxed: opts.HostSandboxed,
-	}, cliModelID)
-	spec.Argv[0] = cli
-
-	res, err := opts.Runner.Run(ctx, spec, timeout, nil)
+	s, err := sess.run(ctx, ws, c, timeout, maxTurns)
 	if err != nil {
 		recordSpanErr(span, err)
 		return outcomeError, results.EvalResult{}, err
 	}
-	if res.TimedOut {
-		rep.Warn("  warn: %s timed out after %s; grading partial output\n", cli, timeout)
-	}
 
 	// When the run retains workspaces, keep this one and write its full output
 	// log so the live TUI can open both; empty otherwise (ws is about to go).
-	workdir, logPath := retainArtifacts(parent, ws, res.Stdout)
+	workdir, logPath := retainArtifacts(parent, ws, s.log)
 
 	// A run that produced no usable output (auth blocked, crash) is a runtime
 	// failure, not an eval failure — surface it loudly instead of grading empty
 	// output into a silent FAIL.
-	runSeconds := results.Round1(res.Elapsed.Seconds()) // agent run only; grading excluded
-	if reason := evalRunner.RuntimeError(res.Stdout, res.ExitCode, res.TimedOut); reason != "" {
+	runSeconds := results.Round1(s.elapsed.Seconds()) // agent run only; grading excluded
+	if s.runtimeError != "" {
 		item := ItemResult{
 			Index:         index,
 			Label:         c.ID,
@@ -472,44 +462,36 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 			LogPath:       logPath,
 		}
 		if baseline {
-			item.Detail = fmt.Sprintf("%s: %s runtime failure (exit %d)", c.ID, cli, res.ExitCode)
+			item.Detail = fmt.Sprintf("%s: %s", c.ID, s.failure)
 			rep.BaselineDone(ref, item)
 		} else {
-			item.Detail = fmt.Sprintf("  [ERROR] %s: %s runtime failure (exit %d): %s\n",
-				c.ID, cli, res.ExitCode, errorDetail(reason, res.StderrTail))
+			item.Detail = fmt.Sprintf("  [ERROR] %s: %s: %s\n", c.ID, s.failure, s.failureDetail)
 			rep.ItemDone(ref, item)
 		}
 		return outcomeError, results.EvalResult{
 			ID:           c.ID,
 			Name:         c.Name,
-			RuntimeError: reason,
+			RuntimeError: s.runtimeError,
 			Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
 		}, nil
 	}
 
-	// Providers that decode the agent's answer out of a JSON envelope
-	// re-materialize any ANSI a tool printed (carried backslash-u escaped in
-	// the JSON, so untouched by the runner's capture-time strip) back into raw
-	// escape bytes; strip the decoded text so graded evidence and the TUI
-	// output stay plain.
-	output, usage := evalRunner.ParseEvalOutput(res.Stdout)
-	output = ansi.Strip(output)
-
-	// Tool calls drive tool_call assertions and the execution metrics below.
-	toolCalls := observedToolCalls(sel.Harness, res.Stdout)
-
 	// Grade the whole case at once (deterministic checks, then one judge
 	// session for every llm assertion); buffer the verdict lines so concurrent
 	// evals don't interleave their output.
-	verdicts := grade.Case(ctx, c.Assertions, grade.Options{
+	gopts := grade.Options{
 		Runner:         opts.Runner,
 		Workspace:      ws,
-		Output:         output,
+		Output:         s.output,
 		ExpectedOutput: c.ExpectedOutput,
 		Timeout:        timeout,
 		Judge:          opts.Judge,
-		ToolCalls:      toolCalls,
-	})
+		ToolCalls:      s.toolCalls,
+	}
+	if s.extend != nil {
+		s.extend(&gopts)
+	}
+	verdicts := grade.Case(ctx, c.Assertions, gopts)
 	graded := make([]results.GradedAssertion, len(c.Assertions))
 	var lines strings.Builder
 	evalPassed := true
@@ -550,12 +532,12 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 		Expectations: graded,
 		Summary:      results.SummarizeExpectations(graded),
 		Timing:       &results.Timing{ExecutorDurationSeconds: &runSeconds},
-		Measured:     measured(sel.Model, usage),
+		Measured:     s.measured,
 	}
 	if result.Measured != nil {
 		result.Timing.TotalTokens = result.Measured.TotalTokens()
 	}
-	result.ExecutionMetrics = toolMetrics(toolCalls)
+	result.ExecutionMetrics = toolMetrics(s.toolCalls)
 	item := ItemResult{
 		Index: index, Label: c.ID, Status: status,
 		Metrics:       evalItemMetrics(&runSeconds, result.Measured, result.Summary),
@@ -567,7 +549,7 @@ func runEval(ctx context.Context, opts EvalOptions, sel harness.Selection, ref p
 		rep.BaselineDone(ref, item)
 	} else {
 		item.Detail = lines.String()
-		item.Output = headLines(output, evalOutputLines)
+		item.Output = headLines(s.output, evalOutputLines)
 		rep.ItemDone(ref, item)
 	}
 	outcome := outcomeFail
