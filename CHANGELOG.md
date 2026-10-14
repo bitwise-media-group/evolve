@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.4](https://github.com/bitwise-media-group/evolve/compare/v0.8.3...v0.8.4) (2026-10-14)
+
+
+### Features
+
+* **agui:** add an AG-UI 1.0 client for hosted-agent conversations ([7124968](https://github.com/bitwise-media-group/evolve/commit/712496864b4b85d0debb3090d146e006749076ca))
+* **cli:** select agent endpoints with --endpoint ([0d20ad9](https://github.com/bitwise-media-group/evolve/commit/0d20ad93e6325a35f892f891ab348ef8e247dd85))
+* **evalspec:** add agent suites and new assertion fields ([2601464](https://github.com/bitwise-media-group/evolve/commit/26014645c5c16e3d133c427499ae34dc6f058ee0))
+* **grade:** grade tool counts and sequences, state, HITL, outcome, and conformance ([f424b87](https://github.com/bitwise-media-group/evolve/commit/f424b87955cd8ad91e2d9590e3ea3a0dca5d2f30))
+* **harness:** capture tool results from claude and codex ([38e88b1](https://github.com/bitwise-media-group/evolve/commit/38e88b16990820f672109721e6b2c182ff9fe098))
+* **layout:** detect hosted-agent repositories ([8e41b16](https://github.com/bitwise-media-group/evolve/commit/8e41b164135cd4cad928fa7a3708b5aa84679b60))
+* **report:** report agent repositories ([e113aaa](https://github.com/bitwise-media-group/evolve/commit/e113aaa2b4a0aaae99b936bd18cf8accd4f11ff4))
+* **run:** run agent suites against hosted endpoints ([38026b6](https://github.com/bitwise-media-group/evolve/commit/38026b6fb8c54c23f35340d3a033f580ffe7882a))
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8 ([#319](https://github.com/bitwise-media-group/evolve/issues/319)) ([dfbfb90](https://github.com/bitwise-media-group/evolve/commit/dfbfb90d3894a88bbd35ec0dd0a416f59eb7974d))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.0 ([#331](https://github.com/bitwise-media-group/evolve/issues/331)) ([01dfc6d](https://github.com/bitwise-media-group/evolve/commit/01dfc6df1eb24a61af5b3b75ae008b2a6c414994))
+* **deps:** update module golang.org/x/sync to v0.24.0 ([#318](https://github.com/bitwise-media-group/evolve/issues/318)) ([874a7ca](https://github.com/bitwise-media-group/evolve/commit/874a7ca87d27e3c1533b06b2d0cda8f655783e6c))
+* **deps:** update module golang.org/x/term to v0.47.0 ([#337](https://github.com/bitwise-media-group/evolve/issues/337)) ([f2046b8](https://github.com/bitwise-media-group/evolve/commit/f2046b80c0c9e07b123d802ecf478abe35a5d40f))
+* **release:** cosign the darwin binaries after notarization ([2bbc425](https://github.com/bitwise-media-group/evolve/commit/2bbc4259e16c68e84afa448f3c9a944c5d0b9fea))
+
 ## [0.8.3](https://github.com/bitwise-media-group/evolve/compare/v0.8.2...v0.8.3) (2026-10-09)
 
 
