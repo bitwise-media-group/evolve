@@ -175,8 +175,36 @@ func (c *Claude) TriggerSpec(ws, query, cliModelID string, hostSandboxed bool) m
 // arguments (an MCP tool surfaces with name "mcp__<server>__<tool>").
 type claudeContentBlock struct {
 	Type  string          `json:"type"`
+	ID    string          `json:"id"`
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
+	// ToolUseID and Content are a tool_result block's link to its tool_use
+	// and the result itself (a string, or an array of content blocks).
+	ToolUseID string          `json:"tool_use_id"`
+	Content   json.RawMessage `json:"content"`
+}
+
+// claudeResultText renders a tool_result's content as text: a string
+// verbatim, an array's text blocks joined by newlines.
+func claudeResultText(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	var texts []string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			texts = append(texts, b.Text)
+		}
+	}
+	return strings.Join(texts, "\n")
 }
 
 // claudeUsage is the token/cost accounting Claude reports on its terminal
@@ -223,10 +251,12 @@ type claudeEvent struct {
 // scanEvents walks Claude Code's stream-json output once: it returns the
 // terminal result event (found is false when the output carried none — e.g.
 // plain text or a crash mid-stream), every tool_use invocation in observed
-// order, and the last rate_limit_event seen (the status can transition
+// order (each with its tool_result, matched by tool_use_id, when one
+// arrived), and the last rate_limit_event seen (the status can transition
 // mid-session, so last is authoritative; nil when none appeared).
 // ParseEvalOutput, ParseToolCalls, and RuntimeError each project from it.
 func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.ToolCall, rateLimit *claudeRateLimit) {
+	byID := map[string]int{}
 	for _, line := range bytes.Split(stdout, []byte{'\n'}) {
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue
@@ -242,8 +272,16 @@ func scanEvents(stdout []byte) (result claudeEvent, found bool, tools []model.To
 			rateLimit = ev.RateLimitInfo
 		}
 		for _, block := range ev.Message.Content {
-			if block.Type == "tool_use" {
-				tools = append(tools, model.ToolCall{Name: block.Name, Input: block.Input})
+			switch block.Type {
+			case "tool_use":
+				if block.ID != "" {
+					byID[block.ID] = len(tools)
+				}
+				tools = append(tools, model.ToolCall{ID: block.ID, Name: block.Name, Input: block.Input})
+			case "tool_result":
+				if i, ok := byID[block.ToolUseID]; ok {
+					tools[i].Result = new(claudeResultText(block.Content))
+				}
 			}
 		}
 	}

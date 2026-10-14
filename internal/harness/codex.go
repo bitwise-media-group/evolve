@@ -178,6 +178,9 @@ func (c *Codex) ParseEvalOutput(stdout []byte) (string, *model.Usage) {
 // documented codex tool items not present in the capture, so they surface under
 // their item type with the whole item JSON as arguments rather than guessing the
 // field layout. Only completed items count, so each call is reported once.
+// Results ride along where the item carries them: a command's
+// aggregated_output, and an MCP call's result (its text content, else the
+// result JSON) or error.
 func (c *Codex) ParseToolCalls(stdout []byte) []model.ToolCall {
 	var calls []model.ToolCall
 	for line := range strings.SplitSeq(string(stdout), "\n") {
@@ -205,25 +208,68 @@ func (c *Codex) ParseToolCalls(stdout []byte) []model.ToolCall {
 // the item is not a tool invocation (agent_message, reasoning, …). See
 // ParseToolCalls for which item types are pinned versus handled defensively.
 func codexToolCall(itemType string, raw json.RawMessage) (model.ToolCall, bool) {
+	var it struct {
+		ID               string          `json:"id"`
+		Command          string          `json:"command"`
+		AggregatedOutput *string         `json:"aggregated_output"`
+		Changes          json.RawMessage `json:"changes"`
+		Result           json.RawMessage `json:"result"`
+		Error            json.RawMessage `json:"error"`
+	}
+	_ = json.Unmarshal(raw, &it)
 	switch itemType {
 	case "command_execution":
-		var it struct {
-			Command string `json:"command"`
-		}
-		_ = json.Unmarshal(raw, &it)
 		input, _ := json.Marshal(it.Command) // match the invocation, not its output
-		return model.ToolCall{Name: itemType, Input: input}, true
+		return model.ToolCall{ID: it.ID, Name: itemType, Input: input, Result: it.AggregatedOutput}, true
 	case "file_change":
-		var it struct {
-			Changes json.RawMessage `json:"changes"`
-		}
-		_ = json.Unmarshal(raw, &it)
-		return model.ToolCall{Name: itemType, Input: it.Changes}, true
-	case "mcp_tool_call", "function_call":
-		return model.ToolCall{Name: itemType, Input: raw}, true
+		return model.ToolCall{ID: it.ID, Name: itemType, Input: it.Changes}, true
+	case "mcp_tool_call":
+		return model.ToolCall{ID: it.ID, Name: itemType, Input: raw, Result: codexMCPResult(it.Result, it.Error)}, true
+	case "function_call":
+		return model.ToolCall{ID: it.ID, Name: itemType, Input: raw}, true
 	default:
 		return model.ToolCall{}, false
 	}
+}
+
+// codexMCPResult renders an MCP tool item's outcome as text: the text parts
+// of its result content, else the result JSON, else its error (a string or
+// an object's message); nil when the item carries neither.
+func codexMCPResult(result, errRaw json.RawMessage) *string {
+	if len(result) > 0 && string(result) != "null" {
+		var r struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		}
+		if json.Unmarshal(result, &r) == nil {
+			var texts []string
+			for _, c := range r.Content {
+				if c.Type == "text" {
+					texts = append(texts, c.Text)
+				}
+			}
+			if len(texts) > 0 {
+				return new(strings.Join(texts, "\n"))
+			}
+		}
+		return new(string(result))
+	}
+	if len(errRaw) > 0 && string(errRaw) != "null" {
+		var s string
+		if json.Unmarshal(errRaw, &s) == nil {
+			return new(s)
+		}
+		var e struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(errRaw, &e) == nil && e.Message != "" {
+			return new(e.Message)
+		}
+		return new(string(errRaw))
+	}
+	return nil
 }
 
 // codexModelListStdin is the JSON-RPC conversation fed to `codex app-server`

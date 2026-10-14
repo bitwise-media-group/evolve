@@ -22,7 +22,7 @@ const codexStream = `{"type":"thread.started","thread_id":"t1"}
 {"type":"item.completed","item":{"id":"item_1","type":"file_change","changes":[{"path":"/repo/foo.txt","kind":"add"}],"status":"completed"}}
 {"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/opt/homebrew/bin/zsh -lc 'ls -la'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
 {"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/opt/homebrew/bin/zsh -lc 'ls -la'","aggregated_output":"total 0\nfoo.txt\n","exit_code":0,"status":"completed"}}
-{"type":"item.completed","item":{"id":"item_3","type":"mcp_tool_call","server":"github","tool":"create_issue","arguments":{"title":"bug"}}}
+{"type":"item.completed","item":{"id":"item_3","type":"mcp_tool_call","server":"github","tool":"create_issue","arguments":{"title":"bug"},"result":{"content":[{"type":"text","text":"created #42"}]}}}
 {"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Created foo.txt and ran ls -la."}}
 {"type":"turn.completed","usage":{"input_tokens":61395,"cached_input_tokens":51328,"output_tokens":184,"reasoning_output_tokens":0}}`
 
@@ -49,6 +49,29 @@ func TestCodexParseToolCalls(t *testing.T) {
 	// arguments (so the MCP tool name and args still match).
 	if calls[2].Name != "mcp_tool_call" || !strings.Contains(string(calls[2].Input), "create_issue") {
 		t.Errorf("call[2] = %+v, want mcp_tool_call carrying create_issue", calls[2])
+	}
+	// Results ride along: the command's aggregated output, the MCP call's text
+	// content; an edit reports none.
+	if calls[1].ID != "item_2" || calls[1].Result == nil || *calls[1].Result != "total 0\nfoo.txt\n" {
+		t.Errorf("call[1] result = %v, want the aggregated output", calls[1].Result)
+	}
+	if calls[2].Result == nil || *calls[2].Result != "created #42" {
+		t.Errorf("call[2] result = %v, want the MCP text content", calls[2].Result)
+	}
+	if calls[0].Result != nil {
+		t.Errorf("call[0] result = %v, want none for a file_change", *calls[0].Result)
+	}
+
+	for _, tc := range []struct{ item, want string }{
+		{`{"result":{"structured_content":{"n":1}}}`, `{"structured_content":{"n":1}}`},
+		{`{"error":"server unavailable"}`, "server unavailable"},
+		{`{"error":{"message":"denied"}}`, "denied"},
+	} {
+		line := `{"type":"item.completed","item":{"id":"m","type":"mcp_tool_call",` + tc.item[1:] + "}"
+		got := c.ParseToolCalls([]byte(line))
+		if len(got) != 1 || got[0].Result == nil || *got[0].Result != tc.want {
+			t.Errorf("MCP %s: result = %+v, want %q", tc.item, got, tc.want)
+		}
 	}
 
 	if got := c.ParseToolCalls([]byte("")); got != nil {

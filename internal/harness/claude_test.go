@@ -91,6 +91,19 @@ func TestClaudeParseToolCalls(t *testing.T) {
 	if calls[1].Name != "Bash" || !strings.Contains(string(calls[1].Input), "terraform plan") {
 		t.Errorf("call[1] = %+v, want Bash with terraform plan", calls[1])
 	}
+	// The tool_result is matched back to its tool_use by id; a call that never
+	// got a result reports none.
+	if calls[0].ID != "t1" || calls[0].Result == nil || *calls[0].Result != "ok" {
+		t.Errorf("call[0] result = %v, want ok", calls[0].Result)
+	}
+	if calls[1].Result != nil {
+		t.Errorf("call[1] result = %q, want none", *calls[1].Result)
+	}
+	blocks := c.ParseToolCalls([]byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t9","name":"Read","input":{}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t9","content":[{"type":"text","text":"line 1"},{"type":"image"},{"type":"text","text":"line 2"}]}]}}`))
+	if len(blocks) != 1 || blocks[0].Result == nil || *blocks[0].Result != "line 1\nline 2" {
+		t.Errorf("block-array result = %+v, want the text blocks joined", blocks)
+	}
 
 	// A run with no tool_use blocks reports nil; the engine normalizes that to a
 	// non-nil empty slice so a tool_call assertion fails rather than skips.
