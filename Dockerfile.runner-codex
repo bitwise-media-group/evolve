@@ -7,7 +7,7 @@
 # only in the CLI it carries. codex ships as a self-contained musl-static
 # binary published per GitHub release with no checksum manifest, so the
 # digests are pinned inline for a reproducible, attributable image.
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:f15fea2f49cb14dceaea491fcbde0d35e0c190126a744ac05a9838440d47d994 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:d69a74aa929a006d05880a9287fbbf89aa278d55d7239955331f239122824ba6 AS fetch
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates-bundle curl
@@ -38,7 +38,7 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/codex.tar.gz \
     && chmod 0755 /codex
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:f15fea2f49cb14dceaea491fcbde0d35e0c190126a744ac05a9838440d47d994
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:d69a74aa929a006d05880a9287fbbf89aa278d55d7239955331f239122824ba6
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
