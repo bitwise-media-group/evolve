@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.0.1 ([#373](https://github.com/bitwise-media-group/evolve/issues/373)) ([dbf0abb](https://github.com/bitwise-media-group/evolve/commit/dbf0abb1e3afcdae89bb0a94881fe8a7997903df))
+
 ## [0.8.4](https://github.com/bitwise-media-group/evolve/compare/v0.8.3...v0.8.4) (2026-10-14)
 
 
