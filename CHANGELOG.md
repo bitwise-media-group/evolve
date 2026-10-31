@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.0.1 ([#373](https://github.com/bitwise-media-group/evolve/issues/373)) ([dbf0abb](https://github.com/bitwise-media-group/evolve/commit/dbf0abb1e3afcdae89bb0a94881fe8a7997903df))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.1 ([#415](https://github.com/bitwise-media-group/evolve/issues/415)) ([59145fd](https://github.com/bitwise-media-group/evolve/commit/59145fd0a05ebc9f1e77e9837d472c91fc46d574))
+
 ## [0.8.4](https://github.com/bitwise-media-group/evolve/compare/v0.8.3...v0.8.4) (2026-10-14)
 
 
