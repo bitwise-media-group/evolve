@@ -42,7 +42,7 @@ permissions: {}
 
 jobs:
   release:
-    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@08001c85620929f6fe58a83ecec5313536290ab1 # v8.1.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/release.yaml@35d8e9a1ce772f67f97e73484dc5b7a50c29e0f3 # v8.1.1
     # ceiling for the reusable workflow's release-please + goreleaser + docs jobs.
     # GitHub resolves a reusable workflow's permissions as the union of every job and
     # ignores `if:`, so the caller must grant the goreleaser job's id-token /
