@@ -33,7 +33,7 @@ permissions: {}
 
 jobs:
   add:
-    uses: bitwise-media-group/github-workflows/.github/workflows/add-to-project.yaml@08001c85620929f6fe58a83ecec5313536290ab1 # v8.1.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/add-to-project.yaml@35d8e9a1ce772f67f97e73484dc5b7a50c29e0f3 # v8.1.1
     with:
       project-url: https://github.com/orgs/bitwise-media-group/projects/1
       app-client-id: ${{ vars.ADD_TO_PROJECT_CLIENT_ID }}

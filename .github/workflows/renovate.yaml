@@ -59,7 +59,7 @@ permissions: {}
 
 jobs:
   renovate:
-    uses: bitwise-media-group/github-workflows/.github/workflows/renovate.yaml@08001c85620929f6fe58a83ecec5313536290ab1 # v8.1.0
+    uses: bitwise-media-group/github-workflows/.github/workflows/renovate.yaml@35d8e9a1ce772f67f97e73484dc5b7a50c29e0f3 # v8.1.1
     with:
       app-client-id: ${{ vars.RENOVATE_CLIENT_ID }}
       dry-run: ${{ inputs.dry-run || '' }}
