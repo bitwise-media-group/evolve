@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/tailscale/hujson"
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // Extensions lists the supported file extensions in discovery order.
