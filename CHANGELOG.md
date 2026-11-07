@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.0.1 ([#373](https://github.com/bitwise-media-group/evolve/issues/373)) ([dbf0abb](https://github.com/bitwise-media-group/evolve/commit/dbf0abb1e3afcdae89bb0a94881fe8a7997903df))
+* **deps:** update bitwise-media-group/github-workflows action to v8.1.0 ([#417](https://github.com/bitwise-media-group/evolve/issues/417)) ([f50e8b1](https://github.com/bitwise-media-group/evolve/commit/f50e8b14308b7fc0be877704528a5ec8da2b62f9))
+* **deps:** update bitwise-media-group/github-workflows action to v8.1.1 ([#432](https://github.com/bitwise-media-group/evolve/issues/432)) ([0c29401](https://github.com/bitwise-media-group/evolve/commit/0c29401b4c3f59154e01949a2411a25b288ff67d))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.1 ([#415](https://github.com/bitwise-media-group/evolve/issues/415)) ([59145fd](https://github.com/bitwise-media-group/evolve/commit/59145fd0a05ebc9f1e77e9837d472c91fc46d574))
+* **deps:** update module go.yaml.in/yaml/v3 to v3.0.6 ([#424](https://github.com/bitwise-media-group/evolve/issues/424)) ([78a9a27](https://github.com/bitwise-media-group/evolve/commit/78a9a2702a49f2aaeaa5ae6ed3f428adcad60217))
+
 ## [0.8.4](https://github.com/bitwise-media-group/evolve/compare/v0.8.3...v0.8.4) (2026-10-14)
 
 
