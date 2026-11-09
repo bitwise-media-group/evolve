@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/tailscale/hujson"
-	yaml "go.yaml.in/yaml/v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // AppendToList appends items to the array at the nested object path keys in
