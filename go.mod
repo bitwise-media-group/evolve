@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-version v1.9.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	github.com/spf13/viper v1.21.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
