@@ -19,7 +19,16 @@
 #   pull_request      -- same for the checkboxes in a Renovate PR body (rebase/retry).
 #     [edited]           Edits to other PRs skip the job -- as a skipped check on that
 #                        PR, which is the price of reacting to the checkbox at all.
-# Renovate's own body rewrites never re-trigger a run (filtered as a Bot sender).
+#   workflow_run      -- a required workflow finished green on a renovate/* PR: the PR
+#     [completed]        just became mergeable, so Renovate runs now instead of at the
+#                        next tick. List every workflow Renovate's automerge waits on
+#                        (the same names as merge.yaml's workflow_run list).
+#   push [main]       -- the base branch moved, usually by Renovate's own merge. A run
+#                        merges at most two PRs, in its own order rather than the
+#                        triggering PR's, so each merge's push starts the next run and
+#                        the queue of green PRs drains without waiting for the cron.
+# Renovate's own body rewrites never re-trigger a run (filtered as a Bot sender), and
+# no trigger checks out or runs PR code.
 #
 # Org prerequisites (see README "renovate.yaml"): the "Renovate" App installed on this
 # repo, exposed as the RENOVATE_CLIENT_ID variable + RENOVATE_PRIVATE_KEY secret. Take
@@ -31,7 +40,7 @@
 
 name: Renovate
 
-on:
+on: # zizmor: ignore[dangerous-triggers] -- workflow_run only starts a Renovate run; no PR code is checked out or run
   schedule:
     - cron: "24 * * * *"
   workflow_dispatch:
@@ -53,13 +62,21 @@ on:
     types: [edited]
   pull_request:
     types: [edited]
+  workflow_run:
+    workflows:
+      - "Continuous Integration"
+      - "Security Analysis"
+    types: [completed]
+    branches: ["renovate/**"]
+  push:
+    branches: [main]
 
 # the App token does the privileged work; the caller grants nothing
 permissions: {}
 
 jobs:
   renovate:
-    uses: bitwise-media-group/github-workflows/.github/workflows/renovate.yaml@35d8e9a1ce772f67f97e73484dc5b7a50c29e0f3 # v8.1.1
+    uses: bitwise-media-group/github-workflows/.github/workflows/renovate.yaml@67215effe1e541e699905fb62b7a48b7293f935c # v8.3.0
     with:
       app-client-id: ${{ vars.RENOVATE_CLIENT_ID }}
       dry-run: ${{ inputs.dry-run || '' }}
