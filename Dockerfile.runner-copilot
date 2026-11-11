@@ -9,7 +9,7 @@
 # tarball carries just the entrypoint binary (the npm platform package adds
 # optional sibling helpers around the same binary). The digests are pinned
 # inline so Renovate bumps each tag + sha pair in lockstep.
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:b7787f1d3f29dcfb48730372d3515391ac3b218723201a765c94949922676099 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:94fa13e26d449f7d78dbcd02d12ea37a0da80d24fcc3e1f17b95d515dec607a7 AS fetch
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates-bundle curl
@@ -40,7 +40,7 @@ RUN case "${TARGETARCH}" in \
     && rm -f /tmp/copilot.tar.gz \
     && chmod 0755 /copilot
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:b7787f1d3f29dcfb48730372d3515391ac3b218723201a765c94949922676099
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:94fa13e26d449f7d78dbcd02d12ea37a0da80d24fcc3e1f17b95d515dec607a7
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
