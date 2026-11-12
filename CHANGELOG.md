@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** bump go to 1.27.4 ([e039a3c](https://github.com/bitwise-media-group/evolve/commit/e039a3ccda5c8fb99a8498d376897ac1212517b9))
+* **deps:** update bitwise-media-group/github-workflows action to v8.0.1 ([#373](https://github.com/bitwise-media-group/evolve/issues/373)) ([dbf0abb](https://github.com/bitwise-media-group/evolve/commit/dbf0abb1e3afcdae89bb0a94881fe8a7997903df))
+* **deps:** update bitwise-media-group/github-workflows action to v8.1.0 ([#417](https://github.com/bitwise-media-group/evolve/issues/417)) ([f50e8b1](https://github.com/bitwise-media-group/evolve/commit/f50e8b14308b7fc0be877704528a5ec8da2b62f9))
+* **deps:** update bitwise-media-group/github-workflows action to v8.1.1 ([#432](https://github.com/bitwise-media-group/evolve/issues/432)) ([0c29401](https://github.com/bitwise-media-group/evolve/commit/0c29401b4c3f59154e01949a2411a25b288ff67d))
+* **deps:** update bitwise-media-group/github-workflows action to v8.3.0 ([#456](https://github.com/bitwise-media-group/evolve/issues/456)) ([eaeb33d](https://github.com/bitwise-media-group/evolve/commit/eaeb33d147a67a16d7fe3f65d848e5d170d8631a))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.1 ([#415](https://github.com/bitwise-media-group/evolve/issues/415)) ([59145fd](https://github.com/bitwise-media-group/evolve/commit/59145fd0a05ebc9f1e77e9837d472c91fc46d574))
+* **deps:** update module github.com/spf13/pflag to v1.1.0 ([#447](https://github.com/bitwise-media-group/evolve/issues/447)) ([4a2265f](https://github.com/bitwise-media-group/evolve/commit/4a2265f495e8077aeff6a83e96c92e4016468eb3))
+* **deps:** update module go.yaml.in/yaml/v3 to v3.0.6 ([#424](https://github.com/bitwise-media-group/evolve/issues/424)) ([78a9a27](https://github.com/bitwise-media-group/evolve/commit/78a9a2702a49f2aaeaa5ae6ed3f428adcad60217))
+* **deps:** update module go.yaml.in/yaml/v3 to v4 ([#440](https://github.com/bitwise-media-group/evolve/issues/440)) ([d19eee1](https://github.com/bitwise-media-group/evolve/commit/d19eee171a79f16a5086b84afae514f4bd38ec58))
+* **deps:** update module golang.org/x/oauth2 to v0.38.0 ([#448](https://github.com/bitwise-media-group/evolve/issues/448)) ([c2c413c](https://github.com/bitwise-media-group/evolve/commit/c2c413c0edbd9cc0adee6707f45c5fcde03d13d8))
+* **deps:** update module golang.org/x/sync to v0.25.0 ([#449](https://github.com/bitwise-media-group/evolve/issues/449)) ([8ddc4e5](https://github.com/bitwise-media-group/evolve/commit/8ddc4e51ac7e306472a627cb18935493f2a25404))
+* **release:** pass mise trust through to the goreleaser sbom commands ([d14256b](https://github.com/bitwise-media-group/evolve/commit/d14256b4db0fd14e84c08d237b73ed26ffb2b00b))
+
 ## [0.8.4](https://github.com/bitwise-media-group/evolve/compare/v0.8.3...v0.8.4) (2026-10-14)
 
 
