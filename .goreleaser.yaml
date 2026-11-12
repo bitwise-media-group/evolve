@@ -153,9 +153,18 @@ notarize:
 # ^ref: https://goreleaser.com/customization/sbom/
 sboms:
   - artifacts: archive
-    # syft is installed from the make/ library's .syft-version pin into .bin/,
-    # which the library's snapshot/release targets put on PATH.
+    # syft comes from the toolchain submodule's pins (.mise/); mise puts it
+    # on PATH for whoever runs goreleaser.
     cmd: syft
+    # syft is a lazy mise pin, so `syft` on PATH is a mise shim that re-reads
+    # the repo's mise config (walking up from dist/, the cataloger's cwd).
+    # GoReleaser runs catalogers with a scrubbed env (HOME/USER/TMP*/PATH
+    # only), which drops the trust the CI mise setup grants via env -- the
+    # shim then refuses mise.toml as untrusted. Pass that trust through.
+    # Both are unset locally, where `mise trust` state under HOME applies.
+    env:
+      - MISE_TRUSTED_CONFIG_PATHS={{ envOrDefault "MISE_TRUSTED_CONFIG_PATHS" "" }}
+      - MISE_YES={{ envOrDefault "MISE_YES" "" }}
     args:
       - $artifact
       - --output
@@ -173,6 +182,7 @@ sboms:
   # OIDC request variables the reusable release workflow provides are passed
   # through for keyless signing (empty outside Actions: cosign falls back to
   # its interactive flow). Off in snapshots, like `--skip=sign`.
+  # cosign is a lazy mise shim too, so the mise trust is forwarded as for syft.
   - id: cosign
     artifacts: binary
     ids: [evolve]
@@ -183,6 +193,8 @@ sboms:
     env:
       - ACTIONS_ID_TOKEN_REQUEST_URL={{ envOrDefault "ACTIONS_ID_TOKEN_REQUEST_URL" "" }}
       - ACTIONS_ID_TOKEN_REQUEST_TOKEN={{ envOrDefault "ACTIONS_ID_TOKEN_REQUEST_TOKEN" "" }}
+      - MISE_TRUSTED_CONFIG_PATHS={{ envOrDefault "MISE_TRUSTED_CONFIG_PATHS" "" }}
+      - MISE_YES={{ envOrDefault "MISE_YES" "" }}
     args:
       - sign-blob
       - --bundle=$document
