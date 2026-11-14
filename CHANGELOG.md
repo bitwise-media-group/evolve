@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6](https://github.com/bitwise-media-group/evolve/compare/v0.8.5...v0.8.6) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.0 ([#468](https://github.com/bitwise-media-group/evolve/issues/468)) ([ccc9218](https://github.com/bitwise-media-group/evolve/commit/ccc9218cc3cd683de704b67a9167d4df92564012))
+
 ## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-11-12)
 
 
