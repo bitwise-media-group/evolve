@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.6](https://github.com/bitwise-media-group/evolve/compare/v0.8.5...v0.8.6) (2026-11-16)
+
+
+### Bug Fixes
+
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.0 ([#468](https://github.com/bitwise-media-group/evolve/issues/468)) ([ccc9218](https://github.com/bitwise-media-group/evolve/commit/ccc9218cc3cd683de704b67a9167d4df92564012))
+* **deps:** update module golang.org/x/term to v0.48.0 ([#469](https://github.com/bitwise-media-group/evolve/issues/469)) ([e368352](https://github.com/bitwise-media-group/evolve/commit/e368352b9660bae316a303f89a0fd7637e7cd59f))
+
 ## [0.8.5](https://github.com/bitwise-media-group/evolve/compare/v0.8.4...v0.8.5) (2026-11-12)
 
 
