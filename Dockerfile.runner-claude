@@ -18,7 +18,7 @@
 # filesystem, uid 65532, all capabilities dropped. The only writable paths
 # are /workspace (emptyDir, and HOME) and /tmp; claude keeps its state under
 # $HOME, and DISABLE_AUTOUPDATER pins it to the baked version.
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90 AS fetch
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:7135c6a5e9f29b2542aaefee63d474973312bfdea95555963aef0e648210e4d2 AS fetch
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache ca-certificates-bundle curl jq
@@ -43,7 +43,7 @@ RUN case "${TARGETARCH}" in \
     && echo "${checksum}  /claude" | sha256sum -c - \
     && chmod 0755 /claude
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:580c9ae79c0229cc381475fbfbed0d91fab5d6606e57cd78732f9836de109e90
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:7135c6a5e9f29b2542aaefee63d474973312bfdea95555963aef0e648210e4d2
 
 # curl + tar serve the init container's credential-less bundle fetch; git
 # serves per-case workspace initialization and the agent's own commits.
