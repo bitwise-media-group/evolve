@@ -17,11 +17,11 @@ RUN apk add --no-cache ca-certificates-bundle curl
 # full tag is pinned (not the bare version) because Renovate resolves the
 # asset digest by release tag.
 # renovate: datasource=github-release-attachments depName=openai/codex versioning=regex:^rust-v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-ARG CODEX_AMD64_RELEASE=rust-v0.170.0
-ARG CODEX_AMD64_SHA256=d054916ccd28a53820376b8d2f7c875184ca8f40fcd44bbabeb8ee240ce247f5
+ARG CODEX_AMD64_RELEASE=rust-v0.172.0
+ARG CODEX_AMD64_SHA256=a2342a8f7f68f088be30620ccfe9cb84162c93a6b56177855961cda3ed6be392
 # renovate: datasource=github-release-attachments depName=openai/codex versioning=regex:^rust-v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
-ARG CODEX_ARM64_RELEASE=rust-v0.170.0
-ARG CODEX_ARM64_SHA256=0da6b061f6b5223901a5a73e841bd1466596e2ef620d68823360febed2ff7ebc
+ARG CODEX_ARM64_RELEASE=rust-v0.172.0
+ARG CODEX_ARM64_SHA256=0b99526c185a4425fe96a2214fb7b6a6a7f7c1471883b7afbebe97e15e83e79e
 
 ARG TARGETARCH
 # hadolint ignore=DL4006
