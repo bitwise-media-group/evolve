@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.7](https://github.com/bitwise-media-group/evolve/compare/v0.8.6...v0.8.7) (2026-11-28)
+
+
+### Bug Fixes
+
+* **deps:** update bitwise-media-group/github-workflows action to v8.4.0 ([#490](https://github.com/bitwise-media-group/evolve/issues/490)) ([8e57dcb](https://github.com/bitwise-media-group/evolve/commit/8e57dcb06612ac17e1ff7271ccf8efa4b332f6bf))
+* **deps:** update bitwise-media-group/github-workflows action to v8.5.0 ([#543](https://github.com/bitwise-media-group/evolve/issues/543)) ([37d39c3](https://github.com/bitwise-media-group/evolve/commit/37d39c3ede5cadf5526eda77f38df01f108158ea))
+* **deps:** update module charm.land/bubbles/v2 to v2.2.2 ([#523](https://github.com/bitwise-media-group/evolve/issues/523)) ([fbd42e3](https://github.com/bitwise-media-group/evolve/commit/fbd42e378f1e3725c50a569dae143f0f915cad8a))
+* **deps:** update module charm.land/bubbletea/v2 to v2.1.2 ([#517](https://github.com/bitwise-media-group/evolve/issues/517)) ([e565a15](https://github.com/bitwise-media-group/evolve/commit/e565a1528d890cf8e2002d66970ddec91f1bf7e5))
+* **deps:** update module charm.land/lipgloss/v2 to v2.1.1 ([#500](https://github.com/bitwise-media-group/evolve/issues/500)) ([5f42021](https://github.com/bitwise-media-group/evolve/commit/5f4202151e324a49b69b063e4658f72bc5b02fe7))
+* **deps:** update module github.com/charmbracelet/x/ansi to v0.11.10 ([#518](https://github.com/bitwise-media-group/evolve/issues/518)) ([5974c32](https://github.com/bitwise-media-group/evolve/commit/5974c3219dad8f8752fdbc08e89526e069e0d292))
+
 ## [0.8.6](https://github.com/bitwise-media-group/evolve/compare/v0.8.5...v0.8.6) (2026-11-16)
 
 
